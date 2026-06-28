@@ -443,6 +443,61 @@ async def adherence(days: int = 7):
     return {"daily": daily, "streak": streak, "average": avg}
 
 
+@api.get("/ai/daily-message")
+async def ai_daily_message():
+    """A short personalized message from Claude based on the user's recent context."""
+    profile = await db.profile.find_one({"id": "default"}, PROJECTION) or {}
+    today = datetime.now(timezone.utc).date().isoformat()
+    await _ensure_doses_for_date(today)
+    doses = await db.doses.find({"date": today}, PROJECTION).to_list(1000)
+    total = len(doses)
+    taken = sum(1 for d in doses if d["status"] == "taken")
+    meds = await db.medications.find({"active": True}, PROJECTION).to_list(50)
+    recent_mood = await db.mood.find({}, PROJECTION).sort("recorded_at", -1).to_list(1)
+    adh = await adherence(7)
+
+    # Fallback static message if no AI key
+    if not EMERGENT_LLM_KEY:
+        if total == 0:
+            msg = "Quietly waiting until you add your first medication. No pressure."
+        elif taken == total:
+            msg = f"All {total} doses taken today. Steady wins this game."
+        elif taken == 0:
+            msg = "A new day. Tap a dose when you're ready."
+        else:
+            msg = f"{taken} of {total} done — you're moving."
+        return {"message": msg, "streak": adh.get("streak", 0)}
+
+    context_lines = [
+        f"User: {profile.get('nickname', 'friend')}",
+        f"Today: {taken}/{total} doses taken",
+        f"7-day adherence: {adh.get('average', 0)}%, current streak: {adh.get('streak', 0)} day(s)",
+        f"Active meds: {len(meds)}",
+    ]
+    if recent_mood:
+        context_lines.append(f"Last mood: {recent_mood[0]['score']}/5")
+
+    try:
+        from emergentintegrations.llm.chat import LlmChat, UserMessage
+        chat = LlmChat(
+            api_key=EMERGENT_LLM_KEY,
+            session_id=f"daily-{uuid.uuid4()}",
+            system_message=(
+                "You write one short, warm, specific message (max 22 words) for a medication "
+                "adherence app's Today screen. No emoji, no clichés, no medical advice. "
+                "Acknowledge the user by name only if it fits naturally. If 0 doses today, "
+                "be gentle. If perfect, be quietly proud. If partial, be encouraging without lecturing."
+            ),
+        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+        resp = await chat.send_message(UserMessage(text="\n".join(context_lines)))
+        msg = resp.strip().strip('"').split("\n")[0][:200]
+    except Exception as e:
+        logger.warning(f"AI daily message failed: {e}")
+        msg = f"{taken} of {total} doses done today." if total else "A fresh start awaits."
+
+    return {"message": msg, "streak": adh.get("streak", 0)}
+
+
 # Brand -> Generic resolver
 async def _resolve_generic(brand: str) -> str:
     if not EMERGENT_LLM_KEY:

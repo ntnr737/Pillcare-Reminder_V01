@@ -31,6 +31,7 @@ export const api = {
   listMood: () => req<any[]>("/mood"),
   createMood: (data: any) => req<any>("/mood", { method: "POST", body: JSON.stringify(data) }),
   adherence: (days: number = 7) => req<any>(`/progress/adherence?days=${days}`),
+  dailyMessage: () => req<{ message: string; streak: number }>("/ai/daily-message"),
   units: () => req<{ units: string[] }>("/catalog/units"),
   measurementCatalog: () => req<{ measurements: any[] }>("/catalog/measurements"),
   activityCatalog: () => req<{ activities: any[] }>("/catalog/activities"),

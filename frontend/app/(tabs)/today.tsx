@@ -28,6 +28,9 @@ export default function Today() {
   const [profile, setProfile] = useState<any | null>(null);
   const [sheet, setSheet] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [streak, setStreak] = useState(0);
+  const [aiMsg, setAiMsg] = useState<string>("");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -39,12 +42,25 @@ export default function Today() {
     }
   }, [date]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  const loadAi = useCallback(async () => {
+    setAiLoading(true);
+    try {
+      const r = await api.dailyMessage();
+      setAiMsg(r.message);
+      setStreak(r.streak);
+    } catch {
+      setAiMsg("");
+    } finally {
+      setAiLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { load(); loadAi(); }, [load, loadAi]));
   useEffect(() => { load(); }, [load]);
 
   const onPullRefresh = async () => {
     setRefreshing(true);
-    await load();
+    await Promise.all([load(), loadAi()]);
     setRefreshing(false);
   };
 
@@ -60,6 +76,7 @@ export default function Today() {
         api.caregiverAlert(`${med.name} is running low (${med.stock - 1} left)`, med.name).catch(() => {});
       }
       load();
+      loadAi();
     } catch (e) { console.warn(e); }
   };
 
@@ -80,10 +97,33 @@ export default function Today() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onPullRefresh} tintColor={theme.colors.brand} />}
       >
         <View style={styles.header}>
-          <Text style={styles.greet}>{greeting}{profile?.nickname ? `, ${profile.nickname}` : ""}</Text>
-          <Text style={styles.sub}>
-            {total === 0 ? "No doses scheduled — add a medication to begin." : `${taken} of ${total} taken today`}
-          </Text>
+          <View style={styles.greetRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.greet}>{greeting}{profile?.nickname ? `, ${profile.nickname}` : ""}</Text>
+              <Text style={styles.sub}>
+                {total === 0 ? "No doses scheduled — add a medication to begin." : `${taken} of ${total} taken today`}
+              </Text>
+            </View>
+            <View style={styles.streakChip} testID="today-streak-chip">
+              <Ionicons name="flame" size={18} color={theme.colors.secondary} />
+              <Text style={styles.streakNum}>{streak}</Text>
+              <Text style={styles.streakWord}>day{streak === 1 ? "" : "s"}</Text>
+            </View>
+          </View>
+
+          {(aiMsg || aiLoading) && (
+            <View style={styles.aiCard} testID="ai-daily-card">
+              <View style={styles.aiBadge}>
+                <Ionicons name="sparkles" size={14} color={theme.colors.brand} />
+                <Text style={styles.aiBadgeText}>From PillCare</Text>
+              </View>
+              {aiLoading && !aiMsg ? (
+                <Text style={styles.aiMsg}>…</Text>
+              ) : (
+                <Text style={styles.aiMsg}>{aiMsg}</Text>
+              )}
+            </View>
+          )}
         </View>
 
         <View style={{ backgroundColor: theme.colors.bg }}>
@@ -150,8 +190,16 @@ export default function Today() {
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: theme.colors.bg },
   header: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
+  greetRow: { flexDirection: "row", alignItems: "flex-start" },
   greet: { color: theme.colors.textPrimary, fontSize: 28, fontWeight: "700", letterSpacing: -0.5 },
   sub: { color: theme.colors.textSecondary, fontSize: 14, marginTop: 4 },
+  streakChip: { flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: theme.colors.secondaryMuted, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, marginLeft: 12 },
+  streakNum: { color: theme.colors.secondary, fontWeight: "700", fontSize: 16 },
+  streakWord: { color: theme.colors.secondary, fontSize: 12, fontWeight: "600" },
+  aiCard: { marginTop: 16, backgroundColor: theme.colors.surface, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: theme.colors.brandMuted },
+  aiBadge: { flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 6 },
+  aiBadgeText: { color: theme.colors.brand, fontSize: 11, fontWeight: "700", letterSpacing: 0.5 },
+  aiMsg: { color: theme.colors.textPrimary, fontSize: 15, lineHeight: 22 },
   list: { paddingHorizontal: 16, paddingTop: 16 },
   emptyTitle: { color: theme.colors.textPrimary, fontWeight: "700", fontSize: 16 },
   emptySub: { color: theme.colors.textSecondary, marginTop: 4 },
