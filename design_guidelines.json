@@ -1,0 +1,198 @@
+{
+  "theme": "dark",
+  "archetype": "Organic & Earthy (Adapted for Dark Theme)",
+  "rationale": "The user explicitly requested a dark theme. To prevent the app from feeling 'cold' or 'clinical', we adapt Archetype 1 (Organic & Earthy) for dark mode. Utilizing deep forest/obsidian backgrounds with soft sage and muted terracotta accents creates a calm, trustworthy, and accessible environment for health tracking.",
+  "typography": {
+    "font_families": {
+      "heading": "Manrope",
+      "body": "Work Sans",
+      "mono": "Space Mono"
+    },
+    "sizes": {
+      "h1": 32,
+      "h2": 28,
+      "h3": 24,
+      "h4": 20,
+      "body_lg": 18,
+      "body": 16,
+      "label": 14,
+      "caption": 12
+    },
+    "weights": {
+      "regular": "400",
+      "medium": "500",
+      "semibold": "600",
+      "bold": "700"
+    },
+    "letter_spacing": {
+      "heading": -0.5,
+      "body": 0,
+      "overline": 1.5
+    }
+  },
+  "colors": {
+    "background": {
+      "base": "#121413",
+      "surface": "#1A1D1B",
+      "surface_elevated": "#222624",
+      "overlay": "rgba(0, 0, 0, 0.6)"
+    },
+    "border": {
+      "subtle": "#2A2F2D",
+      "strong": "#3C423F"
+    },
+    "text": {
+      "primary": "#E4E7E5",
+      "secondary": "#9AA19D",
+      "disabled": "#5A615D",
+      "inverse": "#121413"
+    },
+    "brand": {
+      "primary": "#92C5A9",
+      "primary_muted": "#92C5A933",
+      "secondary": "#E59A85",
+      "secondary_muted": "#E59A8533"
+    },
+    "status": {
+      "success": "#92C5A9",
+      "warning": "#E5C185",
+      "error": "#E58585",
+      "info": "#85AEE5"
+    }
+  },
+  "spacing": {
+    "xs": 4,
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "xl": 32,
+    "2xl": 48,
+    "3xl": 64,
+    "touch_target_min": 48
+  },
+  "border_radius": {
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "pill": 9999
+  },
+  "components": {
+    "bottom_sheet": {
+      "background_color": "#1A1D1B",
+      "border_top_radius": 24,
+      "handle_color": "#3C423F",
+      "padding": 24
+    },
+    "cards": {
+      "background_color": "#1A1D1B",
+      "border_width": 1,
+      "border_color": "#2A2F2D",
+      "border_radius": 16,
+      "padding": 16
+    },
+    "buttons": {
+      "primary": {
+        "background_color": "#92C5A9",
+        "text_color": "#121413",
+        "border_radius": 9999,
+        "height": 56,
+        "font_weight": "600"
+      },
+      "secondary": {
+        "background_color": "transparent",
+        "text_color": "#92C5A9",
+        "border_width": 1,
+        "border_color": "#92C5A9",
+        "border_radius": 9999,
+        "height": 56
+      }
+    },
+    "filter_chips": {
+      "active_bg": "#E4E7E5",
+      "active_text": "#121413",
+      "inactive_bg": "#222624",
+      "inactive_text": "#9AA19D",
+      "height": 40,
+      "border_radius": 20
+    }
+  },
+  "screens": {
+    "Onboarding": {
+      "layout": "Vertical scroll with sticky bottom CTA. Large typography.",
+      "sections": [
+        "Welcome visual",
+        "Profile inputs (Nickname, Gender dropdown, YOB picker)",
+        "Routine setup (Wake up, Meals, Sleep time cards)"
+      ]
+    },
+    "Today": {
+      "layout": "Sticky horizontal week-strip at top. Vertical scroll for doses. Floating/Bottom sticky +Add button.",
+      "features": [
+        "Horizontal week-strip (date nodes, highlight current day)",
+        "Dose List (cards with checkbox, med name, dosage, time)",
+        "'+Add' trigger opens Add Medication Bottom Sheet"
+      ]
+    },
+    "Treatment": {
+      "layout": "Sticky horizontal filter chips below header. Vertical list below.",
+      "sub_tabs": [
+        "Medications (Active list, refill thresholds)",
+        "Measurements (BP, glucose, HR, etc.)",
+        "Activities (Steps, exercise, water, sleep)",
+        "Mood (1-5 scale face icons, note input)"
+      ]
+    },
+    "Progress": {
+      "layout": "Dashboard grid (Control Room mode adapted for mobile).",
+      "features": [
+        "Adherence streak widget (prominent)",
+        "Line/Bar charts for adherence vs measurements",
+        "Health Connect CTA card (distinct background, e.g., #222624)"
+      ]
+    },
+    "Support": {
+      "layout": "List menu with descriptive subtitles.",
+      "features": [
+        "AI Medication Scanner (Camera trigger CTA)",
+        "Caregiver Settings (OpenWA mocked input)",
+        "Brand -> Generic Resolver lookup tool",
+        "FAQ & Lifetime History (CSV export button)"
+      ]
+    },
+    "Add_Medication_Sheet": {
+      "layout": "Bottom sheet, tall (80% of screen).",
+      "features": [
+        "Form: Med name, Full unit catalog selector",
+        "Native date/time pickers for frequency",
+        "Refill threshold input",
+        "Sticky 'Save' button at bottom"
+      ]
+    },
+    "Settings_Privacy": {
+      "layout": "Standard list view.",
+      "features": [
+        "Honest privacy copy block (shield icon, readable text)",
+        "AES-256 encryption mention badge"
+      ]
+    }
+  },
+  "accessibility": {
+    "touch_targets": "All interactive elements must be at least 48x48px.",
+    "contrast": "Text contrast must meet minimum 4.5:1 ratio against dark background. Use #E4E7E5 for primary text.",
+    "reduce_motion": "Use fade transitions instead of slide animations if OS reduce motion is enabled.",
+    "testing": "All interactive and key informational elements MUST include a data-testid attribute in kebab-case."
+  },
+  "image_urls": [
+    {
+      "url": "https://images.unsplash.com/photo-1692520883599-d543cfe6d43d",
+      "description": "Dark calm nature plants",
+      "category": "Onboarding Background / Empty State Visual"
+    },
+    {
+      "url": "https://images.unsplash.com/photo-1652091705632-0755a239a186",
+      "description": "Close up dark plants",
+      "category": "Progress Dashboard Accent Image"
+    }
+  ]
+}
