@@ -1,0 +1,6 @@
+google-antigravity
+watchfiles
+requests
+httpx
+python-dotenv
+pytest
