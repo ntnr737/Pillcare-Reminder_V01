@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+tests/
+.pytest_cache/
+*.log
+app.add_middleware(
+    CORSMiddleware,
+    allow_credentials=True,
+    allow_origins=["*"],
+    ...
+)
