@@ -8,6 +8,7 @@ import logging
 import io
 import csv
 import uuid
+import httpx
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
@@ -19,8 +20,39 @@ load_dotenv(ROOT_DIR / ".env")
 mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
-EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
+GROQ_TEXT_MODEL = "llama-3.1-8b-instant"
+GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 OPENWA_ENABLED = os.environ.get("OPENWA_ENABLED", "false").lower() == "true"
+
+
+async def _groq_chat(system_message: str, user_text: str, image_base64: str = None) -> str:
+    """Call Groq's OpenAI-compatible chat completions endpoint."""
+    if image_base64:
+        user_content = [
+            {"type": "text", "text": user_text},
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
+        ]
+        model = GROQ_VISION_MODEL
+    else:
+        user_content = user_text
+        model = GROQ_TEXT_MODEL
+
+    async with httpx.AsyncClient(timeout=30.0) as http_client:
+        resp = await http_client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+            json={
+                "model": model,
+                "messages": [
+                    {"role": "system", "content": system_message},
+                    {"role": "user", "content": user_content},
+                ],
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
 
 app = FastAPI(title="PillCare API")
 api = APIRouter(prefix="/api")
@@ -280,7 +312,7 @@ async def list_medications(active: Optional[bool] = None):
 async def create_medication(payload: MedicationCreate):
     # Optionally resolve generic name if not provided
     generic = payload.generic_name
-    if not generic and EMERGENT_LLM_KEY:
+    if not generic and GROQ_API_KEY:
         try:
             generic = await _resolve_generic(payload.name)
         except Exception as e:
@@ -457,7 +489,7 @@ async def ai_daily_message():
     adh = await adherence(7)
 
     # Fallback static message if no AI key
-    if not EMERGENT_LLM_KEY:
+    if not GROQ_API_KEY:
         if total == 0:
             msg = "Quietly waiting until you add your first medication. No pressure."
         elif taken == total:
@@ -478,18 +510,15 @@ async def ai_daily_message():
         context_lines.append(f"Last mood: {recent_mood[0]['score']}/5")
 
     try:
-        from emergentintegrations.llm.chat import LlmChat, UserMessage
-        chat = LlmChat(
-            api_key=EMERGENT_LLM_KEY,
-            session_id=f"daily-{uuid.uuid4()}",
+        resp = await _groq_chat(
             system_message=(
                 "You write one short, warm, specific message (max 22 words) for a medication "
                 "adherence app's Today screen. No emoji, no clichés, no medical advice. "
                 "Acknowledge the user by name only if it fits naturally. If 0 doses today, "
                 "be gentle. If perfect, be quietly proud. If partial, be encouraging without lecturing."
             ),
-        ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-        resp = await chat.send_message(UserMessage(text="\n".join(context_lines)))
+            user_text="\n".join(context_lines),
+        )
         msg = resp.strip().strip('"').split("\n")[0][:200]
     except Exception as e:
         logger.warning(f"AI daily message failed: {e}")
@@ -500,20 +529,21 @@ async def ai_daily_message():
 
 # Brand -> Generic resolver
 async def _resolve_generic(brand: str) -> str:
-    if not EMERGENT_LLM_KEY:
+    if not GROQ_API_KEY:
         return ""
-    from emergentintegrations.llm.chat import LlmChat, UserMessage
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"generic-{uuid.uuid4()}",
-        system_message=(
-            "You are a clinical pharmacology assistant. Given a medication brand name, "
-            "respond with ONLY the generic (international nonproprietary) name in lowercase. "
-            "If unknown, reply 'unknown'. Do not include any other text."
-        ),
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-    resp = await chat.send_message(UserMessage(text=brand.strip()))
-    return resp.strip().split("\n")[0][:80]
+    try:
+        resp = await _groq_chat(
+            system_message=(
+                "You are a clinical pharmacology assistant. Given a medication brand name, "
+                "respond with ONLY the generic (international nonproprietary) name in lowercase. "
+                "If unknown, reply 'unknown'. Do not include any other text."
+            ),
+            user_text=brand.strip(),
+        )
+        return resp.strip().split("\n")[0][:80]
+    except Exception as e:
+        logger.warning(f"Brand resolver failed: {e}")
+        return ""
 
 
 @api.post("/resolve-generic")
@@ -527,22 +557,23 @@ async def resolve_generic(payload: BrandRequest):
 # AI Medication Scanner
 @api.post("/scan-medication")
 async def scan_medication(payload: ScanRequest):
-    if not EMERGENT_LLM_KEY:
+    if not GROQ_API_KEY:
         raise HTTPException(503, "Scanner unavailable")
     if not payload.image_base64:
         raise HTTPException(400, "image_base64 required")
-    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
-    chat = LlmChat(
-        api_key=EMERGENT_LLM_KEY,
-        session_id=f"scan-{uuid.uuid4()}",
-        system_message=(
-            "You read a photo of a medication package/blister/pill. Reply STRICTLY as JSON "
-            "with keys: name, dosage, unit, confidence. If unreadable, set name to 'unknown'. "
-            "Example: {\"name\":\"paracetamol\",\"dosage\":500,\"unit\":\"mg\",\"confidence\":\"high\"}"
-        ),
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
-    img = ImageContent(image_base64=payload.image_base64)
-    resp = await chat.send_message(UserMessage(text="Identify this medication.", file_contents=[img]))
+    try:
+        resp = await _groq_chat(
+            system_message=(
+                "You read a photo of a medication package/blister/pill. Reply STRICTLY as JSON "
+                "with keys: name, dosage, unit, confidence. If unreadable, set name to 'unknown'. "
+                "Example: {\"name\":\"paracetamol\",\"dosage\":500,\"unit\":\"mg\",\"confidence\":\"high\"}"
+            ),
+            user_text="Identify this medication.",
+            image_base64=payload.image_base64,
+        )
+    except Exception as e:
+        logger.warning(f"Medication scan failed: {e}")
+        raise HTTPException(503, "Scanner temporarily unavailable")
     import json
     import re
     text = resp.strip()
