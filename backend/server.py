@@ -21,8 +21,8 @@ mongo_url = os.environ["MONGO_URL"]
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_TEXT_MODEL = "llama-3.1-8b-instant"
-GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
+GROQ_TEXT_MODEL = "openai/gpt-oss-120b"
+GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
 OPENWA_ENABLED = os.environ.get("OPENWA_ENABLED", "false").lower() == "true"
 
 
