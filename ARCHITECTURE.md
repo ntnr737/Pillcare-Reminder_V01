@@ -297,3 +297,120 @@ worked example of how the pieces fit together:
 
 No component in this flow depends on the mobile app being open, installed, or even existing on
 any device — it is entirely server + scheduler + third-party API.
+
+---
+
+## 9. Authentication & Multi-User Data Model (added post-audit)
+
+The system described in §3.3 ("no auth, single implicit profile") has since been replaced with
+real Google Sign-In and per-user data scoping. This section documents that change.
+
+### 9.1 Backend — `POST /api/auth/google`
+
+- Frontend obtains a Google **ID token** via `expo-auth-session/providers/google`, using the
+  app's **native iOS/Android OAuth client IDs** (not the Web client ID — see §9.3 for why).
+- Backend verifies the token with `google.oauth2.id_token.verify_oauth2_token()`, called with
+  `audience=None` to skip the library's single-audience check, then manually validates the
+  token's `aud` claim against `GOOGLE_VALID_AUDIENCES` — a set built from
+  `GOOGLE_WEB_CLIENT_ID` / `GOOGLE_IOS_CLIENT_ID` / `GOOGLE_ANDROID_CLIENT_ID` env vars. This is
+  necessary because the same app can legitimately present tokens issued under different client
+  IDs depending on platform, and Google's library only supports checking against one.
+- On first sign-in for a given Google `sub` (user id), a `User` document is created
+  (`users` collection) and a JWT session token is issued (`pyjwt`, HS256, 90-day expiry,
+  signed with `JWT_SECRET`).
+- **One-time legacy data migration**: if this is the very first user ever to sign in (i.e.
+  `users` collection was empty), `_migrate_legacy_default_data()` reassigns any pre-auth data —
+  the old single `Profile` document (`id: "default"`) and every `Medication` / `DoseLog` /
+  `Measurement` / `Activity` / `MoodEntry` / `CaregiverAlert` document missing a `user_id`
+  field — to that new user's id. This is what makes existing personal-app data appear correctly
+  once you sign in for the first time; it does not repeat for subsequent users.
+
+### 9.2 Data scoping
+
+Every collection except the static catalogs now carries a `user_id` field, and every route
+requires a valid JWT via the `get_current_user_id` FastAPI dependency (reads
+`Authorization: Bearer <token>`, decodes and verifies it, returns the `sub` claim as the acting
+user's id). `Profile._id` doubles as the user id directly (one profile document per user, keyed
+by their Google `sub`) rather than carrying a separate `user_id` field.
+
+`POST /api/caregiver/daily-report` (the Cloud Scheduler cron target) is the one exception — it
+has no per-request user context, since nothing is "logged in" when a cron job fires. It instead
+loops over **every** `Profile` document that has a `caregiver_phone` set and sends a report for
+each one, making the caregiver feature genuinely multi-user.
+
+### 9.3 Frontend — why native client IDs, not the Web client ID
+
+The first implementation tried using only the **Web application** OAuth client type, since it
+gives full control over the redirect URI. This failed in production with
+`Error 400: invalid_request` — Google's Web client type only accepts `https://` redirect URIs
+and rejects custom URL schemes (`pillcare://`) outright, which is exactly what
+`AuthSession.makeRedirectUri({ scheme: "pillcare" })` produces for a standalone/EAS build.
+
+The fix: request the token using the app's **native iOS/Android client IDs** instead
+(`Google.useAuthRequest({ iosClientId, androidClientId, webClientId, redirectUri })`). Native
+client types are validated by app identity (bundle ID for iOS, package name + SHA-1 for
+Android) rather than a redirect-URI allowlist, so a custom scheme works without any Google
+Cloud Console changes. This is the RFC 8252-recommended pattern for public/native OAuth
+clients. The Web client ID is still passed through and still accepted server-side (§9.1), kept
+mainly for forward-compatibility (e.g. a future web build).
+
+### 9.4 Session storage
+
+The JWT and a lightweight cached `User` object are stored via `expo-secure-store` (Keychain on
+iOS, EncryptedSharedPreferences on Android) through the existing `src/utils/storage.ts`
+wrapper's `secureGet`/`secureSet`/`secureRemove` methods — not `AsyncStorage`, which is
+unencrypted. `src/lib/api.ts`'s single `req()` wrapper reads the token on every call and
+attaches `Authorization: Bearer <token>` automatically; a 401 response causes `app/index.tsx`
+to clear the stored session and redirect to `/sign-in`.
+
+### 9.5 Known follow-on effect
+
+Because migration (§9.1) only runs on a *successful* sign-in, any period where sign-in is
+broken or not yet attempted means existing legacy data stays unscoped and invisible to
+user-scoped queries — including the daily caregiver report, which will report
+"no medications scheduled" even if medications exist, simply because they aren't yet linked to
+any account. This is expected transitional behavior, not a data-loss bug; it self-resolves the
+moment the user completes one successful sign-in.
+
+---
+
+## 10. Branding Assets
+
+The app was rebranded mid-project from generic Expo scaffold defaults to a "PillCare Reminder"
+identity, including fixing an inherited placeholder package identity from the original
+scaffolding tool.
+
+### 10.1 Package / bundle identity
+
+Originally `com.emergent.fullhandoff.oumduj` (an unowned template placeholder from whatever
+tool scaffolded the project — left over, not something the developer registered). Changed to
+`com.pillcare.reminder` for both `ios.bundleIdentifier` and `android.package` in `app.json`.
+**This required corresponding updates in Google Cloud Console** — the OAuth iOS/Android client
+IDs (§9.3) are bound to bundle ID / package name and had to be edited to match, or sign-in
+fails with a mismatch even though the code itself is correct.
+
+### 10.2 Icon/logo asset pipeline
+
+Five distinct image assets exist for five distinct purposes — using the wrong one in the wrong
+place is a recurring source of visual bugs (e.g. an opaque-background asset rendered inside the
+app produces a visible box on the dark theme):
+
+| File | Dimensions | Background | Used for |
+|---|---|---|---|
+| `assets/images/icon.png` | 1024×1024 | **Opaque white** (required — app stores don't allow transparency here) | The actual iOS home screen icon; Android fallback where adaptive icons aren't supported |
+| `assets/images/adaptive-icon.png` | 1024×1024 | **Transparent** (composited onto `app.json`'s `adaptiveIcon.backgroundColor: "#000000"` at render time) | The actual **Android home screen icon** |
+| `assets/images/logo-mark.png` | 1024×1024 | **Transparent** | In-app display only (currently the sign-in screen) — never used as a system icon |
+| `assets/images/splash-image.png` | 337×286 (non-square by design) | Transparent, white wordmark | The launch splash screen (`expo-splash-screen` plugin config), scaled via `imageWidth` in `app.json` regardless of source dimensions |
+| `assets/images/favicon.png` | 196×196 | Opaque white | Browser tab icon, web build only |
+
+A white-background asset (`icon.png`) was initially reused directly inside the sign-in screen's
+React component, producing a visible white square floating on the app's dark background —
+`logo-mark.png` was created specifically to fix this, since it's the only asset with a genuinely
+transparent background suitable for compositing over arbitrary in-app backgrounds.
+
+### 10.3 Design decision: icon content
+
+The team explicitly chose to use the **full logo lockup** (pill/heart mark + "PillCare" +
+"REMINDER" wordmark) as the home-screen icon content, rather than the more conventional
+mark-only icon. This is a deliberate tradeoff: wordmarks are typically illegible at real launcher
+icon sizes (~48–108px), but brand recognizability was prioritized over that convention here.
