@@ -1,8 +1,14 @@
+import { getStoredToken } from "./auth";
+
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const token = await getStoredToken();
   const res = await fetch(`${BASE}/api${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...opts,
   });
   if (!res.ok) {

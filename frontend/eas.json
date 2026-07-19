@@ -10,7 +10,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app"
+        "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com"
       }
     },
     "preview": {
@@ -19,7 +20,8 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app"
+        "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -27,7 +29,8 @@
         "buildType": "app-bundle"
       },
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app"
+        "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com"
       }
     }
   },

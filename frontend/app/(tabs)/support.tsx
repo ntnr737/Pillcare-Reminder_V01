@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { theme } from "@/src/lib/theme";
 import { Card } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
+import { signOut } from "@/src/lib/auth";
 
 type Row = { icon: string; title: string; sub: string; route: string; testID: string };
 
@@ -50,6 +51,35 @@ export default function Support() {
           <Text style={styles.faqQ}>What happens if I skip a dose?</Text>
           <Text style={styles.faqA}>If you set up a caregiver, they&apos;ll get a friendly heads-up. You can turn this off any time.</Text>
         </Card>
+
+        <TouchableOpacity
+          testID="sign-out-btn"
+          activeOpacity={0.85}
+          onPress={() => {
+            Alert.alert("Sign out?", "You can sign back in any time with the same Google account.", [
+              { text: "Cancel", style: "cancel" },
+              {
+                text: "Sign out",
+                style: "destructive",
+                onPress: async () => {
+                  await signOut();
+                  router.replace("/sign-in");
+                },
+              },
+            ]);
+          }}
+        >
+          <Card style={{ marginTop: 8, marginBottom: 12 }}>
+            <View style={styles.row}>
+              <View style={[styles.iconWrap, { backgroundColor: "#E5858522" }]}>
+                <Ionicons name="log-out-outline" size={22} color={theme.colors.error} />
+              </View>
+              <View style={{ flex: 1, marginLeft: 14 }}>
+                <Text style={[styles.rowTitle, { color: theme.colors.error }]}>Sign out</Text>
+              </View>
+            </View>
+          </Card>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
