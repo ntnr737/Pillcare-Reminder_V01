@@ -37,6 +37,11 @@ JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_DAYS = 90
 GOOGLE_WEB_CLIENT_ID = os.environ.get("GOOGLE_WEB_CLIENT_ID", "")
+GOOGLE_IOS_CLIENT_ID = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")
+GOOGLE_ANDROID_CLIENT_ID = os.environ.get("GOOGLE_ANDROID_CLIENT_ID", "")
+GOOGLE_VALID_AUDIENCES = {
+    cid for cid in (GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID) if cid
+}
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -389,12 +394,14 @@ async def root():
 # Auth
 @api.post("/auth/google")
 async def auth_google(payload: GoogleAuthRequest):
-    if not GOOGLE_WEB_CLIENT_ID:
+    if not GOOGLE_VALID_AUDIENCES:
         raise HTTPException(500, "Google sign-in is not configured on the server")
     try:
         idinfo = google_id_token.verify_oauth2_token(
-            payload.id_token, google_requests.Request(), GOOGLE_WEB_CLIENT_ID
+            payload.id_token, google_requests.Request(), audience=None
         )
+        if idinfo.get("aud") not in GOOGLE_VALID_AUDIENCES:
+            raise ValueError(f"Token audience {idinfo.get('aud')!r} is not one of this app's registered client IDs")
     except ValueError as e:
         raise HTTPException(401, f"Invalid Google token: {e}")
     except Exception as e:
