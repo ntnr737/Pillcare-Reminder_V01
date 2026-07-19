@@ -1,19 +1,18 @@
-import * as Google from "expo-auth-session/providers/google";
-import * as AuthSession from "expo-auth-session";
-import * as WebBrowser from "expo-web-browser";
+import { GoogleSignin, isErrorWithCode, statusCodes } from "@react-native-google-signin/google-signin";
 import { storage } from "@/src/utils/storage";
-
-WebBrowser.maybeCompleteAuthSession();
 
 const TOKEN_KEY = "pillcare_auth_token";
 const USER_KEY = "pillcare_auth_user";
 
-const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "";
-const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "";
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
-const REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: "pillcare" });
+GoogleSignin.configure({
+  webClientId: WEB_CLIENT_ID,
+  iosClientId: IOS_CLIENT_ID || undefined,
+  offlineAccess: false,
+});
 
 export type PillcareUser = {
   id: string;
@@ -22,27 +21,26 @@ export type PillcareUser = {
   picture?: string | null;
 };
 
-export function useGoogleAuthRequest() {
-  return Google.useAuthRequest({
-    iosClientId: IOS_CLIENT_ID || undefined,
-    androidClientId: ANDROID_CLIENT_ID || undefined,
-    webClientId: WEB_CLIENT_ID || undefined,
-    redirectUri: REDIRECT_URI,
-    scopes: ["openid", "profile", "email"],
-  });
-}
-
-export async function completeGoogleSignIn(response: Google.GoogleAuthSessionResult): Promise<PillcareUser> {
-  if (response.type !== "success") {
-    throw new Error("Sign-in was cancelled or did not complete.");
+export async function signInWithGoogle(): Promise<PillcareUser> {
+  await GoogleSignin.hasPlayServices();
+  let idToken: string | undefined;
+  try {
+    const result = await GoogleSignin.signIn();
+    idToken = (result as any)?.data?.idToken || (result as any)?.idToken;
+  } catch (e: any) {
+    if (isErrorWithCode(e)) {
+      if (e.code === statusCodes.SIGN_IN_CANCELLED) {
+        throw new Error("Sign-in was cancelled.");
+      }
+      if (e.code === statusCodes.IN_PROGRESS) {
+        throw new Error("Sign-in is already in progress.");
+      }
+    }
+    throw new Error("Google sign-in failed. Please try again.");
   }
 
-  const idToken =
-    (response as any).authentication?.idToken ||
-    (response as any).params?.id_token;
-
   if (!idToken) {
-    throw new Error("Google did not return an ID token. Check that the client IDs in app config match your Google Cloud OAuth clients.");
+    throw new Error("Google did not return an ID token.");
   }
 
   const res = await fetch(`${BASE}/api/auth/google`, {
@@ -79,4 +77,8 @@ export async function getStoredUser(): Promise<PillcareUser | null> {
 export async function signOut(): Promise<void> {
   await storage.secureRemove(TOKEN_KEY);
   await storage.secureRemove(USER_KEY);
+  try {
+    await GoogleSignin.signOut();
+  } catch {
+  }
 }

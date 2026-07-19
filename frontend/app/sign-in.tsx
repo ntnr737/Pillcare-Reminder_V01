@@ -1,10 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { theme } from "@/src/lib/theme";
-import { useGoogleAuthRequest, completeGoogleSignIn } from "@/src/lib/auth";
+import { signInWithGoogle } from "@/src/lib/auth";
 
 const FEATURES = [
   {
@@ -26,23 +26,19 @@ const FEATURES = [
 
 export default function SignIn() {
   const router = useRouter();
-  const [request, response, promptAsync] = useGoogleAuthRequest();
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!response) return;
-    if (response.type === "success") {
-      setLoading(true);
-      completeGoogleSignIn(response)
-        .then(() => router.replace("/"))
-        .catch((e: any) => {
-          Alert.alert("Sign-in failed", e?.message || "Something went wrong. Please try again.");
-        })
-        .finally(() => setLoading(false));
-    } else if (response.type === "error") {
-      Alert.alert("Sign-in failed", "Google sign-in could not complete. Please try again.");
+  const handleSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInWithGoogle();
+      router.replace("/");
+    } catch (e: any) {
+      Alert.alert("Sign-in failed", e?.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
     }
-  }, [response, router]);
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -83,8 +79,8 @@ export default function SignIn() {
           testID="google-signin-btn"
           style={styles.googleBtn}
           activeOpacity={0.85}
-          disabled={!request || loading}
-          onPress={() => promptAsync()}
+          disabled={loading}
+          onPress={handleSignIn}
         >
           {loading ? (
             <ActivityIndicator color={theme.colors.bg} />
