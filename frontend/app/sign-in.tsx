@@ -75,23 +75,35 @@ export default function SignIn() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <TouchableOpacity
-          testID="google-signin-btn"
-          style={styles.googleBtn}
-          activeOpacity={0.85}
-          disabled={loading}
-          onPress={handleSignIn}
-        >
-          {loading ? (
-            <ActivityIndicator color={theme.colors.bg} />
-          ) : (
-            <>
-              <Ionicons name="logo-google" size={20} color={theme.colors.bg} />
-              <Text style={styles.googleBtnText}>Continue with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.footNote}>Your data stays private to your account.</Text>
+        <View style={styles.signInCard}>
+          <TouchableOpacity
+            testID="google-signin-btn"
+            style={styles.googleBtn}
+            activeOpacity={0.85}
+            disabled={loading}
+            onPress={handleSignIn}
+          >
+            {loading ? (
+              <ActivityIndicator color={theme.colors.textPrimary} />
+            ) : (
+              <>
+                <Ionicons name="logo-google" size={20} color={theme.colors.textPrimary} />
+                <Text style={styles.googleBtnText}>Continue with Google</Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          <View style={styles.trustRow}>
+            <View style={styles.trustBadge}>
+              <Ionicons name="lock-closed-outline" size={13} color={theme.colors.textSecondary} />
+              <Text style={styles.trustText}>Encrypted connection</Text>
+            </View>
+            <View style={styles.trustBadge}>
+              <Ionicons name="eye-off-outline" size={13} color={theme.colors.textSecondary} />
+              <Text style={styles.trustText}>Private to your account</Text>
+            </View>
+          </View>
+        </View>
       </View>
     </SafeAreaView>
   );
@@ -127,17 +139,28 @@ const styles = StyleSheet.create({
   },
   featureTitle: { color: theme.colors.textPrimary, fontSize: 15, fontWeight: "700" },
   featureBody: { color: theme.colors.textSecondary, fontSize: 13, marginTop: 3, lineHeight: 18 },
-  footer: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24, alignItems: "center" },
+  footer: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 },
+  signInCard: {
+    backgroundColor: theme.colors.surfaceElevated,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSubtle,
+    padding: 16,
+  },
   googleBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
-    backgroundColor: theme.colors.brand,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSubtle,
     borderRadius: 28,
     height: 56,
     width: "100%",
   },
-  googleBtnText: { color: theme.colors.bg, fontWeight: "700", fontSize: 16 },
-  footNote: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 14, textAlign: "center" },
+  googleBtnText: { color: theme.colors.textPrimary, fontWeight: "700", fontSize: 16 },
+  trustRow: { flexDirection: "row", justifyContent: "center", gap: 20, marginTop: 14 },
+  trustBadge: { flexDirection: "row", alignItems: "center", gap: 5 },
+  trustText: { color: theme.colors.textSecondary, fontSize: 11, letterSpacing: 0.2 },
 });
