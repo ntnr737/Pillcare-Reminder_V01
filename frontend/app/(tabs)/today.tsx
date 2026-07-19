@@ -9,6 +9,7 @@ import { WeekStrip } from "@/src/components/WeekStrip";
 import { Card } from "@/src/components/PrimaryButton";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
+import { resyncReminders } from "@/src/lib/notifications";
 
 function todayStr() {
   const d = new Date();
@@ -182,7 +183,11 @@ export default function Today() {
         <Text style={styles.fabText}>Add</Text>
       </TouchableOpacity>
 
-      <AddMedicationSheet visible={sheet} onClose={() => setSheet(false)} onSaved={load} />
+      <AddMedicationSheet
+        visible={sheet}
+        onClose={() => setSheet(false)}
+        onSaved={() => { load(); resyncReminders().catch(() => {}); }}
+      />
     </SafeAreaView>
   );
 }

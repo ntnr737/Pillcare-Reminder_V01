@@ -9,6 +9,7 @@ import { ChipRow } from "@/src/components/ChipRow";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
+import { resyncReminders } from "@/src/lib/notifications";
 
 const SUB_TABS = [
   { key: "medications", label: "Medications" },
@@ -48,6 +49,7 @@ export default function Treatment() {
       setActivities(act);
       setMood(mo);
       setCatalog({ measurements: mc.measurements, activities: ac.activities });
+      resyncReminders().catch(() => {});
     } catch (e) { console.warn(e); }
   }, []);
 
