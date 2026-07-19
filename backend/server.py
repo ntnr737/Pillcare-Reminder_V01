@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from datetime import datetime, date, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -24,6 +25,27 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_TEXT_MODEL = "openai/gpt-oss-120b"
 GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
 OPENWA_ENABLED = os.environ.get("OPENWA_ENABLED", "false").lower() == "true"
+WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
+SCHEDULER_SECRET = os.environ.get("SCHEDULER_SECRET", "")
+APP_TIMEZONE = ZoneInfo("Asia/Kolkata")
+
+
+async def _send_whatsapp(phone: str, text: str) -> str:
+    """Send a WhatsApp text message via WasenderAPI. Returns delivery status string."""
+    if not WASENDER_API_KEY or not phone:
+        return "mock"
+    try:
+        async with httpx.AsyncClient(timeout=20.0) as http_client:
+            resp = await http_client.post(
+                "https://www.wasenderapi.com/api/send-message",
+                headers={"Authorization": f"Bearer {WASENDER_API_KEY}"},
+                json={"to": phone, "text": text},
+            )
+            resp.raise_for_status()
+            return "wasender"
+    except Exception as e:
+        logger.warning(f"WasenderAPI send failed: {e}")
+        return "failed"
 
 
 async def _groq_chat(system_message: str, user_text: str, image_base64: str = None) -> str:
@@ -612,6 +634,82 @@ async def caregiver_alert(payload: CaregiverAlert):
 async def caregiver_log(limit: int = 50):
     items = await db.caregiver_log.find({}, PROJECTION).sort("sent_at", -1).to_list(limit)
     return items
+
+
+# Daily caregiver report - triggered by Cloud Scheduler at 10 PM IST
+@api.post("/caregiver/daily-report")
+async def caregiver_daily_report(secret: str = ""):
+    if SCHEDULER_SECRET and secret != SCHEDULER_SECRET:
+        raise HTTPException(403, "Invalid scheduler secret")
+
+    today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
+    await _ensure_doses_for_date(today_str)
+    doses = await db.doses.find({"date": today_str}, PROJECTION).to_list(1000)
+
+    med_ids = list({d["medication_id"] for d in doses})
+    meds = await db.medications.find({"id": {"$in": med_ids}}, PROJECTION).to_list(1000)
+    med_map = {m["id"]: m for m in meds}
+
+    taken = [d for d in doses if d["status"] == "taken"]
+    missed = [d for d in doses if d["status"] in ("missed", "skipped")]
+    pending = [d for d in doses if d["status"] == "pending"]
+
+    def _line(d):
+        m = med_map.get(d["medication_id"])
+        if not m:
+            return None
+        return f"{m['name']} {m['dosage']}{m['unit']} at {d['scheduled_time']}"
+
+    taken_lines = [l for l in (_line(d) for d in taken) if l]
+    missed_lines = [l for l in (_line(d) for d in missed) if l]
+    pending_lines = [l for l in (_line(d) for d in pending) if l]
+
+    profile = await db.profile.find_one({"id": "default"}, PROJECTION)
+    nickname = (profile or {}).get("nickname", "Patient")
+    total = len(doses)
+
+    message_parts = [
+        f"Pillcare Daily Report - {nickname}",
+        f"Date: {today_str}",
+        f"Taken: {len(taken)}/{total}",
+        "",
+    ]
+    if taken_lines:
+        message_parts.append("Medicines taken:")
+        message_parts.extend(f"- {l}" for l in taken_lines)
+    if missed_lines:
+        message_parts.append("")
+        message_parts.append("Missed / skipped:")
+        message_parts.extend(f"- {l}" for l in missed_lines)
+    if pending_lines:
+        message_parts.append("")
+        message_parts.append("Still pending today:")
+        message_parts.extend(f"- {l}" for l in pending_lines)
+
+    message = "\n".join(message_parts)
+
+    phone = (profile or {}).get("caregiver_phone")
+    delivered_via = await _send_whatsapp(phone, message)
+    log_entry = {
+        "id": str(uuid.uuid4()),
+        "phone": phone,
+        "message": message,
+        "medication_name": None,
+        "delivered_via": delivered_via,
+        "sent_at": datetime.now(timezone.utc),
+    }
+    await db.caregiver_log.insert_one(log_entry.copy())
+    if delivered_via == "mock":
+        logger.info(f"[MOCK daily report - no phone or key set] -> {phone}:\n{message}")
+
+    return {
+        "ok": True,
+        "delivered_via": log_entry["delivered_via"],
+        "phone": phone,
+        "taken": len(taken),
+        "total": total,
+        "message": message,
+    }
 
 
 # CSV export — lifetime history
