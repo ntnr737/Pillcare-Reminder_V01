@@ -60,7 +60,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   };
 
   const save = async () => {
-    if (!name.trim() || !dosage.trim()) return;
+    if (!name.trim()) return;
     setSaving(true);
     try {
       await api.createMedication({
@@ -115,7 +115,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
                   value={dosage}
                   onChangeText={setDosage}
                   keyboardType="decimal-pad"
-                  placeholder="500"
+                  placeholder="500 (optional)"
                   placeholderTextColor={theme.colors.textDisabled}
                   style={styles.input}
                 />
@@ -141,7 +141,8 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             <TextInput
               testID="med-freq-input"
               value={freq}
-              onChangeText={(t) => setFreq(t.replace(/[^0-9]/g, "") || "1")}
+              onChangeText={(t) => setFreq(t.replace(/[^0-9]/g, ""))}
+              onBlur={() => setFreq((f) => (f.trim() ? String(Math.max(1, parseInt(f) || 1)) : "1"))}
               keyboardType="number-pad"
               style={styles.input}
             />

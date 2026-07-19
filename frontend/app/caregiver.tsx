@@ -112,11 +112,11 @@ export default function Caregiver() {
 
         <Card style={{ marginTop: 24, backgroundColor: theme.colors.surfaceElevated }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Ionicons name="information-circle-outline" size={20} color={theme.colors.info} />
-            <Text style={{ color: theme.colors.info, fontWeight: "700" }}>OpenWA is MOCKED</Text>
+            <Ionicons name="checkmark-circle-outline" size={20} color={theme.colors.success} />
+            <Text style={{ color: theme.colors.success, fontWeight: "700" }}>WhatsApp alerts are live</Text>
           </View>
           <Text style={styles.note}>
-            All alerts are logged but not actually sent over WhatsApp until you enable OpenWA via the OPENWA_ENABLED flag in your backend .env.
+            A daily summary is sent automatically at 10 PM, and dose alerts go out in real time via WhatsApp.
           </Text>
         </Card>
 

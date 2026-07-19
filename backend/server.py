@@ -337,6 +337,10 @@ async def create_medication(payload: MedicationCreate):
     if not generic and GROQ_API_KEY:
         try:
             generic = await _resolve_generic(payload.name)
+            # Combination products (multivitamins, etc.) often have no single
+            # generic name - treat the AI's "unknown" as no match, not a value.
+            if generic.strip().lower() == "unknown":
+                generic = ""
         except Exception as e:
             logger.warning(f"Generic resolution failed: {e}")
     data = payload.dict()
@@ -654,11 +658,19 @@ async def caregiver_daily_report(secret: str = ""):
     missed = [d for d in doses if d["status"] in ("missed", "skipped")]
     pending = [d for d in doses if d["status"] == "pending"]
 
+    def _fmt_dose(m):
+        d = m.get("dosage", 0) or 0
+        d_str = str(int(d)) if float(d) == int(d) else str(d)
+        unit = m.get("unit", "")
+        return f"{d_str} {unit}".strip() if d_str != "0" else unit
+
     def _line(d):
         m = med_map.get(d["medication_id"])
         if not m:
             return None
-        return f"{m['name']} {m['dosage']}{m['unit']} at {d['scheduled_time']}"
+        dose_part = _fmt_dose(m)
+        dose_suffix = f" ({dose_part})" if dose_part else ""
+        return f"{m['name']}{dose_suffix} at {d['scheduled_time']}"
 
     taken_lines = [l for l in (_line(d) for d in taken) if l]
     missed_lines = [l for l in (_line(d) for d in missed) if l]
@@ -668,22 +680,26 @@ async def caregiver_daily_report(secret: str = ""):
     nickname = (profile or {}).get("nickname", "Patient")
     total = len(doses)
 
-    message_parts = [
-        f"Pillcare Daily Report - {nickname}",
-        f"Date: {today_str}",
-        f"Taken: {len(taken)}/{total}",
-        "",
-    ]
+    if total == 0:
+        greeting = f"Hi, this is Pillcare. {nickname} has no medications scheduled today."
+    elif len(taken) == total:
+        greeting = f"Hi, this is Pillcare. {nickname} has taken all {total} of today's medicines. All good!"
+    elif len(taken) == 0:
+        greeting = f"Hi, this is Pillcare. {nickname} hasn't taken any medicines yet today ({total} scheduled)."
+    else:
+        greeting = f"Hi, this is Pillcare. {nickname} has taken {len(taken)} of {total} medicines scheduled for today."
+
+    message_parts = [greeting, ""]
     if taken_lines:
-        message_parts.append("Medicines taken:")
+        message_parts.append("Taken:")
         message_parts.extend(f"- {l}" for l in taken_lines)
     if missed_lines:
         message_parts.append("")
-        message_parts.append("Missed / skipped:")
+        message_parts.append("Missed:")
         message_parts.extend(f"- {l}" for l in missed_lines)
     if pending_lines:
         message_parts.append("")
-        message_parts.append("Still pending today:")
+        message_parts.append("Still due later today:")
         message_parts.extend(f"- {l}" for l in pending_lines)
 
     message = "\n".join(message_parts)
