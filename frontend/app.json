@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "PillCare Reminder",
+    "slug": "pillcare",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.emergent.fullhandoff.oumduj"
+      "bundleIdentifier": "com.pillcare.reminder"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,7 +18,7 @@
         "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.emergent.fullhandoff.oumduj"
+      "package": "com.pillcare.reminder"
     },
     "web": {
       "bundler": "metro",
@@ -47,6 +47,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "344ab115-1d97-45c9-9b04-fc8c491df73a"
+      }
+    },
+    "owner": "pill-care"
   }
 }
