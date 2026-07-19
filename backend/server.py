@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -9,6 +9,9 @@ import io
 import csv
 import uuid
 import httpx
+import jwt as pyjwt
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
@@ -28,6 +31,18 @@ OPENWA_ENABLED = os.environ.get("OPENWA_ENABLED", "false").lower() == "true"
 WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
 SCHEDULER_SECRET = os.environ.get("SCHEDULER_SECRET", "")
 APP_TIMEZONE = ZoneInfo("Asia/Kolkata")
+
+# ---------- Auth config ----------
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRY_DAYS = 90
+GOOGLE_WEB_CLIENT_ID = os.environ.get("GOOGLE_WEB_CLIENT_ID", "")
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
+
+if not JWT_SECRET:
+    logger.warning("JWT_SECRET is not set - auth will fail on every request until it is configured.")
 
 
 async def _send_whatsapp(phone: str, text: str) -> str:
@@ -113,8 +128,20 @@ ACTIVITY_CATALOG = [
 ]
 
 # ---------- Models ----------
+class User(BaseModel):
+    id: str  # Google "sub" claim - stable unique identifier
+    email: str
+    name: str
+    picture: Optional[str] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class GoogleAuthRequest(BaseModel):
+    id_token: str
+
+
 class Profile(BaseModel):
-    id: str = "default"
+    id: str  # equals the owning user's id
     nickname: str
     gender: str
     year_of_birth: int
@@ -143,6 +170,7 @@ class ProfileUpsert(BaseModel):
 
 class Medication(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
     name: str
     generic_name: Optional[str] = None
     dosage: float
@@ -176,6 +204,7 @@ class MedicationCreate(BaseModel):
 
 class DoseLog(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
     medication_id: str
     date: str  # YYYY-MM-DD
     scheduled_time: str  # HH:MM
@@ -189,6 +218,7 @@ class DoseStatusUpdate(BaseModel):
 
 class Measurement(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
     type: str
     value: float
     value_secondary: Optional[float] = None  # for BP diastolic
@@ -207,6 +237,7 @@ class MeasurementCreate(BaseModel):
 
 class Activity(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
     type: str
     value: float
     unit: str
@@ -223,6 +254,7 @@ class ActivityCreate(BaseModel):
 
 class MoodEntry(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    user_id: str
     score: int
     note: Optional[str] = None
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -246,6 +278,49 @@ class CaregiverAlert(BaseModel):
     medication_name: Optional[str] = None
 
 
+# ---------- Auth helpers ----------
+def _create_session_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+async def get_current_user_id(authorization: str = Header(None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Missing or invalid Authorization header")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not JWT_SECRET:
+        raise HTTPException(500, "Server auth is not configured")
+    try:
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(401, "Session expired, please sign in again")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(401, "Invalid session token")
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(401, "Invalid session token")
+    return user_id
+
+
+async def _migrate_legacy_default_data(new_user_id: str):
+    """
+    One-time bootstrap: if this is the very first user ever to sign in, and
+    pre-auth single-profile data exists under the old hardcoded id "default",
+    reassign all of it to this user so nothing is lost.
+    """
+    legacy_profile = await db.profile.find_one({"id": "default"})
+    if not legacy_profile:
+        return
+    await db.profile.update_one({"id": "default"}, {"$set": {"id": new_user_id}})
+    for coll_name in ["medications", "doses", "measurements", "activities", "mood", "caregiver_log"]:
+        await db[coll_name].update_many({"user_id": {"$exists": False}}, {"$set": {"user_id": new_user_id}})
+    logger.info(f"Migrated legacy 'default' data to user {new_user_id}")
+
+
 # ---------- Helpers ----------
 PROJECTION = {"_id": 0}
 
@@ -261,9 +336,9 @@ def _dates_in_range(start: str, days: int) -> List[str]:
     return [(start_dt + timedelta(days=i)).isoformat() for i in range(days)]
 
 
-async def _ensure_doses_for_date(target_date: str):
+async def _ensure_doses_for_date(user_id: str, target_date: str):
     """Generate dose log entries for all active meds for a given date if missing."""
-    meds = await db.medications.find({"active": True}, PROJECTION).to_list(1000)
+    meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(1000)
     for m in meds:
         if m["start_date"] > target_date:
             continue
@@ -272,16 +347,86 @@ async def _ensure_doses_for_date(target_date: str):
             if target_date > end:
                 continue
         for t in m.get("times", []):
-            existing = await db.doses.find_one({"medication_id": m["id"], "date": target_date, "scheduled_time": t}, PROJECTION)
+            existing = await db.doses.find_one(
+                {"user_id": user_id, "medication_id": m["id"], "date": target_date, "scheduled_time": t}, PROJECTION
+            )
             if not existing:
-                d = DoseLog(medication_id=m["id"], date=target_date, scheduled_time=t)
+                d = DoseLog(user_id=user_id, medication_id=m["id"], date=target_date, scheduled_time=t)
                 await db.doses.insert_one(d.dict())
+
+
+async def _adherence_for_user(user_id: str, days: int = 7):
+    today = datetime.now(timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+    for i in range(days):
+        await _ensure_doses_for_date(user_id, (start + timedelta(days=i)).isoformat())
+    daily = []
+    streak = 0
+    streak_ongoing = True
+    for i in range(days):
+        d = (start + timedelta(days=i)).isoformat()
+        doses = await db.doses.find({"user_id": user_id, "date": d}, PROJECTION).to_list(1000)
+        total = len(doses)
+        taken = sum(1 for x in doses if x["status"] == "taken")
+        pct = round((taken / total) * 100) if total else 0
+        daily.append({"date": d, "total": total, "taken": taken, "pct": pct})
+    for entry in reversed(daily):
+        if entry["total"] > 0 and entry["pct"] >= 80:
+            if streak_ongoing:
+                streak += 1
+        else:
+            streak_ongoing = False
+    avg = round(sum(d["pct"] for d in daily) / len(daily)) if daily else 0
+    return {"daily": daily, "streak": streak, "average": avg}
 
 
 # ---------- Routes ----------
 @api.get("/")
 async def root():
     return {"message": "PillCare API ready"}
+
+
+# Auth
+@api.post("/auth/google")
+async def auth_google(payload: GoogleAuthRequest):
+    if not GOOGLE_WEB_CLIENT_ID:
+        raise HTTPException(500, "Google sign-in is not configured on the server")
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            payload.id_token, google_requests.Request(), GOOGLE_WEB_CLIENT_ID
+        )
+    except ValueError as e:
+        raise HTTPException(401, f"Invalid Google token: {e}")
+    except Exception as e:
+        logger.warning(f"Google token verification failed unexpectedly: {e}")
+        raise HTTPException(503, "Could not verify Google sign-in right now. Please try again.")
+
+    user_id = idinfo["sub"]
+    existing_user = await db.users.find_one({"id": user_id}, PROJECTION)
+    is_first_user_ever = (await db.users.count_documents({})) == 0
+
+    if not existing_user:
+        user = User(
+            id=user_id,
+            email=idinfo.get("email", ""),
+            name=idinfo.get("name", ""),
+            picture=idinfo.get("picture"),
+        )
+        await db.users.insert_one(user.dict())
+        if is_first_user_ever:
+            await _migrate_legacy_default_data(user_id)
+
+    token = _create_session_token(user_id)
+    user_doc = await db.users.find_one({"id": user_id}, PROJECTION)
+    return {"token": token, "user": user_doc}
+
+
+@api.get("/auth/me")
+async def auth_me(user_id: str = Depends(get_current_user_id)):
+    user_doc = await db.users.find_one({"id": user_id}, PROJECTION)
+    if not user_doc:
+        raise HTTPException(404, "User not found")
+    return user_doc
 
 
 # Catalogs
@@ -302,28 +447,28 @@ async def get_activity_catalog():
 
 # Profile
 @api.get("/profile")
-async def get_profile():
-    doc = await db.profile.find_one({"id": "default"}, PROJECTION)
+async def get_profile(user_id: str = Depends(get_current_user_id)):
+    doc = await db.profile.find_one({"id": user_id}, PROJECTION)
     return doc
 
 
 @api.post("/profile")
-async def upsert_profile(payload: ProfileUpsert):
-    existing = await db.profile.find_one({"id": "default"}, PROJECTION)
+async def upsert_profile(payload: ProfileUpsert, user_id: str = Depends(get_current_user_id)):
+    existing = await db.profile.find_one({"id": user_id}, PROJECTION)
     if existing:
         update_data = payload.dict()
-        await db.profile.update_one({"id": "default"}, {"$set": update_data})
+        await db.profile.update_one({"id": user_id}, {"$set": update_data})
         merged = {**existing, **update_data}
         return merged
-    p = Profile(**payload.dict())
+    p = Profile(id=user_id, **payload.dict())
     await db.profile.insert_one(p.dict())
     return _clean(p.dict())
 
 
 # Medications
 @api.get("/medications")
-async def list_medications(active: Optional[bool] = None):
-    q = {}
+async def list_medications(active: Optional[bool] = None, user_id: str = Depends(get_current_user_id)):
+    q = {"user_id": user_id}
     if active is not None:
         q["active"] = active
     items = await db.medications.find(q, PROJECTION).to_list(1000)
@@ -331,7 +476,7 @@ async def list_medications(active: Optional[bool] = None):
 
 
 @api.post("/medications")
-async def create_medication(payload: MedicationCreate):
+async def create_medication(payload: MedicationCreate, user_id: str = Depends(get_current_user_id)):
     # Optionally resolve generic name if not provided
     generic = payload.generic_name
     if not generic and GROQ_API_KEY:
@@ -345,44 +490,45 @@ async def create_medication(payload: MedicationCreate):
             logger.warning(f"Generic resolution failed: {e}")
     data = payload.dict()
     data["generic_name"] = generic
-    med = Medication(**data)
+    med = Medication(user_id=user_id, **data)
     await db.medications.insert_one(med.dict())
     return _clean(med.dict())
 
 
 @api.get("/medications/{med_id}")
-async def get_medication(med_id: str):
-    doc = await db.medications.find_one({"id": med_id}, PROJECTION)
+async def get_medication(med_id: str, user_id: str = Depends(get_current_user_id)):
+    doc = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
     if not doc:
         raise HTTPException(404, "Medication not found")
     return doc
 
 
 @api.patch("/medications/{med_id}")
-async def update_medication(med_id: str, payload: dict):
+async def update_medication(med_id: str, payload: dict, user_id: str = Depends(get_current_user_id)):
     payload.pop("id", None)
     payload.pop("_id", None)
-    res = await db.medications.update_one({"id": med_id}, {"$set": payload})
+    payload.pop("user_id", None)
+    res = await db.medications.update_one({"id": med_id, "user_id": user_id}, {"$set": payload})
     if res.matched_count == 0:
         raise HTTPException(404, "Medication not found")
-    doc = await db.medications.find_one({"id": med_id}, PROJECTION)
+    doc = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
     return doc
 
 
 @api.delete("/medications/{med_id}")
-async def delete_medication(med_id: str):
-    await db.medications.update_one({"id": med_id}, {"$set": {"active": False}})
+async def delete_medication(med_id: str, user_id: str = Depends(get_current_user_id)):
+    await db.medications.update_one({"id": med_id, "user_id": user_id}, {"$set": {"active": False}})
     return {"ok": True}
 
 
 # Doses
 @api.get("/doses")
-async def list_doses(date_str: str):
-    await _ensure_doses_for_date(date_str)
-    doses = await db.doses.find({"date": date_str}, PROJECTION).to_list(1000)
+async def list_doses(date_str: str, user_id: str = Depends(get_current_user_id)):
+    await _ensure_doses_for_date(user_id, date_str)
+    doses = await db.doses.find({"user_id": user_id, "date": date_str}, PROJECTION).to_list(1000)
     # join with med info
     med_ids = list({d["medication_id"] for d in doses})
-    meds = await db.medications.find({"id": {"$in": med_ids}}, PROJECTION).to_list(1000)
+    meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
     med_map = {m["id"]: m for m in meds}
     enriched = []
     for d in doses:
@@ -394,28 +540,28 @@ async def list_doses(date_str: str):
 
 
 @api.post("/doses/{dose_id}/status")
-async def update_dose_status(dose_id: str, payload: DoseStatusUpdate):
+async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: str = Depends(get_current_user_id)):
     update = {"status": payload.status}
     if payload.status == "taken":
         update["taken_at"] = datetime.now(timezone.utc)
         # decrement stock
-        dose = await db.doses.find_one({"id": dose_id}, PROJECTION)
+        dose = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
         if dose:
             await db.medications.update_one(
-                {"id": dose["medication_id"]},
+                {"id": dose["medication_id"], "user_id": user_id},
                 {"$inc": {"stock": -1}},
             )
-    res = await db.doses.update_one({"id": dose_id}, {"$set": update})
+    res = await db.doses.update_one({"id": dose_id, "user_id": user_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Dose not found")
-    doc = await db.doses.find_one({"id": dose_id}, PROJECTION)
+    doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
     return doc
 
 
 # Measurements
 @api.get("/measurements")
-async def list_measurements(type: Optional[str] = None, limit: int = 200):
-    q = {}
+async def list_measurements(type: Optional[str] = None, limit: int = 200, user_id: str = Depends(get_current_user_id)):
+    q = {"user_id": user_id}
     if type:
         q["type"] = type
     items = await db.measurements.find(q, PROJECTION).sort("recorded_at", -1).to_list(limit)
@@ -423,22 +569,22 @@ async def list_measurements(type: Optional[str] = None, limit: int = 200):
 
 
 @api.post("/measurements")
-async def create_measurement(payload: MeasurementCreate):
-    m = Measurement(**payload.dict())
+async def create_measurement(payload: MeasurementCreate, user_id: str = Depends(get_current_user_id)):
+    m = Measurement(user_id=user_id, **payload.dict())
     await db.measurements.insert_one(m.dict())
     return _clean(m.dict())
 
 
 @api.delete("/measurements/{m_id}")
-async def delete_measurement(m_id: str):
-    await db.measurements.delete_one({"id": m_id})
+async def delete_measurement(m_id: str, user_id: str = Depends(get_current_user_id)):
+    await db.measurements.delete_one({"id": m_id, "user_id": user_id})
     return {"ok": True}
 
 
 # Activities
 @api.get("/activities")
-async def list_activities(type: Optional[str] = None, limit: int = 200):
-    q = {}
+async def list_activities(type: Optional[str] = None, limit: int = 200, user_id: str = Depends(get_current_user_id)):
+    q = {"user_id": user_id}
     if type:
         q["type"] = type
     items = await db.activities.find(q, PROJECTION).sort("recorded_at", -1).to_list(limit)
@@ -446,73 +592,50 @@ async def list_activities(type: Optional[str] = None, limit: int = 200):
 
 
 @api.post("/activities")
-async def create_activity(payload: ActivityCreate):
-    a = Activity(**payload.dict())
+async def create_activity(payload: ActivityCreate, user_id: str = Depends(get_current_user_id)):
+    a = Activity(user_id=user_id, **payload.dict())
     await db.activities.insert_one(a.dict())
     return _clean(a.dict())
 
 
 @api.delete("/activities/{a_id}")
-async def delete_activity(a_id: str):
-    await db.activities.delete_one({"id": a_id})
+async def delete_activity(a_id: str, user_id: str = Depends(get_current_user_id)):
+    await db.activities.delete_one({"id": a_id, "user_id": user_id})
     return {"ok": True}
 
 
 # Mood
 @api.get("/mood")
-async def list_mood(limit: int = 100):
-    items = await db.mood.find({}, PROJECTION).sort("recorded_at", -1).to_list(limit)
+async def list_mood(limit: int = 100, user_id: str = Depends(get_current_user_id)):
+    items = await db.mood.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(limit)
     return items
 
 
 @api.post("/mood")
-async def create_mood(payload: MoodCreate):
-    m = MoodEntry(**payload.dict())
+async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_user_id)):
+    m = MoodEntry(user_id=user_id, **payload.dict())
     await db.mood.insert_one(m.dict())
     return _clean(m.dict())
 
 
 # Progress / Adherence
 @api.get("/progress/adherence")
-async def adherence(days: int = 7):
-    today = datetime.now(timezone.utc).date()
-    start = today - timedelta(days=days - 1)
-    # ensure doses present for last N days
-    for i in range(days):
-        await _ensure_doses_for_date((start + timedelta(days=i)).isoformat())
-    daily = []
-    streak = 0
-    streak_ongoing = True
-    for i in range(days):
-        d = (start + timedelta(days=i)).isoformat()
-        doses = await db.doses.find({"date": d}, PROJECTION).to_list(1000)
-        total = len(doses)
-        taken = sum(1 for x in doses if x["status"] == "taken")
-        pct = round((taken / total) * 100) if total else 0
-        daily.append({"date": d, "total": total, "taken": taken, "pct": pct})
-    # streak walk backwards
-    for entry in reversed(daily):
-        if entry["total"] > 0 and entry["pct"] >= 80:
-            if streak_ongoing:
-                streak += 1
-        else:
-            streak_ongoing = False
-    avg = round(sum(d["pct"] for d in daily) / len(daily)) if daily else 0
-    return {"daily": daily, "streak": streak, "average": avg}
+async def adherence(days: int = 7, user_id: str = Depends(get_current_user_id)):
+    return await _adherence_for_user(user_id, days)
 
 
 @api.get("/ai/daily-message")
-async def ai_daily_message():
-    """A short personalized message from Claude based on the user's recent context."""
-    profile = await db.profile.find_one({"id": "default"}, PROJECTION) or {}
+async def ai_daily_message(user_id: str = Depends(get_current_user_id)):
+    """A short personalized message from Groq based on the user's recent context."""
+    profile = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
     today = datetime.now(timezone.utc).date().isoformat()
-    await _ensure_doses_for_date(today)
-    doses = await db.doses.find({"date": today}, PROJECTION).to_list(1000)
+    await _ensure_doses_for_date(user_id, today)
+    doses = await db.doses.find({"user_id": user_id, "date": today}, PROJECTION).to_list(1000)
     total = len(doses)
     taken = sum(1 for d in doses if d["status"] == "taken")
-    meds = await db.medications.find({"active": True}, PROJECTION).to_list(50)
-    recent_mood = await db.mood.find({}, PROJECTION).sort("recorded_at", -1).to_list(1)
-    adh = await adherence(7)
+    meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(50)
+    recent_mood = await db.mood.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(1)
+    adh = await _adherence_for_user(user_id, 7)
 
     # Fallback static message if no AI key
     if not GROQ_API_KEY:
@@ -573,7 +696,7 @@ async def _resolve_generic(brand: str) -> str:
 
 
 @api.post("/resolve-generic")
-async def resolve_generic(payload: BrandRequest):
+async def resolve_generic(payload: BrandRequest, user_id: str = Depends(get_current_user_id)):
     if not payload.brand.strip():
         raise HTTPException(400, "Brand required")
     generic = await _resolve_generic(payload.brand)
@@ -582,7 +705,7 @@ async def resolve_generic(payload: BrandRequest):
 
 # AI Medication Scanner
 @api.post("/scan-medication")
-async def scan_medication(payload: ScanRequest):
+async def scan_medication(payload: ScanRequest, user_id: str = Depends(get_current_user_id)):
     if not GROQ_API_KEY:
         raise HTTPException(503, "Scanner unavailable")
     if not payload.image_base64:
@@ -615,128 +738,129 @@ async def scan_medication(payload: ScanRequest):
     return parsed
 
 
-# Caregiver alert (mocked OpenWA)
+# Caregiver alert (ad hoc, from the app)
 @api.post("/caregiver/alert")
-async def caregiver_alert(payload: CaregiverAlert):
-    profile = await db.profile.find_one({"id": "default"}, PROJECTION)
+async def caregiver_alert(payload: CaregiverAlert, user_id: str = Depends(get_current_user_id)):
+    profile = await db.profile.find_one({"id": user_id}, PROJECTION)
     phone = (profile or {}).get("caregiver_phone")
+    delivered_via = await _send_whatsapp(phone, payload.message)
     log_entry = {
         "id": str(uuid.uuid4()),
+        "user_id": user_id,
         "phone": phone,
         "message": payload.message,
         "medication_name": payload.medication_name,
-        "delivered_via": "openwa" if OPENWA_ENABLED else "mock",
+        "delivered_via": delivered_via,
         "sent_at": datetime.now(timezone.utc),
     }
     await db.caregiver_log.insert_one(log_entry.copy())
-    if not OPENWA_ENABLED:
-        logger.info(f"[MOCK OpenWA] -> {phone}: {payload.message}")
-    return {"ok": True, "delivered_via": log_entry["delivered_via"], "phone": phone}
+    return _clean(log_entry)
 
 
 @api.get("/caregiver/log")
-async def caregiver_log(limit: int = 50):
-    items = await db.caregiver_log.find({}, PROJECTION).sort("sent_at", -1).to_list(limit)
+async def caregiver_log(limit: int = 50, user_id: str = Depends(get_current_user_id)):
+    items = await db.caregiver_log.find({"user_id": user_id}, PROJECTION).sort("sent_at", -1).to_list(limit)
     return items
 
 
-# Daily caregiver report - triggered by Cloud Scheduler at 10 PM IST
+# Daily caregiver report - triggered by Cloud Scheduler at 10 PM IST.
+# Runs for every registered user who has a caregiver phone number set,
+# since this endpoint has no per-user auth context of its own (called by a cron job).
 @api.post("/caregiver/daily-report")
 async def caregiver_daily_report(secret: str = ""):
     if SCHEDULER_SECRET and secret != SCHEDULER_SECRET:
         raise HTTPException(403, "Invalid scheduler secret")
 
-    today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
-    await _ensure_doses_for_date(today_str)
-    doses = await db.doses.find({"date": today_str}, PROJECTION).to_list(1000)
+    all_profiles = await db.profile.find({"caregiver_phone": {"$exists": True, "$ne": None}}, PROJECTION).to_list(1000)
+    results = []
 
-    med_ids = list({d["medication_id"] for d in doses})
-    meds = await db.medications.find({"id": {"$in": med_ids}}, PROJECTION).to_list(1000)
-    med_map = {m["id"]: m for m in meds}
+    for profile in all_profiles:
+        user_id = profile["id"]
+        phone = profile.get("caregiver_phone")
+        if not phone:
+            continue
 
-    taken = [d for d in doses if d["status"] == "taken"]
-    missed = [d for d in doses if d["status"] in ("missed", "skipped")]
-    pending = [d for d in doses if d["status"] == "pending"]
+        today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
+        await _ensure_doses_for_date(user_id, today_str)
+        doses = await db.doses.find({"user_id": user_id, "date": today_str}, PROJECTION).to_list(1000)
 
-    def _fmt_dose(m):
-        d = m.get("dosage", 0) or 0
-        d_str = str(int(d)) if float(d) == int(d) else str(d)
-        unit = m.get("unit", "")
-        return f"{d_str} {unit}".strip() if d_str != "0" else unit
+        med_ids = list({d["medication_id"] for d in doses})
+        meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
+        med_map = {m["id"]: m for m in meds}
 
-    def _line(d):
-        m = med_map.get(d["medication_id"])
-        if not m:
-            return None
-        dose_part = _fmt_dose(m)
-        dose_suffix = f" ({dose_part})" if dose_part else ""
-        return f"{m['name']}{dose_suffix} at {d['scheduled_time']}"
+        taken = [d for d in doses if d["status"] == "taken"]
+        missed = [d for d in doses if d["status"] in ("missed", "skipped")]
+        pending = [d for d in doses if d["status"] == "pending"]
 
-    taken_lines = [l for l in (_line(d) for d in taken) if l]
-    missed_lines = [l for l in (_line(d) for d in missed) if l]
-    pending_lines = [l for l in (_line(d) for d in pending) if l]
+        def _fmt_dose(m):
+            d = m.get("dosage", 0) or 0
+            d_str = str(int(d)) if float(d) == int(d) else str(d)
+            unit = m.get("unit", "")
+            return f"{d_str} {unit}".strip() if d_str != "0" else unit
 
-    profile = await db.profile.find_one({"id": "default"}, PROJECTION)
-    nickname = (profile or {}).get("nickname", "Patient")
-    total = len(doses)
+        def _line(d):
+            m = med_map.get(d["medication_id"])
+            if not m:
+                return None
+            dose_part = _fmt_dose(m)
+            dose_suffix = f" ({dose_part})" if dose_part else ""
+            return f"{m['name']}{dose_suffix} at {d['scheduled_time']}"
 
-    if total == 0:
-        greeting = f"Hi, this is Pillcare. {nickname} has no medications scheduled today."
-    elif len(taken) == total:
-        greeting = f"Hi, this is Pillcare. {nickname} has taken all {total} of today's medicines. All good!"
-    elif len(taken) == 0:
-        greeting = f"Hi, this is Pillcare. {nickname} hasn't taken any medicines yet today ({total} scheduled)."
-    else:
-        greeting = f"Hi, this is Pillcare. {nickname} has taken {len(taken)} of {total} medicines scheduled for today."
+        taken_lines = [l for l in (_line(d) for d in taken) if l]
+        missed_lines = [l for l in (_line(d) for d in missed) if l]
+        pending_lines = [l for l in (_line(d) for d in pending) if l]
 
-    message_parts = [greeting, ""]
-    if taken_lines:
-        message_parts.append("Taken:")
-        message_parts.extend(f"- {l}" for l in taken_lines)
-    if missed_lines:
-        message_parts.append("")
-        message_parts.append("Missed:")
-        message_parts.extend(f"- {l}" for l in missed_lines)
-    if pending_lines:
-        message_parts.append("")
-        message_parts.append("Still due later today:")
-        message_parts.extend(f"- {l}" for l in pending_lines)
+        nickname = profile.get("nickname", "Patient")
+        total = len(doses)
 
-    message = "\n".join(message_parts)
+        if total == 0:
+            greeting = f"Hi, this is Pillcare. {nickname} has no medications scheduled today."
+        elif len(taken) == total:
+            greeting = f"Hi, this is Pillcare. {nickname} has taken all {total} of today's medicines. All good!"
+        elif len(taken) == 0:
+            greeting = f"Hi, this is Pillcare. {nickname} hasn't taken any medicines yet today ({total} scheduled)."
+        else:
+            greeting = f"Hi, this is Pillcare. {nickname} has taken {len(taken)} of {total} medicines scheduled for today."
 
-    phone = (profile or {}).get("caregiver_phone")
-    delivered_via = await _send_whatsapp(phone, message)
-    log_entry = {
-        "id": str(uuid.uuid4()),
-        "phone": phone,
-        "message": message,
-        "medication_name": None,
-        "delivered_via": delivered_via,
-        "sent_at": datetime.now(timezone.utc),
-    }
-    await db.caregiver_log.insert_one(log_entry.copy())
-    if delivered_via == "mock":
-        logger.info(f"[MOCK daily report - no phone or key set] -> {phone}:\n{message}")
+        message_parts = [greeting, ""]
+        if taken_lines:
+            message_parts.append("Taken:")
+            message_parts.extend(f"- {l}" for l in taken_lines)
+        if missed_lines:
+            message_parts.append("")
+            message_parts.append("Missed:")
+            message_parts.extend(f"- {l}" for l in missed_lines)
+        if pending_lines:
+            message_parts.append("")
+            message_parts.append("Still due later today:")
+            message_parts.extend(f"- {l}" for l in pending_lines)
 
-    return {
-        "ok": True,
-        "delivered_via": log_entry["delivered_via"],
-        "phone": phone,
-        "taken": len(taken),
-        "total": total,
-        "message": message,
-    }
+        message = "\n".join(message_parts)
+
+        delivered_via = await _send_whatsapp(phone, message)
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "phone": phone,
+            "message": message,
+            "medication_name": None,
+            "delivered_via": delivered_via,
+            "sent_at": datetime.now(timezone.utc),
+        }
+        await db.caregiver_log.insert_one(log_entry.copy())
+        results.append({"user_id": user_id, "delivered_via": delivered_via, "taken": len(taken), "total": total})
+
+    return {"ok": True, "reports_sent": len(results), "results": results}
 
 
-# CSV export — lifetime history
 @api.get("/export/csv")
-async def export_csv():
+async def export_csv(user_id: str = Depends(get_current_user_id)):
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["section", "timestamp", "type", "value", "unit", "status", "note"])
-    doses = await db.doses.find({}, PROJECTION).to_list(10000)
+    doses = await db.doses.find({"user_id": user_id}, PROJECTION).to_list(10000)
     med_ids = list({d["medication_id"] for d in doses})
-    meds = await db.medications.find({"id": {"$in": med_ids}}, PROJECTION).to_list(1000)
+    meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
     med_map = {m["id"]: m for m in meds}
     for d in doses:
         m = med_map.get(d["medication_id"], {})
@@ -749,11 +873,11 @@ async def export_csv():
             d.get("status", ""),
             "",
         ])
-    for m in await db.measurements.find({}, PROJECTION).to_list(10000):
+    for m in await db.measurements.find({"user_id": user_id}, PROJECTION).to_list(10000):
         w.writerow(["measurement", m["recorded_at"].isoformat() if isinstance(m.get("recorded_at"), datetime) else m.get("recorded_at"), m["type"], m["value"], m["unit"], "", m.get("note", "")])
-    for a in await db.activities.find({}, PROJECTION).to_list(10000):
+    for a in await db.activities.find({"user_id": user_id}, PROJECTION).to_list(10000):
         w.writerow(["activity", a["recorded_at"].isoformat() if isinstance(a.get("recorded_at"), datetime) else a.get("recorded_at"), a["type"], a["value"], a["unit"], "", a.get("note", "")])
-    for mo in await db.mood.find({}, PROJECTION).to_list(10000):
+    for mo in await db.mood.find({"user_id": user_id}, PROJECTION).to_list(10000):
         w.writerow(["mood", mo["recorded_at"].isoformat() if isinstance(mo.get("recorded_at"), datetime) else mo.get("recorded_at"), "mood", mo["score"], "1-5", "", mo.get("note", "")])
     csv_bytes = buf.getvalue().encode("utf-8")
     return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=pillcare-history.csv"})
@@ -768,9 +892,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 
 @app.on_event("shutdown")
