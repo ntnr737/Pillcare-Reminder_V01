@@ -11,7 +11,9 @@
       },
       "env": {
         "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "1082668880575-og9vm3sduk1g7dlj8g17in3r1cicnbt6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1082668880575-5hrg3n2acflsjtf8bo9ih7b2dsecb9j2.apps.googleusercontent.com"
       }
     },
     "preview": {
@@ -21,7 +23,9 @@
       },
       "env": {
         "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "1082668880575-og9vm3sduk1g7dlj8g17in3r1cicnbt6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1082668880575-5hrg3n2acflsjtf8bo9ih7b2dsecb9j2.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -30,7 +34,9 @@
       },
       "env": {
         "EXPO_PUBLIC_BACKEND_URL": "https://pillcare-backend-1082668880575.europe-west1.run.app",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "1082668880575-og9vm3sduk1g7dlj8g17in3r1cicnbt6.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "1082668880575-5hrg3n2acflsjtf8bo9ih7b2dsecb9j2.apps.googleusercontent.com"
       }
     }
   },

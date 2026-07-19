@@ -8,6 +8,8 @@ WebBrowser.maybeCompleteAuthSession();
 const TOKEN_KEY = "pillcare_auth_token";
 const USER_KEY = "pillcare_auth_user";
 
+const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "";
+const ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || "";
 const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
@@ -22,7 +24,9 @@ export type PillcareUser = {
 
 export function useGoogleAuthRequest() {
   return Google.useAuthRequest({
-    clientId: WEB_CLIENT_ID,
+    iosClientId: IOS_CLIENT_ID || undefined,
+    androidClientId: ANDROID_CLIENT_ID || undefined,
+    webClientId: WEB_CLIENT_ID || undefined,
     redirectUri: REDIRECT_URI,
     scopes: ["openid", "profile", "email"],
   });
