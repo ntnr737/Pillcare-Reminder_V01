@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -146,10 +146,13 @@ class GoogleAuthRequest(BaseModel):
 
 
 class Profile(BaseModel):
-    id: str  # equals the owning user's id
+    id: str
     nickname: str
     gender: str
     year_of_birth: int
+    location_city: Optional[str] = None
+    location_state: Optional[str] = None
+    phone: Optional[str] = None
     routine_wake: str = "07:00"
     routine_breakfast: str = "08:00"
     routine_lunch: str = "13:00"
@@ -164,6 +167,9 @@ class ProfileUpsert(BaseModel):
     nickname: str
     gender: str
     year_of_birth: int
+    location_city: Optional[str] = None
+    location_state: Optional[str] = None
+    phone: Optional[str] = None
     routine_wake: Optional[str] = "07:00"
     routine_breakfast: Optional[str] = "08:00"
     routine_lunch: Optional[str] = "13:00"
@@ -460,14 +466,28 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
 
 
 @api.post("/profile")
-async def upsert_profile(payload: ProfileUpsert, user_id: str = Depends(get_current_user_id)):
+async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str = Depends(get_current_user_id)):
+    data = payload.dict()
+    if not data.get("location_city"):
+        try:
+            fwd = request.headers.get("x-forwarded-for", "")
+            client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
+            if client_ip and client_ip not in ("127.0.0.1", "::1", ""):
+                async with httpx.AsyncClient(timeout=5.0) as hc:
+                    geo = await hc.get(f"http://ip-api.com/json/{client_ip}?fields=status,city,regionName")
+                    if geo.status_code == 200:
+                        gd = geo.json()
+                        if gd.get("status") == "success":
+                            data["location_city"] = gd.get("city", "") or ""
+                            data["location_state"] = gd.get("regionName", "") or ""
+                            logger.info(f"IP location for user {user_id}: {data['location_city']}, {data['location_state']}")
+        except Exception as e:
+            logger.warning(f"IP geolocation failed: {e}")
     existing = await db.profile.find_one({"id": user_id}, PROJECTION)
     if existing:
-        update_data = payload.dict()
-        await db.profile.update_one({"id": user_id}, {"$set": update_data})
-        merged = {**existing, **update_data}
-        return merged
-    p = Profile(id=user_id, **payload.dict())
+        await db.profile.update_one({"id": user_id}, {"$set": data})
+        return {**existing, **data}
+    p = Profile(id=user_id, **data)
     await db.profile.insert_one(p.dict())
     return _clean(p.dict())
 
