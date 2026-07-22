@@ -26,8 +26,7 @@ export default function Caregiver() {
 
   const refreshLog = async () => {
     try {
-      const res = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/caregiver/log`);
-      const j = await res.json();
+      const j = await api.caregiverLog();
       setLog(j);
     } catch { /* noop */ }
   };
@@ -40,27 +39,15 @@ export default function Caregiver() {
         nickname: profile.nickname,
         gender: profile.gender,
         year_of_birth: profile.year_of_birth,
+        location_city: profile.location_city,
+        location_state: profile.location_state,
+        phone: profile.phone,
         routine_wake: profile.routine_wake,
         routine_breakfast: profile.routine_breakfast,
         routine_lunch: profile.routine_lunch,
         routine_dinner: profile.routine_dinner,
         routine_sleep: profile.routine_sleep,
-      });
-      // Update phone via PATCH on profile collection — use upsert with the phone too
-      await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/api/profile`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          nickname: profile.nickname,
-          gender: profile.gender,
-          year_of_birth: profile.year_of_birth,
-          routine_wake: profile.routine_wake,
-          routine_breakfast: profile.routine_breakfast,
-          routine_lunch: profile.routine_lunch,
-          routine_dinner: profile.routine_dinner,
-          routine_sleep: profile.routine_sleep,
-          caregiver_phone: phone,
-        }),
+        caregiver_phone: phone,
       });
       setMsg("Caregiver saved");
     } catch (e) {

@@ -44,5 +44,6 @@ export const api = {
   resolveGeneric: (brand: string) => req<{ brand: string; generic: string }>("/resolve-generic", { method: "POST", body: JSON.stringify({ brand }) }),
   scanMedication: (image_base64: string) => req<any>("/scan-medication", { method: "POST", body: JSON.stringify({ image_base64 }) }),
   caregiverAlert: (message: string, medication_name?: string) => req<any>("/caregiver/alert", { method: "POST", body: JSON.stringify({ message, medication_name }) }),
+  caregiverLog: () => req<any[]>("/caregiver/log"),
   exportCsvUrl: () => `${BASE}/api/export/csv`,
 };
