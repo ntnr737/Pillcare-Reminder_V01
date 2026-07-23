@@ -1,141 +1,52 @@
-import { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
-import { theme } from "@/src/lib/theme";
-import { Card } from "@/src/components/PrimaryButton";
-import { SimpleBarChart, SimpleLineChart } from "@/src/components/Charts";
-import { api } from "@/src/lib/api";
-
-export default function Progress() {
-  const [data, setData] = useState<any | null>(null);
-  const [bpSeries, setBpSeries] = useState<{ values: number[]; labels: string[] }>({ values: [], labels: [] });
-  const [glucoseSeries, setGlucoseSeries] = useState<{ values: number[]; labels: string[] }>({ values: [], labels: [] });
-
-  const load = useCallback(async () => {
-    try {
-      const adh = await api.adherence(7);
-      setData(adh);
-      const bp = await api.listMeasurements("blood_pressure");
-      const sortedBp = bp.slice().reverse().slice(-10);
-      setBpSeries({
-        values: sortedBp.map((m: any) => m.value),
-        labels: sortedBp.map((m: any) => new Date(m.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
-      });
-      const gl = await api.listMeasurements("blood_glucose");
-      const sortedGl = gl.slice().reverse().slice(-10);
-      setGlucoseSeries({
-        values: sortedGl.map((m: any) => m.value),
-        labels: sortedGl.map((m: any) => new Date(m.recorded_at).toLocaleDateString(undefined, { month: "short", day: "numeric" })),
-      });
-    } catch (e) { console.warn(e); }
-  }, []);
-
-  useFocusEffect(useCallback(() => { load(); }, [load]));
-
-  const openHealthConnect = async () => {
-    if (Platform.OS === "android") {
-      try {
-        await Linking.openURL("market://details?id=com.google.android.apps.healthdata");
-      } catch {
-        Linking.openURL("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata");
-      }
-    } else if (Platform.OS === "ios") {
-      Linking.openURL("x-apple-health://");
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
-      <ScrollView contentContainerStyle={styles.body}>
-        <Text style={styles.title}>Progress</Text>
-        <Text style={styles.sub}>Your health journey, at a glance.</Text>
-
-        <Card style={styles.streakCard} testID="streak-card">
-          <View style={styles.streakRow}>
-            <Ionicons name="flame" size={40} color={theme.colors.secondary} />
-            <View style={{ marginLeft: 16, flex: 1 }}>
-              <Text style={styles.streakNum}>{data?.streak ?? 0}</Text>
-              <Text style={styles.streakLabel}>day streak</Text>
-            </View>
-            <View>
-              <Text style={styles.avgNum}>{data?.average ?? 0}%</Text>
-              <Text style={styles.avgLabel}>7-day adherence</Text>
-            </View>
+import{useCallback,useState}from"react";
+import{View,Text,StyleSheet,ScrollView,TouchableOpacity,RefreshControl}from"react-native";
+import{SafeAreaView}from"react-native-safe-area-context";
+import{Ionicons}from"@expo/vector-icons";
+import{useFocusEffect}from"expo-router";
+import{api}from"@/src/lib/api";
+const BG="#161826",SF="#232532",TX="#e9e9ed",TM="rgba(233,233,237,0.5)",AC="#9184d9",AL="#a7a1db",AB="rgba(145,132,217,0.16)";
+const DAY_LABELS=["M","T","W","T","F","S","S"];
+export default function Progress(){
+  const[adh,setAdh]=useState<any>(null);
+  const[measurements,setMeasurements]=useState<any[]>([]);
+  const[mood,setMood]=useState<any[]>([]);
+  const[refreshing,setRefreshing]=useState(false);
+  const load=useCallback(async()=>{try{const[a,ms,mo]=await Promise.all([api.adherence(7),api.listMeasurements(),api.listMood()]);setAdh(a);setMeasurements((ms||[]).slice(0,5));setMood((mo||[]).slice(0,7));}catch{}},[]);
+  useFocusEffect(useCallback(()=>{load();},[load]));
+  const onRefresh=async()=>{setRefreshing(true);await load();setRefreshing(false);};
+  const daily=adh?.daily||[];
+  const avg=adh?.average||0;
+  const streak=adh?.streak||0;
+  const maxPct=Math.max(...daily.map((d:any)=>d.pct||0),1);
+  const totalTaken=daily.reduce((s:number,d:any)=>s+(d.taken||0),0);
+  const moodAvg=mood.length>0?Math.round(mood.reduce((s:any,m:any)=>s+m.score,0)/mood.length*10)/10:0;
+  const moodEmoji=(sc:number)=>sc>=4?"\U0001F60A":sc>=3?"\U0001F610":sc>=2?"\U0001F614":"\U0001F61F";
+  return(
+    <SafeAreaView style={s.safe}edges={["top"]}>
+      <View style={s.hdr}>
+        <Text style={s.title}>Progress</Text>
+        <TouchableOpacity style={s.exportBtn}><Ionicons name="share-outline"size={16}color={TX}/></TouchableOpacity>
+      </View>
+      <ScrollView contentContainerStyle={s.body}showsVerticalScrollIndicator={false}refreshControl={<RefreshControl refreshing={refreshing}onRefresh={onRefresh}tintColor={AC}/>}>
+        <View style={s.card}>
+          <View style={s.cardHdr}>
+            <View><Text style={s.cardTitle}>Weekly Adherence</Text><Text style={s.cardSub}>Last 7 days</Text></View>
+            <View style={{alignItems:"flex-end"}}><Text style={s.bigNum}>{avg}%</Text><Text style={s.bigSub}>on track</Text></View>
           </View>
-        </Card>
-
-        <Text style={styles.h2}>Last 7 days adherence</Text>
-        <Card>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <SimpleBarChart
-              data={(data?.daily || []).map((d: any) => ({
-                label: new Date(d.date).toLocaleDateString(undefined, { weekday: "short" }),
-                value: d.pct,
-              }))}
-              testID="adherence-chart"
-            />
-          </ScrollView>
-        </Card>
-
-        <Text style={styles.h2}>Blood Pressure trend</Text>
-        <Card>
-          {bpSeries.values.length === 0 ? (
-            <Text style={styles.empty}>Log BP measurements to see trends here.</Text>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <SimpleLineChart values={bpSeries.values} labels={bpSeries.labels} testID="bp-chart" />
-            </ScrollView>
-          )}
-        </Card>
-
-        <Text style={styles.h2}>Blood Glucose trend</Text>
-        <Card>
-          {glucoseSeries.values.length === 0 ? (
-            <Text style={styles.empty}>Log glucose measurements to see trends here.</Text>
-          ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <SimpleLineChart values={glucoseSeries.values} labels={glucoseSeries.labels} testID="glucose-chart" />
-            </ScrollView>
-          )}
-        </Card>
-
-        <Card style={styles.hcCard} testID="health-connect-card">
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Ionicons name="fitness" size={28} color={theme.colors.info} />
-            <View style={{ marginLeft: 12, flex: 1 }}>
-              <Text style={styles.hcTitle}>Connect Health Connect</Text>
-              <Text style={styles.hcSub}>Sync steps, heart rate and sleep from your phone&apos;s health app.</Text>
-            </View>
+          <View style={s.barChart}>
+            {daily.length>0?daily.map((d:any,i:number)=>{const h=maxPct>0?Math.max((d.pct/maxPct)*64,4):4;const active=d.pct>0&&d.pct===maxPct;return(<View key={i}style={s.barCol}><View style={[s.bar,{height:h,backgroundColor:active?AC:"rgba(233,233,237,0.18)"}]}/><Text style={s.barLbl}>{DAY_LABELS[i]}</Text></View>);}):DAY_LABELS.map((l,i)=>(<View key={i}style={s.barCol}><View style={[s.bar,{height:20,backgroundColor:"rgba(233,233,237,0.12)"}]}/><Text style={s.barLbl}>{l}</Text></View>))}
           </View>
-          <TouchableOpacity testID="health-connect-btn" onPress={openHealthConnect} style={styles.hcBtn}>
-            <Text style={styles.hcBtnText}>{Platform.OS === "android" ? "Open Health Connect" : Platform.OS === "ios" ? "Open Apple Health" : "Available on device builds"}</Text>
-          </TouchableOpacity>
-          <Text style={styles.hcNote}>Full read/write integration ships in your native build.</Text>
-        </Card>
+        </View>
+        <View style={s.grid}>
+          <View style={[s.card,{flex:1}]}><Ionicons name="flame"size={16}color={AL}/><Text style={s.statNum}>{streak}</Text><Text style={s.statLbl}>Day streak</Text></View>
+          <View style={[s.card,{flex:1}]}><Ionicons name="checkmark-circle"size={16}color={AL}/><Text style={s.statNum}>{totalTaken}</Text><Text style={s.statLbl}>Doses taken (7d)</Text></View>
+          <View style={[s.card,{flex:1}]}><Text style={{fontSize:16}}>{moodEmoji(moodAvg)}</Text><Text style={s.statNum}>{mood.length>0?moodAvg:"\u2013"}</Text><Text style={s.statLbl}>Avg mood</Text></View>
+        </View>
+        {measurements.length>0&&(<View style={s.card}><Text style={s.secTitle}>Recent Measurements</Text>{measurements.map((m:any,i:number)=>(<View key={i}style={[s.mRow,i<measurements.length-1&&s.div]}><View style={s.mIco}><Ionicons name="pulse-outline"size={14}color={AL}/></View><View style={{flex:1}}><Text style={s.mName}>{m.type?.replace(/_/g," ")}</Text><Text style={s.mDate}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View><Text style={s.mVal}>{m.value}{m.value_secondary?`/${m.value_secondary}`:""} <Text style={{color:TM,fontSize:10}}>{m.unit}</Text></Text></View>))}</View>)}
+        {mood.length>0&&(<View style={s.card}><Text style={s.secTitle}>Mood this week</Text><View style={s.moodRow}>{mood.slice(0,7).map((m:any,i:number)=>(<View key={i}style={s.moodItem}><Text style={{fontSize:20}}>{moodEmoji(m.score)}</Text><Text style={s.moodScore}>{m.score}</Text></View>))}</View></View>)}
+        {measurements.length===0&&mood.length===0&&!adh&&(<View style={s.empty}><Ionicons name="bar-chart-outline"size={32}color={AC}/><Text style={s.emTitle}>No data yet</Text><Text style={s.emSub}>Start logging medications to see your progress</Text></View>)}
       </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: theme.colors.bg },
-  body: { padding: 16, paddingBottom: 120 },
-  title: { color: theme.colors.textPrimary, fontSize: 28, fontWeight: "700", letterSpacing: -0.5, paddingHorizontal: 8 },
-  sub: { color: theme.colors.textSecondary, marginTop: 4, marginBottom: 16, paddingHorizontal: 8 },
-  h2: { color: theme.colors.textPrimary, fontSize: 18, fontWeight: "700", marginTop: 20, marginBottom: 8, paddingHorizontal: 8 },
-  streakCard: { marginTop: 8, backgroundColor: theme.colors.surfaceElevated },
-  streakRow: { flexDirection: "row", alignItems: "center" },
-  streakNum: { color: theme.colors.textPrimary, fontSize: 32, fontWeight: "700" },
-  streakLabel: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 2 },
-  avgNum: { color: theme.colors.brand, fontSize: 28, fontWeight: "700", textAlign: "right" },
-  avgLabel: { color: theme.colors.textSecondary, fontSize: 11, textAlign: "right" },
-  empty: { color: theme.colors.textSecondary, padding: 12, textAlign: "center" },
-  hcCard: { marginTop: 20, backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.info + "55" },
-  hcTitle: { color: theme.colors.textPrimary, fontSize: 16, fontWeight: "700" },
-  hcSub: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 4 },
-  hcBtn: { marginTop: 16, backgroundColor: theme.colors.info + "33", paddingVertical: 12, borderRadius: 12, alignItems: "center" },
-  hcBtnText: { color: theme.colors.info, fontWeight: "700" },
-  hcNote: { color: theme.colors.textDisabled, fontSize: 11, marginTop: 8, textAlign: "center" },
-});
+const s=StyleSheet.create({safe:{flex:1,backgroundColor:BG},hdr:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingHorizontal:16,paddingTop:10,paddingBottom:8},title:{fontSize:20,fontWeight:"700",color:TX,letterSpacing:-0.4},exportBtn:{width:32,height:32,borderRadius:16,borderWidth:1,borderColor:"rgba(233,233,237,0.15)",alignItems:"center",justifyContent:"center"},body:{padding:16,paddingBottom:100,gap:12},card:{backgroundColor:SF,borderRadius:16,padding:14,gap:10},cardHdr:{flexDirection:"row",justifyContent:"space-between",alignItems:"flex-start"},cardTitle:{fontSize:14,fontWeight:"600",color:TX},cardSub:{fontSize:11,color:TM,marginTop:2},bigNum:{fontSize:22,fontWeight:"700",color:AL,letterSpacing:-0.4},bigSub:{fontSize:10,color:TM,textAlign:"right"},barChart:{flexDirection:"row",alignItems:"flex-end",height:80,gap:6},barCol:{flex:1,alignItems:"center",gap:5,height:"100%",justifyContent:"flex-end"},bar:{width:"100%",borderRadius:4,minHeight:4},barLbl:{fontSize:9,color:TM},grid:{flexDirection:"row",gap:10},statNum:{fontSize:20,fontWeight:"700",color:TX,letterSpacing:-0.4,marginTop:2},statLbl:{fontSize:10,color:TM,lineHeight:14},secTitle:{fontSize:13,fontWeight:"700",color:TX,marginBottom:4},mRow:{flexDirection:"row",alignItems:"center",gap:10,paddingVertical:8},div:{borderBottomWidth:1,borderBottomColor:"rgba(233,233,237,0.08)"},mIco:{width:30,height:30,borderRadius:15,backgroundColor:AB,alignItems:"center",justifyContent:"center"},mName:{fontSize:13,fontWeight:"600",color:TX,textTransform:"capitalize"},mDate:{fontSize:10,color:TM,marginTop:1},mVal:{fontSize:15,fontWeight:"700",color:AL},moodRow:{flexDirection:"row",justifyContent:"space-around"},moodItem:{alignItems:"center",gap:4},moodScore:{fontSize:12,fontWeight:"700",color:TM},empty:{backgroundColor:SF,borderRadius:18,padding:32,alignItems:"center",gap:8},emTitle:{fontSize:16,fontWeight:"700",color:TX},emSub:{fontSize:13,color:TM,textAlign:"center"}});
