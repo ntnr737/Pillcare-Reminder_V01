@@ -1,20 +1,29 @@
-import{useCallback,useState}from"react";
+import{useCallback,useEffect,useState}from"react";
 import{View,Text,StyleSheet,ScrollView,TouchableOpacity,RefreshControl}from"react-native";
 import{SafeAreaView}from"react-native-safe-area-context";
 import{Ionicons}from"@expo/vector-icons";
 import{useFocusEffect}from"expo-router";
 import*as Haptics from"expo-haptics";
+import AsyncStorage from"@react-native-async-storage/async-storage";
 import Svg,{Circle}from"react-native-svg";
 import{AddMedicationSheet}from"@/src/components/AddMedicationSheet";
 import{api}from"@/src/lib/api";
 import{resyncReminders}from"@/src/lib/notifications";
+
 const BG="#161826",SF="#232532",TX="#e9e9ed",TM="rgba(233,233,237,0.5)",TD="rgba(233,233,237,0.3)",AC="#9184d9",AL="#a7a1db",AB="rgba(145,132,217,0.16)";
+
+const CACHE_KEY=(date:string)=>`pillcare_doses_${date}`;
+const PROFILE_KEY="pillcare_profile_cache";
+const STREAK_KEY="pillcare_streak_cache";
+
 function todayStr(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
 function getWeekDays(c:string){const b=new Date(c),dy=b.getDay(),mn=new Date(b);mn.setDate(b.getDate()-((dy+6)%7));return Array.from({length:7},(_,i)=>{const d=new Date(mn);d.setDate(mn.getDate()+i);return{lbl:["MON","TUE","WED","THU","FRI","SAT","SUN"][i],num:d.getDate(),iso:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};});}
 function greeting(){const h=new Date().getHours();return h<12?"Good morning":h<17?"Good afternoon":"Good evening";}
 function getSec(t:string){const[h]=t.split(":").map(Number);return h<12?"morning":h<17?"afternoon":h<21?"evening":"night";}
 const SICO:any={morning:"sunny-outline",afternoon:"partly-sunny-outline",evening:"moon-outline",night:"moon-outline"};
+
 function Ring({pct}:{pct:number}){const R=32,C=2*Math.PI*R,off=C-(pct/100)*C;return(<View style={{width:80,height:80,alignItems:"center",justifyContent:"center"}}><Svg width={80}height={80}viewBox="0 0 80 80"style={{position:"absolute"}}><Circle cx={40}cy={40}r={R}fill="none"stroke={AB}strokeWidth={7}/><Circle cx={40}cy={40}r={R}fill="none"stroke={AC}strokeWidth={7}strokeDasharray={`${C}`}strokeDashoffset={off}strokeLinecap="round"rotation={-90}origin="40,40"/></Svg><Text style={{color:TX,fontSize:14,fontWeight:"700"}}>{pct}%</Text></View>);}
+
 export default function Today(){
   const[date,setDate]=useState(todayStr());
   const[doses,setDoses]=useState<any[]>([]);
@@ -24,16 +33,55 @@ export default function Today(){
   const[sheet,setSheet]=useState(false);
   const[refreshing,setRefreshing]=useState(false);
   const days=getWeekDays(date);
-  const load=useCallback(async()=>{try{const[d,p,a]=await Promise.all([api.listDoses(date),api.getProfile(),api.adherence(7)]);setDoses(d||[]);setProfile(p);setStreak(a?.streak||0);}catch{}},[date]);
+
+  // Load cache instantly on mount for perceived speed
+  useEffect(()=>{
+    AsyncStorage.getItem(CACHE_KEY(date)).then(raw=>{if(raw)try{setDoses(JSON.parse(raw));}catch{}});
+    AsyncStorage.getItem(PROFILE_KEY).then(raw=>{if(raw)try{setProfile(JSON.parse(raw));}catch{}});
+    AsyncStorage.getItem(STREAK_KEY).then(raw=>{if(raw)setStreak(parseInt(raw)||0);});
+  },[date]);
+
+  const load=useCallback(async()=>{
+    try{
+      const[d,p,a]=await Promise.all([api.listDoses(date),api.getProfile(),api.adherence(7)]);
+      const doses=d||[];
+      setDoses(doses);setProfile(p);setStreak(a?.streak||0);
+      // Update cache
+      AsyncStorage.setItem(CACHE_KEY(date),JSON.stringify(doses));
+      AsyncStorage.setItem(PROFILE_KEY,JSON.stringify(p));
+      AsyncStorage.setItem(STREAK_KEY,String(a?.streak||0));
+    }catch{}
+  },[date]);
+
   const loadAI=useCallback(async()=>{try{const r=await api.dailyMessage();setAiMsg(r.message);if(r.streak)setStreak(r.streak);}catch{}},[]);
   useFocusEffect(useCallback(()=>{load();loadAI();},[load,loadAI]));
   const onRefresh=async()=>{setRefreshing(true);await load();setRefreshing(false);};
-  const mark=async(id:string,cur:string)=>{const nx=cur==="pending"?"taken":cur==="taken"?"skipped":"pending";Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);try{await api.setDoseStatus(id,nx);await load();resyncReminders().catch(()=>{});}catch{}};
+
+  // Optimistic update: update UI immediately, sync to server in background
+  const mark=async(id:string,cur:string)=>{
+    const nx=cur==="pending"?"taken":cur==="taken"?"skipped":"pending";
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // Instantly update local state
+    setDoses(prev=>{
+      const updated=prev.map(d=>d.id===id?{...d,status:nx}:d);
+      AsyncStorage.setItem(CACHE_KEY(date),JSON.stringify(updated));
+      return updated;
+    });
+    // Sync to server in background
+    api.setDoseStatus(id,nx).then(()=>{
+      load();resyncReminders().catch(()=>{});
+    }).catch(()=>{
+      // Revert on failure
+      setDoses(prev=>prev.map(d=>d.id===id?{...d,status:cur}:d));
+    });
+  };
+
   const taken=doses.filter(d=>d.status==="taken").length,total=doses.length,pct=total>0?Math.round((taken/total)*100):0;
   const title=total===0?"Add your first med":taken===total?"All done today! \U0001F389":taken===0?"Let's get started":"Almost there!";
   const next=doses.filter(d=>d.status==="pending").sort((a,b)=>a.scheduled_time.localeCompare(b.scheduled_time))[0];
   const secs:Record<string,any[]>={};
   for(const d of doses){const sc=getSec(d.scheduled_time);if(!secs[sc])secs[sc]=[];secs[sc].push(d);}
+
   return(
     <SafeAreaView style={s.safe}edges={["top"]}>
       <View style={s.hdr}>

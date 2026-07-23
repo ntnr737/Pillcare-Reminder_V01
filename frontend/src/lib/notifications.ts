@@ -2,33 +2,40 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
 
+// Ensure foreground notifications show alert + play sound
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true,
     shouldShowBanner: true,
     shouldShowList: true,
   }),
 });
 
+// Android requires a channel to be created before scheduling.
+// Importance.MAX ensures the OS actually plays sound and shows heads-up.
+async function ensureChannel() {
+  if (Platform.OS !== "android") return;
+  await Notifications.setNotificationChannelAsync("medication-reminders", {
+    name: "Medication Reminders",
+    description: "Alerts when it is time to take a medication",
+    importance: Notifications.AndroidImportance.MAX,
+    sound: "default",
+    enableVibrate: true,
+    vibrationPattern: [0, 400, 200, 400],
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    bypassDnd: false,
+  });
+}
+
 export async function requestNotificationPermission(): Promise<boolean> {
   try {
+    await ensureChannel();
     const { status: existing } = await Notifications.getPermissionsAsync();
-    let final = existing;
-    if (existing !== "granted") {
-      const { status } = await Notifications.requestPermissionsAsync();
-      final = status;
-    }
-    if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("medication-reminders", {
-        name: "Medication Reminders",
-        importance: Notifications.AndroidImportance.HIGH,
-        sound: "default",
-        vibrationPattern: [0, 250, 250, 250],
-      });
-    }
-    return final === "granted";
+    if (existing === "granted") return true;
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === "granted";
   } catch (e) {
     console.warn("Notification permission request failed:", e);
     return false;
@@ -57,7 +64,6 @@ export async function resyncReminders(): Promise<void> {
     if (!granted) return;
 
     const meds = await api.listMedications(true);
-
     await Notifications.cancelAllScheduledNotificationsAsync();
 
     for (const med of meds || []) {
@@ -68,15 +74,17 @@ export async function resyncReminders(): Promise<void> {
         if (!parsed) continue;
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: "Time for your medicine",
-            body: label ? `${med.name} - ${label}` : med.name,
+            title: `\u{1F48A} Time for ${med.name}`,
+            body: label ? `${label} — tap to mark as taken` : "Tap to mark as taken",
             data: { medicationId: med.id },
             sound: "default",
+            // Android channel is picked up automatically from channelId below
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: parsed.hour,
             minute: parsed.minute,
+            channelId: "medication-reminders",
           },
         });
       }
