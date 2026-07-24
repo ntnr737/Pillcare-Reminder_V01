@@ -39,6 +39,7 @@ JWT_EXPIRY_DAYS = 90
 GOOGLE_WEB_CLIENT_ID = os.environ.get("GOOGLE_WEB_CLIENT_ID", "")
 GOOGLE_IOS_CLIENT_ID = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")
 GOOGLE_ANDROID_CLIENT_ID = os.environ.get("GOOGLE_ANDROID_CLIENT_ID", "")
+FDA_API_KEY = os.environ.get("FDA_API_KEY", "")
 GOOGLE_VALID_AUDIENCES = {
     cid for cid in (GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID) if cid
 }
@@ -704,7 +705,35 @@ async def ai_daily_message(user_id: str = Depends(get_current_user_id)):
 
 
 # Brand -> Generic resolver
-async def _resolve_generic(brand: str) -> str:
+# Strategy: OpenFDA is the authoritative source (real drug database).
+# Groq/LLM is only used as a last-resort fallback if FDA returns nothing.
+
+async def _resolve_generic_fda(brand: str) -> str:
+    if not FDA_API_KEY:
+        return ""
+    try:
+        search = brand.strip().replace(" ", "+")
+        url = (
+            f"https://api.fda.gov/drug/label.json"
+            f"?api_key={FDA_API_KEY}"
+            f"&search=openfda.brand_name:{search}"
+            f"&limit=3"
+        )
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return ""
+            data = resp.json()
+            for r in data.get("results", []):
+                generics = r.get("openfda", {}).get("generic_name", [])
+                if generics:
+                    return generics[0].lower().strip()
+    except Exception as e:
+        logger.warning(f"OpenFDA lookup failed: {e}")
+    return ""
+
+
+async def _resolve_generic_groq(brand: str) -> str:
     if not GROQ_API_KEY:
         return ""
     try:
@@ -716,10 +745,22 @@ async def _resolve_generic(brand: str) -> str:
             ),
             user_text=brand.strip(),
         )
-        return resp.strip().split("\n")[0][:80]
+        result = resp.strip().split("\n")[0][:80]
+        return "" if result.lower() in ("unknown", "") else result
     except Exception as e:
-        logger.warning(f"Brand resolver failed: {e}")
+        logger.warning(f"Groq brand resolver failed: {e}")
         return ""
+
+
+async def _resolve_generic(brand: str) -> str:
+    generic = await _resolve_generic_fda(brand)
+    if generic:
+        logger.info(f"Brand resolver: {brand!r} -> {generic!r} (OpenFDA)")
+        return generic
+    generic = await _resolve_generic_groq(brand)
+    if generic:
+        logger.info(f"Brand resolver: {brand!r} -> {generic!r} (Groq fallback)")
+    return generic
 
 
 @api.post("/resolve-generic")
@@ -727,7 +768,7 @@ async def resolve_generic(payload: BrandRequest, user_id: str = Depends(get_curr
     if not payload.brand.strip():
         raise HTTPException(400, "Brand required")
     generic = await _resolve_generic(payload.brand)
-    return {"brand": payload.brand, "generic": generic}
+    return {"brand": payload.brand, "generic": generic, "source": "openfda" if generic else "not_found"}
 
 
 # AI Medication Scanner
