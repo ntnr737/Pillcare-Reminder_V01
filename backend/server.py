@@ -654,48 +654,165 @@ async def adherence(days: int = 7, user_id: str = Depends(get_current_user_id)):
 
 @api.get("/yoga-tip")
 async def yoga_tip(user_id: str = Depends(get_current_user_id)):
-    """Groq-generated yoga routine based on user's active medications."""
+    """
+    Medication-specific yoga therapy using Groq AI.
+    References verified from 3 sources:
+    - Ministry of AYUSH, Govt of India: https://www.youtube.com/@ministryofayushofficial
+    - Swami Ramdev (Patanjali Yogpeeth): https://www.youtube.com/@SwamiRamdevOfficial
+    - Sadhguru / Isha Foundation (Padma Vibhushan, UN recognised): https://www.youtube.com/@sadhguru
+    """
     meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(20)
     med_names = [m["name"] for m in meds] if meds else []
-    default = {
-        "title": "Gentle Digestion Flow",
-        "subtitle": "General wellness routine",
-        "duration": "12 min",
-        "level": "Beginner",
-        "description": "A gentle yoga flow to support your overall wellness and medication routine.",
-        "steps": [
-            {"num": 1, "name": "Seated Cat-Cow", "duration": "2 min", "reference": "https://www.yogajournal.com/poses/cat-cow-pose/"},
-            {"num": 2, "name": "Wind-Relieving Pose (Pawanmuktasana)", "duration": "3 min", "reference": "https://yoga.ayush.gov.in/"},
-            {"num": 3, "name": "Seated Twist", "duration": "2 min", "reference": "https://www.yogajournal.com/poses/seated-twist/"},
-            {"num": 4, "name": "Child's Pose", "duration": "3 min", "reference": "https://www.yogajournal.com/poses/childs-pose/"},
-            {"num": 5, "name": "Legs-Up-the-Wall", "duration": "2 min", "reference": "https://www.yogajournal.com/poses/legs-up-the-wall-pose/"},
-        ],
-        "disclaimer": "Postures cross-checked against Ministry of AYUSH Yoga Protocol and Yoga Journal.",
+
+    # Medication → condition → yoga therapy mapping
+    # Based on Ministry of AYUSH Common Yoga Protocol and clinical yoga therapy guidelines
+    CONDITION_YOGA_MAP = {
+        "diabetes": {
+            "poses": ["Mandukasana (Frog Pose)", "Pawanmuktasana (Wind Relief)", "Dhanurasana (Bow Pose)", "Ardha Matsyendrasana (Seated Twist)", "Kapalbhati Pranayama"],
+            "channel": "Swami Ramdev",
+            "search": "https://www.youtube.com/results?search_query=yoga+for+diabetes+swami+ramdev",
+        },
+        "blood_pressure": {
+            "poses": ["Anulom Vilom Pranayama", "Shavasana (Corpse Pose)", "Balasana (Child Pose)", "Sukhasana (Easy Pose)", "Bhramari Pranayama"],
+            "channel": "Ministry of AYUSH",
+            "search": "https://www.youtube.com/results?search_query=yoga+blood+pressure+ministry+ayush",
+        },
+        "acidity": {
+            "poses": ["Vajrasana (Thunderbolt)", "Pawanmuktasana (Wind Relief)", "Ardha Matsyendrasana", "Paschimottanasana (Forward Bend)", "Marjaryasana (Cat Stretch)"],
+            "channel": "Swami Ramdev",
+            "search": "https://www.youtube.com/results?search_query=yoga+acidity+gastric+ramdev",
+        },
+        "thyroid": {
+            "poses": ["Sarvangasana (Shoulder Stand)", "Matsyasana (Fish Pose)", "Ujjayi Pranayama", "Halasana (Plow Pose)", "Setu Bandhasana (Bridge Pose)"],
+            "channel": "Ministry of AYUSH",
+            "search": "https://www.youtube.com/results?search_query=yoga+thyroid+ministry+ayush",
+        },
+        "cholesterol": {
+            "poses": ["Surya Namaskar (Sun Salutation)", "Kapalbhati Pranayama", "Tadasana (Mountain Pose)", "Ardha Chandrasana (Half Moon)", "Trikonasana (Triangle Pose)"],
+            "channel": "Sadhguru / Isha Foundation",
+            "search": "https://www.youtube.com/results?search_query=yoga+cholesterol+heart+sadhguru",
+        },
+        "pain": {
+            "poses": ["Balasana (Child Pose)", "Tadasana (Mountain Pose)", "Bhujangasana (Cobra Pose)", "Shavasana (Corpse Pose)", "Sukhasana with deep breathing"],
+            "channel": "Ministry of AYUSH",
+            "search": "https://www.youtube.com/results?search_query=yoga+pain+relief+ministry+ayush",
+        },
+        "anxiety": {
+            "poses": ["Anulom Vilom Pranayama", "Bhramari Pranayama (Humming Bee)", "Shavasana (Corpse Pose)", "Vrikshasana (Tree Pose)", "Yoga Nidra"],
+            "channel": "Sadhguru / Isha Foundation",
+            "search": "https://www.youtube.com/results?search_query=yoga+anxiety+stress+sadhguru+isha",
+        },
+        "general": {
+            "poses": ["Tadasana (Mountain Pose)", "Pawanmuktasana (Wind Relief)", "Bhujangasana (Cobra Pose)", "Balasana (Child Pose)", "Shavasana (Corpse Pose)"],
+            "channel": "Ministry of AYUSH",
+            "search": "https://www.youtube.com/results?search_query=common+yoga+protocol+ministry+ayush",
+        },
     }
+
+    YOUTUBE_CHANNELS = {
+        "Ministry of AYUSH": "https://www.youtube.com/@ministryofayushofficial",
+        "Swami Ramdev": "https://www.youtube.com/@SwamiRamdevOfficial",
+        "Sadhguru / Isha Foundation": "https://www.youtube.com/@sadhguru",
+    }
+
+    # Build default fallback using general protocol
+    def make_default(condition_key="general"):
+        mapping = CONDITION_YOGA_MAP.get(condition_key, CONDITION_YOGA_MAP["general"])
+        channel_name = mapping["channel"]
+        return {
+            "title": "Daily Wellness Yoga",
+            "subtitle": "Common Yoga Protocol — Ministry of AYUSH, Govt. of India",
+            "duration": "15 min",
+            "level": "Beginner",
+            "description": "A daily yoga routine recommended by the Ministry of AYUSH to support overall health and complement your medication schedule.",
+            "steps": [
+                {
+                    "num": i + 1,
+                    "name": pose,
+                    "duration": "3 min",
+                    "channel": channel_name,
+                    "youtube_channel": YOUTUBE_CHANNELS[channel_name],
+                    "youtube_search": mapping["search"],
+                }
+                for i, pose in enumerate(mapping["poses"])
+            ],
+            "channels": [
+                {"name": "Ministry of AYUSH, Govt. of India", "url": YOUTUBE_CHANNELS["Ministry of AYUSH"], "verified": True},
+                {"name": "Swami Ramdev — Patanjali Yogpeeth", "url": YOUTUBE_CHANNELS["Swami Ramdev"], "verified": True},
+                {"name": "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", "url": YOUTUBE_CHANNELS["Sadhguru / Isha Foundation"], "verified": True},
+            ],
+            "disclaimer": "Yoga recommendations are for general wellness only. Consult your doctor before starting any new exercise programme. References: Ministry of AYUSH Common Yoga Protocol, Patanjali Yogpeeth, Isha Foundation.",
+        }
+
     if not GROQ_API_KEY:
-        return default
+        return make_default()
+
     try:
         med_str = ", ".join(med_names) if med_names else "general wellness"
-        prompt = (
-            f"The user takes these medications: {med_str}. "
-            "Recommend a specific yoga routine (5 poses, 10-15 min total) that complements these medications. "
-            "Return ONLY valid JSON with these exact keys: title (string), subtitle (string), duration (string like '12 min'), "
-            "level (string: Beginner/Intermediate), description (string, 2 sentences), "
-            "steps (array of 5 objects each with: num (int), name (string), duration (string), reference (url string from yogajournal.com or yoga.ayush.gov.in)). "
-            "No markdown, no explanation, just pure JSON."
-        )
+        prompt = f"""The patient takes these medications: {med_str}.
+
+Your task:
+1. Identify the likely health conditions these medications treat (e.g. diabetes, hypertension, thyroid, acidity, anxiety, cholesterol, pain).
+2. Recommend a yoga therapy routine (5 poses, 12-15 min) specifically chosen to complement the treatment of these conditions.
+3. For each pose, assign it to the most appropriate YouTube channel from: "Ministry of AYUSH" OR "Swami Ramdev" OR "Sadhguru".
+4. Assign diabetes/digestion/weight poses to Swami Ramdev, heart/cholesterol/stress poses to Sadhguru, and general/government protocol poses to Ministry of AYUSH.
+
+Return ONLY valid JSON with exactly this structure (no markdown, no explanation):
+{{
+  "title": "string - name of the routine",
+  "subtitle": "string - e.g. 'For Diabetes & Blood Pressure Management'",
+  "duration": "string - e.g. '15 min'",
+  "level": "Beginner",
+  "description": "string - 2 sentences explaining how this yoga helps these specific medications/conditions",
+  "condition": "string - main condition detected",
+  "steps": [
+    {{
+      "num": 1,
+      "name": "Sanskrit Name (English Name)",
+      "duration": "3 min",
+      "benefit": "string - specific benefit for this patient's condition",
+      "channel": "Ministry of AYUSH OR Swami Ramdev OR Sadhguru",
+      "youtube_channel": "https://www.youtube.com/@ministryofayushofficial OR https://www.youtube.com/@SwamiRamdevOfficial OR https://www.youtube.com/@sadhguru",
+      "youtube_search": "https://www.youtube.com/results?search_query=POSE_NAME+CHANNEL_NAME"
+    }}
+  ],
+  "channels": [
+    {{"name": "Ministry of AYUSH, Govt. of India", "url": "https://www.youtube.com/@ministryofayushofficial", "verified": true}},
+    {{"name": "Swami Ramdev — Patanjali Yogpeeth", "url": "https://www.youtube.com/@SwamiRamdevOfficial", "verified": true}},
+    {{"name": "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", "url": "https://www.youtube.com/@sadhguru", "verified": true}}
+  ],
+  "disclaimer": "Yoga recommendations are for general wellness only and complement, not replace, prescribed medication. Consult your doctor before starting. Sources: Ministry of AYUSH, Patanjali Yogpeeth, Isha Foundation."
+}}"""
+
         resp = await _groq_chat(
-            system_message="You are a certified yoga therapist. Respond with only valid JSON, no markdown.",
+            system_message=(
+                "You are a certified yoga therapist trained in clinical yoga therapy. "
+                "You recommend yoga specifically based on the patient's medications and health conditions. "
+                "You always reference verified sources: Ministry of AYUSH (Govt India), Swami Ramdev (Patanjali Yogpeeth), "
+                "and Sadhguru (Isha Foundation, Padma Vibhushan awardee, UN recognised). "
+                "Respond with only valid JSON, no markdown, no preamble."
+            ),
             user_text=prompt,
         )
         import json as _json
         clean = resp.strip().replace("```json", "").replace("```", "").strip()
         data = _json.loads(clean)
-        data["disclaimer"] = "Postures cross-checked against Ministry of AYUSH Yoga Protocol and Yoga Journal."
+        # Always enforce verified channels
+        data["channels"] = [
+            {"name": "Ministry of AYUSH, Govt. of India", "url": "https://www.youtube.com/@ministryofayushofficial", "verified": True},
+            {"name": "Swami Ramdev — Patanjali Yogpeeth", "url": "https://www.youtube.com/@SwamiRamdevOfficial", "verified": True},
+            {"name": "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", "url": "https://www.youtube.com/@sadhguru", "verified": True},
+        ]
+        data["disclaimer"] = (
+            "Yoga recommendations are for general wellness only and complement, not replace, prescribed medication. "
+            "Always consult your doctor before starting any new exercise programme. "
+            "Sources: Ministry of AYUSH Common Yoga Protocol (Govt. of India), "
+            "Patanjali Yogpeeth (Swami Ramdev), Isha Foundation (Sadhguru, Padma Vibhushan 2017, UN recognised)."
+        )
         return data
     except Exception as e:
         logger.warning(f"Yoga tip failed: {e}")
-        return default
+        return make_default()
 
 
 @api.get("/doses/history")

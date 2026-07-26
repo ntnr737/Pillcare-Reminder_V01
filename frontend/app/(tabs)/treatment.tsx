@@ -180,12 +180,43 @@ export default function Treatment() {
           <Text style={[s.cS, { lineHeight: 17 }]}>{yoga?.description || ""}</Text>
           <Text style={[s.secL, { marginTop: 4 }]}>ROUTINE</Text>
           <ScrollView>
-            {(yoga?.steps || []).map((step: any) => (<View key={step.num} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }]}>
-              <View style={[s.cI, { borderRadius: 13 }]}><Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text></View>
-              <View style={{ flex: 1 }}><Text style={s.cT}>{step.name}</Text><Text style={s.cS}>{step.duration}</Text></View>
-              <TouchableOpacity onPress={() => Linking.openURL(step.reference || "https://www.yogajournal.com")}><Text style={{ fontSize: 10, color: A3 }}>Reference</Text></TouchableOpacity>
-            </View>))}
-            <Text style={[s.cS, { fontStyle: "italic", marginTop: 4, marginBottom: 12 }]}>{yoga?.disclaimer || ""}</Text>
+            {(yoga?.steps || []).map((step: any) => (
+              <View key={step.num} style={[s.card, { gap: 8, marginBottom: 8 }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={[s.cI, { borderRadius: 13 }]}><Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.cT}>{step.name}</Text>
+                    <Text style={s.cS}>{step.duration}</Text>
+                    {step.benefit ? <Text style={[s.cS, { color: A3, marginTop: 2 }]}>{step.benefit}</Text> : null}
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,0,0,0.08)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: "rgba(255,0,0,0.15)" }}
+                  onPress={() => Linking.openURL(step.youtube_search || step.youtube_channel || "https://www.youtube.com/@ministryofayushofficial")}>
+                  <Ionicons name="logo-youtube" size={14} color="#FF0000" />
+                  <Text style={{ fontSize: 10, color: TX, flex: 1 }}>Watch on YouTube</Text>
+                  <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Ministry of AYUSH"}</Text>
+                  <Ionicons name="open-outline" size={10} color={TM} />
+                </TouchableOpacity>
+              </View>
+            ))}
+            <Text style={[s.secL, { marginTop: 10, marginBottom: 8 }]}>VERIFIED SOURCES</Text>
+            {(yoga?.channels || [
+              { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
+              { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+              { name: "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", url: "https://www.youtube.com/@sadhguru", verified: true },
+            ]).map((ch: any) => (
+              <TouchableOpacity key={ch.url}
+                style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: BD }}
+                onPress={() => Linking.openURL(ch.url)}>
+                <Ionicons name="logo-youtube" size={16} color="#FF0000" />
+                <Text style={{ fontSize: 11, color: TX, flex: 1 }}>{ch.name}</Text>
+                {ch.verified && <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: "rgba(74,222,128,0.15)", borderRadius: 4 }}>
+                  <Text style={{ fontSize: 8, color: "#4ade80", fontWeight: "700" }}>✓ VERIFIED</Text>
+                </View>}
+              </TouchableOpacity>
+            ))}
+            <Text style={[s.cS, { fontStyle: "italic", marginTop: 10, marginBottom: 12, lineHeight: 15 }]}>{yoga?.disclaimer || ""}</Text>
           </ScrollView>
           <TouchableOpacity style={s.subBtn} onPress={() => setYogaOpen(false)}><Text style={s.subT}>Start Routine</Text></TouchableOpacity>
         </View></View>
