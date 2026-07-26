@@ -1113,7 +1113,9 @@ async def caregiver_log(limit: int = 50, user_id: str = Depends(get_current_user
 GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", "")
 
 @api.get("/nearby")
+@limiter.limit("30/minute")
 async def nearby_places(
+    request: Request,
     lat: float, lng: float, radius: int = 1000,
     type: str = "pharmacy",
     user_id: str = Depends(get_current_user_id)
