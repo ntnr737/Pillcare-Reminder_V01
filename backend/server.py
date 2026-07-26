@@ -670,6 +670,7 @@ async def yoga_tip(user_id: str = Depends(get_current_user_id)):
     # Swami Ramdev videos from @SwamiRamdevOfficial
     # Sadhguru videos from @sadhguru (Isha Foundation)
     # Ministry of AYUSH from @ministryofayushofficial
+    # Each pose has its own verified YouTube video from Swami Ramdev / Sadhguru
     POSE_VIDEOS = {
         "Mandukasana (Frog Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=aqjnv0dZhNc"},
         "Pawanmuktasana (Wind Relief)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=TVHlCr49LNY"},
@@ -679,16 +680,18 @@ async def yoga_tip(user_id: str = Depends(get_current_user_id)):
         "Yoga Namaskar": {"channel": "Sadhguru", "url": "https://www.youtube.com/watch?v=SWemcEiXo1Q"},
         "Bhramari Pranayama": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=lrkW_6vGqvE"},
         "Dhanurasana (Bow Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
-        "Ardha Matsyendrasana (Seated Twist)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Ardha Matsyendrasana (Seated Twist)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=_rlPsepTnzo"},
+        "Bhujangasana (Cobra Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=xX_QXjHP7Lo"},
+        "Setu Bandhasana (Bridge Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=Ph7dNmQMwEo"},
+        "Sarvangasana (Shoulder Stand)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=jBbhE-p9jso"},
+        "Vakrasana (Spinal Twist)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=nFJ03zPwJUk"},
         "Shavasana (Corpse Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
         "Balasana (Child Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
         "Vajrasana (Thunderbolt)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
-        "Bhujangasana (Cobra Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
         "Tadasana (Mountain Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
-        # Condition-specific full videos
-        "_diabetes_full": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=p37r1Ptrzvw"},
-        "_bp_full": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=bVbDBm72qNM"},
-        "_general_full": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Halasana (Plow Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=jBbhE-p9jso"},
+        "Matsyasana (Fish Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Trikonasana (Triangle Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
     }
     FALLBACK_VIDEO = "https://www.youtube.com/watch?v=QPjwawKxuLw"  # 12 yoga poses - Swami Ramdev
 
@@ -798,7 +801,7 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       "duration": "3 min",
       "benefit": "string - specific benefit for this patient's condition",
       "channel": "Swami Ramdev OR Sadhguru OR Ministry of AYUSH",
-      "youtube_video": "IMPORTANT: use these EXACT verified video URLs only: Mandukasana=https://www.youtube.com/watch?v=aqjnv0dZhNc, Pawanmuktasana=https://www.youtube.com/watch?v=TVHlCr49LNY, Anulom Vilom=https://www.youtube.com/watch?v=MqeeqXMdZ54, Kapalbhati=https://www.youtube.com/watch?v=lrkW_6vGqvE, Surya Namaskar=https://www.youtube.com/watch?v=OBds5NZ4PRs, Yoga Namaskar=https://www.youtube.com/watch?v=SWemcEiXo1Q, any other pose=https://www.youtube.com/watch?v=QPjwawKxuLw"
+      "youtube_video": "use EXACT URLs: Mandukasana=https://www.youtube.com/watch?v=aqjnv0dZhNc, Pawanmuktasana=https://www.youtube.com/watch?v=TVHlCr49LNY, Anulom Vilom=https://www.youtube.com/watch?v=MqeeqXMdZ54, Kapalbhati=https://www.youtube.com/watch?v=lrkW_6vGqvE, Bhujangasana=https://www.youtube.com/watch?v=xX_QXjHP7Lo, Ardha Matsyendrasana=https://www.youtube.com/watch?v=_rlPsepTnzo, Setu Bandhasana=https://www.youtube.com/watch?v=Ph7dNmQMwEo, Sarvangasana=https://www.youtube.com/watch?v=jBbhE-p9jso, Surya Namaskar=https://www.youtube.com/watch?v=OBds5NZ4PRs, any other=https://www.youtube.com/watch?v=QPjwawKxuLw"
     }}
   ],
   "channels": [

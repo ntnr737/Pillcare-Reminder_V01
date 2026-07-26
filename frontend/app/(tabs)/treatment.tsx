@@ -8,6 +8,8 @@ import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Notifications from "expo-notifications";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -27,6 +29,8 @@ export default function Treatment() {
   const [mood, setMood] = useState<any[]>([]);
   const [yoga, setYoga] = useState<any>(null);
   const [yogaOpen, setYogaOpen] = useState(false);
+  const [yogaTimePicker, setYogaTimePicker] = useState(false);
+  const [yogaTime, setYogaTime] = useState<Date | null>(null);
   const [addMed, setAddMed] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [mModal, setMModal] = useState<{ open: boolean; type: any }>({ open: false, type: null });
@@ -85,6 +89,40 @@ export default function Treatment() {
     { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setSheet(false); if (catalog?.a?.[0]) setAModal({ open: true, type: catalog.a[0] }); } },
     { icon: "heart-outline", title: "Log Mood", body: "Track how you're feeling today", fn: () => { setSheet(false); setTab(3); } },
   ];
+
+  const scheduleYogaReminder = async (time: Date) => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== "granted") await Notifications.requestPermissionsAsync();
+      // Cancel existing yoga reminders
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const n of scheduled) {
+        if (n.content.data?.isYogaReminder) await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "🧘 Time for your Yoga Routine",
+          body: yoga?.title ?  : "Open PillCare to start your daily yoga practice",
+          data: { isYogaReminder: true },
+          sound: "default",
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: time.getHours(),
+          minute: time.getMinutes(),
+          channelId: "medication-reminders",
+        },
+      });
+      const h = String(time.getHours()).padStart(2, "0");
+      const m = String(time.getMinutes()).padStart(2, "0");
+      setYogaTime(time);
+      setYogaTimePicker(false);
+      setYogaOpen(false);
+      Alert.alert("Yoga Reminder Set ✓", );
+    } catch (e) {
+      Alert.alert("Error", "Could not set yoga reminder. Please try again.");
+    }
+  };
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -231,18 +269,50 @@ export default function Treatment() {
               ))}
               <Text style={[s.cS, { fontStyle: "italic", marginTop: 10, marginBottom: 12, lineHeight: 15 }]}>{yoga?.disclaimer || ""}</Text>
             </ScrollView>
-            {/* Two buttons at bottom: Start + Cancel */}
-            <View style={{ flexDirection: "row", gap: 10 }}>
-              <TouchableOpacity style={[s.subBtn, { flex: 1 }]} onPress={() => setYogaOpen(false)}>
-                <Text style={s.subT}>Start Routine</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.subBtn, { flex: 0.5, backgroundColor: "rgba(233,233,237,0.1)" }]} onPress={() => setYogaOpen(false)}>
-                <Text style={[s.subT, { color: TM }]}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+            {/* Start Routine only — X at top closes modal */}
+            <TouchableOpacity style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }]}
+              onPress={() => setYogaTimePicker(true)}>
+              <Ionicons name="notifications-outline" size={16} color="#fff" />
+              <Text style={s.subT}>Start Routine — Set Daily Reminder</Text>
+            </TouchableOpacity>
+            {yogaTime && (
+              <Text style={[s.cS, { textAlign: "center", marginTop: 4 }]}>
+                {"✓ Reminder set for " + String(yogaTime.getHours()).padStart(2, "0") + ":" + String(yogaTime.getMinutes()).padStart(2, "0") + " daily"}
+              </Text>
+            )}
           </View>
         </View>
       </Modal>
+
+      {/* Yoga time picker */}
+      {yogaTimePicker && (
+        <Modal visible={yogaTimePicker} transparent animationType="fade" onRequestClose={() => setYogaTimePicker(false)}>
+          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center" }}>
+            <View style={{ backgroundColor: N8, borderRadius: 20, padding: 24, width: "85%", gap: 14 }}>
+              <Text style={s.sTitle}>Set Daily Yoga Time</Text>
+              <Text style={[s.cS, { lineHeight: 17 }]}>{"You\'ll receive a notification every day at this time to start your yoga routine."}</Text>
+              <DateTimePicker
+                value={yogaTime || (() => { const d = new Date(); d.setHours(7, 0, 0, 0); return d; })()}
+                mode="time"
+                display="spinner"
+                is24Hour={false}
+                themeVariant="dark"
+                style={{ height: 130 }}
+                onChange={(_, selected) => { if (selected) setYogaTime(selected); }}
+              />
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity style={[s.subBtn, { flex: 0.45, backgroundColor: "rgba(233,233,237,0.08)" }]} onPress={() => setYogaTimePicker(false)}>
+                  <Text style={[s.subT, { color: TM }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.subBtn, { flex: 1 }]}
+                  onPress={() => scheduleYogaReminder(yogaTime || (() => { const d = new Date(); d.setHours(7, 0, 0, 0); return d; })())}>
+                  <Text style={s.subT}>Set Reminder</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
 
       {/* Measurement Modal */}
       <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
