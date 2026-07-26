@@ -96,6 +96,12 @@ export default function Treatment() {
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
         {/* MEDICATIONS */}
         {tab === 0 && (<View style={{ gap: 10 }}>
+          {/* Filter tags - above yoga card so yoga doesn't shift */}
+          <View style={s.fRow}>
+            {["all", "active", "refill"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : "Refill Soon"}</Text></TouchableOpacity>))}
+          </View>
+
+          {/* Yoga AI card - fixed position, not affected by filter */}
           {yoga && (<View style={[s.card, { borderColor: "rgba(145,132,217,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
             <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}><Ionicons name="body-outline" size={17} color={A3} /></View>
             <View style={{ flex: 1 }}>
@@ -105,9 +111,6 @@ export default function Treatment() {
             </View>
             <TouchableOpacity style={s.viewBtn} onPress={() => setYogaOpen(true)}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
           </View>)}
-          <View style={s.fRow}>
-            {["all", "active", "refill"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : "Refill Soon"}</Text></TouchableOpacity>))}
-          </View>
           {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>No medications</Text><Text style={s.emS}>Tap + to add one</Text></View>
           ) : fm.map(m => (<View key={m.id} style={s.card}>
             <View style={s.cRow}>
