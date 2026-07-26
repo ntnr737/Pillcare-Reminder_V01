@@ -1,241 +1,322 @@
-import{useCallback,useEffect,useState}from"react";
-import{View,Text,StyleSheet,ScrollView,TouchableOpacity,RefreshControl,Modal}from"react-native";
-import{SafeAreaView}from"react-native-safe-area-context";
-import{Ionicons}from"@expo/vector-icons";
-import{useFocusEffect}from"expo-router";
-import*as Haptics from"expo-haptics";
-import AsyncStorage from"@react-native-async-storage/async-storage";
-import Svg,{Circle}from"react-native-svg";
-import{AddMedicationSheet}from"@/src/components/AddMedicationSheet";
-import{api}from"@/src/lib/api";
-import{resyncReminders}from"@/src/lib/notifications";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
+import * as Haptics from "expo-haptics";
+import Svg, { Circle } from "react-native-svg";
+import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { api } from "@/src/lib/api";
+import { resyncReminders } from "@/src/lib/notifications";
+import { get, set, K, enqueue } from "@/src/lib/store";
+import { flushQueue, backgroundRefresh } from "@/src/lib/sync";
 
-const BG="#161826",SF="#232532",N800="#3f424d",TX="#e9e9ed",TM="rgba(233,233,237,0.55)",TD="rgba(233,233,237,0.35)",AC="#9184d9",A3="#a7a1db",AB="rgba(145,132,217,0.14)",BORDER="rgba(233,233,237,0.1)";
-const CACHE_D=(d:string)=>`pc3_doses_${d}`,CACHE_P="pc3_profile",CACHE_S="pc3_streak";
-function todayStr(){const d=new Date();return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}
-function getWeekDays(c:string){const b=new Date(c),dy=b.getDay(),mn=new Date(b);mn.setDate(b.getDate()-((dy+6)%7));return Array.from({length:7},(_,i)=>{const d=new Date(mn);d.setDate(mn.getDate()+i);return{lbl:["MON","TUE","WED","THU","FRI","SAT","SUN"][i],num:d.getDate(),iso:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`};});}
-function getSec(t:string){const[h]=t.split(":").map(Number);return h<12?"morning":h<17?"afternoon":h<21?"evening":"night";}
-const SICO:any={morning:"sunny-outline",afternoon:"partly-sunny-outline",evening:"moon-outline",night:"moon-outline"};
+const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
+  TM = "rgba(233,233,237,0.55)", TD = "rgba(233,233,237,0.3)",
+  AC = "#9184d9", A3 = "#a7a1db", AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
 
-export default function Today(){
-  const[date,setDate]=useState(todayStr());
-  const[doses,setDoses]=useState<any[]>([]);
-  const[profile,setProfile]=useState<any>(null);
-  const[aiMsg,setAiMsg]=useState<string|null>(null);
-  const[streak,setStreak]=useState(0);
-  const[sheet,setSheet]=useState(false);
-  const[calOpen,setCalOpen]=useState(false);
-  const[refreshing,setRefreshing]=useState(false);
-  const days=getWeekDays(date);
+function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function getWD(c: string) {
+  const b = new Date(c), dy = b.getDay(), mn = new Date(b);
+  mn.setDate(b.getDate() - ((dy + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mn); d.setDate(mn.getDate() + i);
+    return { l: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"][i], n: d.getDate(), iso: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` };
+  });
+}
+function gs(t: string) { const [h] = t.split(":").map(Number); return h < 12 ? "morning" : h < 17 ? "afternoon" : h < 21 ? "evening" : "night"; }
+const SI: any = { morning: "sunny-outline", afternoon: "partly-sunny-outline", evening: "moon-outline", night: "moon-outline" };
 
-  useEffect(()=>{
-    AsyncStorage.getItem(CACHE_D(date)).then(r=>{if(r)try{setDoses(JSON.parse(r));}catch{}});
-    AsyncStorage.getItem(CACHE_P).then(r=>{if(r)try{setProfile(JSON.parse(r));}catch{}});
-    AsyncStorage.getItem(CACHE_S).then(r=>{if(r)setStreak(parseInt(r)||0);});
-  },[date]);
+function Ring({ pct }: { pct: number }) {
+  const R = 30, C = 2 * Math.PI * R, off = C - (pct / 100) * C;
+  return (
+    <View style={{ width: 72, height: 72, alignItems: "center", justifyContent: "center" }}>
+      <Svg width={72} height={72} viewBox="0 0 72 72" style={{ position: "absolute" }}>
+        <Circle cx={36} cy={36} r={R} fill="none" stroke="rgba(145,132,217,0.18)" strokeWidth={7} />
+        <Circle cx={36} cy={36} r={R} fill="none" stroke={AC} strokeWidth={7}
+          strokeDasharray={`${C}`} strokeDashoffset={off} strokeLinecap="round" rotation={-90} origin="36,36" />
+      </Svg>
+      <Text style={{ color: TX, fontSize: 13, fontWeight: "700" }}>{pct}%</Text>
+    </View>
+  );
+}
 
-  const load=useCallback(async()=>{
-    try{
-      const[d,p,a]=await Promise.all([api.listDoses(date),api.getProfile(),api.adherence(7)]);
-      const ds=d||[];setDoses(ds);setProfile(p);setStreak(a?.streak||0);
-      AsyncStorage.setItem(CACHE_D(date),JSON.stringify(ds));
-      AsyncStorage.setItem(CACHE_P,JSON.stringify(p));
-      AsyncStorage.setItem(CACHE_S,String(a?.streak||0));
-    }catch{}
-  },[date]);
+export default function Today() {
+  const [date, setDate] = useState(ds());
+  const [doses, setDoses] = useState<any[]>([]);
+  const [profile, setProfile] = useState<any>(null);
+  const [aiMsg, setAiMsg] = useState<string | null>(null);
+  const [streak, setStreak] = useState(0);
+  const [adherenceMap, setAdherenceMap] = useState<Record<string, number>>({});
+  const [sheet, setSheet] = useState(false);
+  const [calOpen, setCalOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const pending = useRef<Set<string>>(new Set());
+  const days = getWD(date);
 
-  const loadAI=useCallback(async()=>{try{const r=await api.dailyMessage();setAiMsg(r.message);if(r.streak)setStreak(r.streak);}catch{}},[]);
-  useFocusEffect(useCallback(()=>{load();loadAI();},[load,loadAI]));
-  const onRefresh=async()=>{setRefreshing(true);await load();setRefreshing(false);};
+  // Load from local cache instantly
+  useEffect(() => {
+    get<any[]>(K.doses(date)).then(d => { if (d) setDoses(d); });
+    get<any>(K.profile).then(p => { if (p) setProfile(p); });
+    get<number>(K.streak).then(s => { if (s) setStreak(s); });
+    get<any>(K.aiMsg).then(a => { if (a) setAiMsg(a); });
+  }, [date]);
 
-  const mark=async(id:string,cur:string)=>{
-    const nx=cur==="pending"?"taken":cur==="taken"?"skipped":"pending";
+  const fetchServer = useCallback(async () => {
+    try {
+      const [d, p, a] = await Promise.all([api.listDoses(date), api.getProfile(), api.adherence(30)]);
+      const dss = d || [];
+      if (pending.current.size === 0) setDoses(dss);
+      setProfile(p); setStreak(a?.streak || 0);
+      set(K.doses(date), dss); set(K.profile, p); set(K.streak, a?.streak || 0);
+      // Build adherence map for calendar coloring
+      const map: Record<string, number> = {};
+      for (const day of (a?.daily || [])) map[day.date] = day.pct;
+      setAdherenceMap(map);
+    } catch {}
+  }, [date]);
+
+  const fetchAI = useCallback(async () => {
+    try {
+      const r = await api.dailyMessage();
+      setAiMsg(r.message);
+      if (r.streak) setStreak(r.streak);
+      set(K.aiMsg, r.message);
+    } catch {}
+  }, []);
+
+  useFocusEffect(useCallback(() => {
+    flushQueue();
+    backgroundRefresh(fetchServer);
+    backgroundRefresh(fetchAI);
+  }, [fetchServer, fetchAI]));
+
+  const onRefresh = async () => { setRefreshing(true); await Promise.all([fetchServer(), fetchAI()]); setRefreshing(false); };
+
+  // Race-condition-free dose marking
+  const mark = useCallback(async (id: string, cur: string, action?: string) => {
+    if (pending.current.has(id)) return;
+    const nx = action || (cur === "pending" ? "taken" : cur === "taken" ? "skipped" : "pending");
+    pending.current.add(id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setDoses(prev=>{const u=prev.map(d=>d.id===id?{...d,status:nx}:d);AsyncStorage.setItem(CACHE_D(date),JSON.stringify(u));return u;});
-    api.setDoseStatus(id,nx).then(()=>load()).catch(()=>setDoses(prev=>prev.map(d=>d.id===id?{...d,status:cur}:d)));
-    resyncReminders().catch(()=>{});
+    setDoses(prev => {
+      const u = prev.map(d => d.id === id ? { ...d, status: nx } : d);
+      set(K.doses(date), u);
+      return u;
+    });
+    enqueue("doseStatus", { id, status: nx });
+    api.setDoseStatus(id, nx)
+      .then(() => { pending.current.delete(id); })
+      .catch(() => { pending.current.delete(id); });
+    resyncReminders().catch(() => {});
+  }, [date]);
+
+  const taken = doses.filter(d => d.status === "taken").length,
+    total = doses.length,
+    pct = total > 0 ? Math.round((taken / total) * 100) : 0;
+  const next = doses.filter(d => d.status === "pending").sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time))[0];
+  const secs: Record<string, any[]> = {};
+  for (const d of doses) { const sc = gs(d.scheduled_time); if (!secs[sc]) secs[sc] = []; secs[sc].push(d); }
+
+  const calDayColor = (dayDate: string) => {
+    const pct = adherenceMap[dayDate];
+    if (pct === undefined) return BD;
+    if (pct >= 80) return "rgba(74,222,128,0.22)";
+    if (pct >= 50) return "rgba(229,178,133,0.22)";
+    return "rgba(229,133,133,0.22)";
+  };
+  const calDayTextColor = (dayDate: string) => {
+    const pct = adherenceMap[dayDate];
+    if (pct === undefined) return TX;
+    if (pct >= 80) return "#4ade80";
+    if (pct >= 50) return "#e5b285";
+    return "#e58585";
   };
 
-  const taken=doses.filter(d=>d.status==="taken").length,total=doses.length;
-  const next=doses.filter(d=>d.status==="pending").sort((a,b)=>a.scheduled_time.localeCompare(b.scheduled_time))[0];
-  const secs:Record<string,any[]>={};
-  for(const d of doses){const sc=getSec(d.scheduled_time);if(!secs[sc])secs[sc]=[];secs[sc].push(d);}
-
-  return(
-    <SafeAreaView style={s.safe}edges={["top"]}>
-      {/* Header */}
+  return (
+    <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={s.hdr}>
         <Text style={s.appNm}>PillCare</Text>
         <View style={s.hdrR}>
-          <TouchableOpacity style={s.iconBtn}onPress={()=>setCalOpen(true)}>
-            <Ionicons name="calendar-outline"size={15}color={TX}/>
-          </TouchableOpacity>
-          <View style={s.streakTag}>
-            <Ionicons name="flame"size={13}color={A3}/>
-            <Text style={s.streakTx}>{streak}</Text>
-          </View>
-          <TouchableOpacity style={s.iconBtn}>
-            <Ionicons name="menu-outline"size={16}color={TX}/>
-          </TouchableOpacity>
+          <TouchableOpacity style={s.iBtn} onPress={() => setCalOpen(true)}><Ionicons name="calendar-outline" size={15} color={TX} /></TouchableOpacity>
+          <View style={s.sTag}><Ionicons name="flame" size={13} color={A3} /><Text style={s.sTx}>{streak}</Text></View>
+          <TouchableOpacity style={s.iBtn} onPress={() => setSheet(true)}><Ionicons name="add" size={16} color={TX} /></TouchableOpacity>
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={s.body}showsVerticalScrollIndicator={false}refreshControl={<RefreshControl refreshing={refreshing}onRefresh={onRefresh}tintColor={AC}/>}>
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AC} />}>
 
-        {/* Overview card - design style */}
-        <View style={s.ovCard}>
-          <View style={s.ovTag}><Text style={s.ovTagTx}>{profile?.nickname?.toUpperCase()||"YOU"}</Text></View>
-          <Text style={s.ovTitle}>Your consistency{"\n"}is your strength.</Text>
-          <Text style={s.ovSub}>You have {total-taken} medications left for today.</Text>
-          <View style={{gap:4,marginTop:8}}>
-            {next&&(<View style={s.metaRow}><Ionicons name="time-outline"size={12}color={A3}/><Text style={s.metaTx}>Next Dose: <Text style={{color:TX}}>{next.medication?.name}</Text> at {next.scheduled_time}</Text></View>)}
-            <View style={s.metaRow}><Ionicons name="flame"size={12}color={A3}/><Text style={s.metaTx}>Current Streak: <Text style={{color:TX,fontWeight:"700"}}>{streak} Days</Text></Text></View>
+        {/* Overview card */}
+        <View style={s.ov}>
+          <View style={{ flex: 1, gap: 5 }}>
+            <View style={s.ovTag}><Text style={s.ovTagTx}>{profile?.nickname?.toUpperCase() || "YOU"}</Text></View>
+            <Text style={s.ovTitle}>Your consistency{"\n"}is your strength.</Text>
+            <Text style={s.ovSub}>{total === 0 ? "Add your first medication." : taken === total ? "All done for today! 🎉" : `${total - taken} medication${total - taken === 1 ? "" : "s"} left.`}</Text>
+            <View style={{ gap: 4, marginTop: 4 }}>
+              {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={A3} /><Text style={s.mTx}>Next: <Text style={{ color: TX }}>{next.medication?.name}</Text> at {next.scheduled_time}</Text></View>}
+              <View style={s.mRow}><Ionicons name="flame" size={12} color={A3} /><Text style={s.mTx}>Streak: <Text style={{ color: TX, fontWeight: "700" }}>{streak} Days</Text></Text></View>
+            </View>
           </View>
+          <Ring pct={pct} />
         </View>
 
         {/* Week strip */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}contentContainerStyle={s.strip}>
-          {days.map(d=>{const a=d.iso===date;return(
-            <TouchableOpacity key={d.iso}onPress={()=>setDate(d.iso)}style={[s.pill,a&&s.pillOn]}>
-              <Text style={[s.pLbl,a&&s.pLblOn]}>{d.lbl}</Text>
-              <Text style={[s.pNum,a&&s.pNumOn]}>{d.num}</Text>
-            </TouchableOpacity>
-          );})}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}>
+          {days.map(d => {
+            const a = d.iso === date;
+            return (
+              <TouchableOpacity key={d.iso} onPress={() => setDate(d.iso)} style={[s.pill, a && s.pillOn]}>
+                <Text style={[s.pL, a && s.pLOn]}>{d.l}</Text>
+                <Text style={[s.pN, a && s.pNOn]}>{d.n}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
         {/* AI Insight */}
-        {aiMsg&&(
+        {aiMsg && (
           <View style={s.aiCard}>
-            <View style={s.aiHdr}><Ionicons name="sparkles"size={10}color={A3}/><Text style={s.aiK}>AI INSIGHT</Text></View>
+            <View style={s.aiH}><Ionicons name="sparkles" size={10} color={A3} /><Text style={s.aiK}>AI INSIGHT</Text></View>
             <Text style={s.aiTx}>{aiMsg}</Text>
           </View>
         )}
 
         {/* Dose sections */}
-        {total===0?(
+        {total === 0 ? (
           <View style={s.empty}>
-            <View style={s.emIco}><Ionicons name="medical-outline"size={26}color={AC}/></View>
-            <Text style={s.emTitle}>No medications yet</Text>
-            <Text style={s.emSub}>Tap + to add your first medication</Text>
+            <View style={s.emI}><Ionicons name="medical-outline" size={26} color={AC} /></View>
+            <Text style={s.emT}>No medications yet</Text>
+            <Text style={s.emS}>Tap + to add your first medication</Text>
           </View>
-        ):["morning","afternoon","evening","night"].map(sec=>{
-          const items=secs[sec];if(!items?.length)return null;
-          return(
-            <View key={sec}style={{gap:8,marginBottom:8}}>
-              <View style={s.secHdr}>
-                <Ionicons name={SICO[sec]}size={12}color={A3}/>
-                <Text style={s.secLbl}>{sec.toUpperCase()} • {items[0]?.scheduled_time}</Text>
-              </View>
-              {items.map(dose=>{
-                const m=dose.medication||{},st=dose.status||"pending";
-                const tk=st==="taken",sk=st==="skipped"||st==="missed";
-                return(
-                  <View key={dose.id}style={[s.dc,tk&&s.dcDim]}>
-                    <View style={s.dIco}><Ionicons name="medical-outline"size={16}color={tk?TM:A3}/></View>
-                    <View style={{flex:1}}>
-                      <Text style={[s.dNm,tk&&{color:TM}]}>{m.name||"Unknown"}</Text>
-                      <Text style={s.dMeta}>{m.dosage?`${m.dosage} ${m.unit}`:m.unit||""}</Text>
+        ) : ["morning", "afternoon", "evening", "night"].map(sec => {
+          const items = secs[sec]; if (!items?.length) return null;
+          return (
+            <View key={sec} style={{ gap: 8, marginBottom: 6 }}>
+              <View style={s.sH}><Ionicons name={SI[sec]} size={12} color={A3} /><Text style={s.sL}>{sec.toUpperCase()} • {items[0]?.scheduled_time}</Text></View>
+              {items.map(dose => {
+                const m = dose.medication || {}, st = dose.status || "pending";
+                const tk = st === "taken", sk = st === "skipped", ms = st === "missed";
+                return (
+                  <View key={dose.id} style={[s.dc, (tk) && s.dcD]}>
+                    <View style={[s.dI, tk && { backgroundColor: "rgba(145,132,217,0.08)" }]}>
+                      <Ionicons name="medical-outline" size={16} color={tk ? TM : A3} />
                     </View>
-                    <TouchableOpacity style={[s.dBtn,tk?s.bTk:sk?s.bSk:s.bPd]}onPress={()=>mark(dose.id,st)}>
-                      <Text style={[s.dBtnTx,tk?{color:A3}:sk?{color:"#e58585"}:{color:"#fff"}]}>{tk?"Taken":sk?"Skipped":"Take"}</Text>
-                    </TouchableOpacity>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[s.dN, tk && { color: TM }]}>{m.name || "Unknown"}</Text>
+                      {m.generic_name ? <Text style={[s.dM, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
+                      <Text style={s.dM}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
+                    </View>
+                    {/* Three action buttons: Take / Missed / Skip */}
+                    <View style={{ flexDirection: "row", gap: 4 }}>
+                      {!tk && !sk && !ms && (
+                        <>
+                          <TouchableOpacity style={s.bP} onPress={() => mark(dose.id, st, "taken")}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#fff" }}>Take</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={s.bMs} onPress={() => mark(dose.id, st, "missed")}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>Missed</Text>
+                          </TouchableOpacity>
+                        </>
+                      )}
+                      {tk && (
+                        <TouchableOpacity style={s.bTk} onPress={() => mark(dose.id, st)}>
+                          <Ionicons name="checkmark" size={11} color={A3} style={{ marginRight: 2 }} />
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>Taken</Text>
+                        </TouchableOpacity>
+                      )}
+                      {(sk || ms) && (
+                        <TouchableOpacity style={s.bSk} onPress={() => mark(dose.id, st)}>
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{sk ? "Skipped" : "Missed"}</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 );
               })}
             </View>
           );
         })}
-
-        {/* AI Yoga card */}
-        {aiMsg&&(
-          <View style={[s.dc,{borderColor:"rgba(145,132,217,0.3)",gap:12}]}>
-            <View style={[s.dIco,{borderRadius:18}]}><Ionicons name="body-outline"size={17}color={A3}/></View>
-            <View style={{flex:1}}>
-              <View style={s.aiHdr}><Ionicons name="sparkles"size={9}color={A3}/><Text style={[s.aiK,{fontSize:9}]}>AI RECOMMENDED YOGA</Text></View>
-              <Text style={s.dNm}>Gentle Digestion Flow</Text>
-              <Text style={s.dMeta}>Based on today's scheduled doses</Text>
-            </View>
-            <TouchableOpacity style={[s.dBtn,{backgroundColor:"rgba(233,233,237,0.08)"}]}><Text style={[s.dBtnTx,{color:TX}]}>View</Text></TouchableOpacity>
-          </View>
-        )}
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity style={s.fab}onPress={()=>setSheet(true)}>
-        <Ionicons name="add"size={24}color={BG}/>
-      </TouchableOpacity>
+      <TouchableOpacity style={s.fab} onPress={() => setSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
 
-      {/* Calendar modal */}
-      <Modal visible={calOpen}transparent animationType="fade"onRequestClose={()=>setCalOpen(false)}>
-        <TouchableOpacity style={s.overlay}activeOpacity={1}onPress={()=>setCalOpen(false)}>
-          <View style={s.calSheet}>
-            <View style={s.sheetHandle}/>
-            <Text style={s.sheetTitle}>July 2026</Text>
-            <View style={s.calGrid}>
-              {["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map(d=>(<Text key={d}style={s.calDayHdr}>{d}</Text>))}
-              {Array.from({length:31},(_,i)=>(<TouchableOpacity key={i}style={[s.calDay,i+1===parseInt(date.split("-")[2])&&s.calDayOn]}><Text style={[s.calDayTx,i+1===parseInt(date.split("-")[2])&&{color:"#fff"}]}>{i+1}</Text></TouchableOpacity>))}
+      {/* Calendar modal with green/red coloring */}
+      <Modal visible={calOpen} transparent animationType="fade" onRequestClose={() => setCalOpen(false)}>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setCalOpen(false)}>
+          <View style={s.cal}>
+            <View style={s.hand} />
+            <Text style={s.calT}>{new Date().toLocaleString("default", { month: "long", year: "numeric" })}</Text>
+            <View style={{ flexDirection: "row", gap: 12, marginBottom: 4 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#4ade80" }} /><Text style={{ fontSize: 9, color: TM }}>All taken</Text></View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#e5b285" }} /><Text style={{ fontSize: 9, color: TM }}>Partial</Text></View>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#e58585" }} /><Text style={{ fontSize: 9, color: TM }}>Missed</Text></View>
+            </View>
+            <View style={s.calG}>
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (<Text key={d} style={s.calH}>{d}</Text>))}
+              {Array.from({ length: 31 }, (_, i) => {
+                const dayNum = i + 1;
+                const now = new Date();
+                const dayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
+                const isSelected = dayDate === date;
+                const bgColor = isSelected ? AC : calDayColor(dayDate);
+                const textColor = isSelected ? "#fff" : calDayTextColor(dayDate);
+                return (
+                  <TouchableOpacity key={i} style={[s.calD, { backgroundColor: bgColor, borderWidth: isSelected ? 1.5 : 0, borderColor: AC }]}
+                    onPress={() => { setDate(dayDate); setCalOpen(false); }}>
+                    <Text style={[s.calDT, { color: textColor }]}>{dayNum}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <View style={s.dc}>
-              <View style={[s.dIco,{borderRadius:19}]}><Ionicons name="flame"size={19}color={A3}/></View>
-              <View><Text style={s.dNm}>{streak} day streak</Text><Text style={s.dMeta}>You're doing well! Keep it up.</Text></View>
+              <View style={[s.dI, { borderRadius: 19 }]}><Ionicons name="flame" size={19} color={A3} /></View>
+              <View><Text style={s.dN}>{streak} day streak</Text><Text style={s.dM}>Keep it going!</Text></View>
             </View>
           </View>
         </TouchableOpacity>
       </Modal>
 
-      <AddMedicationSheet visible={sheet}onClose={()=>setSheet(false)}onSaved={()=>{setSheet(false);load();resyncReminders().catch(()=>{});}}/>
+      <AddMedicationSheet visible={sheet} onClose={() => setSheet(false)} onSaved={() => { setSheet(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
     </SafeAreaView>
   );
 }
 
-const s=StyleSheet.create({
-  safe:{flex:1,backgroundColor:BG},
-  hdr:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingHorizontal:16,paddingTop:10,paddingBottom:6},
-  appNm:{fontSize:16,fontWeight:"600",color:TX,letterSpacing:-.2},
-  hdrR:{flexDirection:"row",alignItems:"center",gap:7},
-  iconBtn:{width:32,height:32,borderRadius:16,borderWidth:1,borderColor:"rgba(233,233,237,0.15)",alignItems:"center",justifyContent:"center"},
-  streakTag:{flexDirection:"row",alignItems:"center",gap:5,paddingHorizontal:10,paddingVertical:4,borderRadius:999,backgroundColor:AB,borderWidth:1,borderColor:"rgba(145,132,217,0.25)"},
-  streakTx:{fontSize:13,fontWeight:"600",color:A3},
-  body:{paddingHorizontal:16,paddingBottom:110,gap:12},
-  ovCard:{backgroundColor:SF,borderRadius:18,padding:16,gap:6,borderWidth:1,borderColor:BORDER},
-  ovTag:{alignSelf:"flex-start",paddingHorizontal:8,paddingVertical:3,borderRadius:999,backgroundColor:AB,marginBottom:4},
-  ovTagTx:{fontSize:9,fontWeight:"700",color:A3,letterSpacing:1},
-  ovTitle:{fontSize:20,fontWeight:"700",color:TX,lineHeight:26,letterSpacing:-.4},
-  ovSub:{fontSize:12,color:TM,lineHeight:17},
-  metaRow:{flexDirection:"row",alignItems:"center",gap:5},
-  metaTx:{fontSize:11,color:TM},
-  strip:{paddingVertical:4,gap:6},
-  pill:{width:46,height:60,borderRadius:14,alignItems:"center",justifyContent:"center",gap:2,borderWidth:1,borderColor:BORDER},
-  pillOn:{backgroundColor:AB,borderColor:AC},
-  pLbl:{fontSize:9,letterSpacing:.6,textTransform:"uppercase",color:TD,fontWeight:"700"},
-  pLblOn:{color:A3},
-  pNum:{fontSize:17,fontWeight:"700",color:TX},
-  pNumOn:{color:A3},
-  aiCard:{backgroundColor:"rgba(145,132,217,0.07)",borderRadius:14,padding:13,gap:5,borderWidth:1,borderColor:"rgba(145,132,217,0.22)"},
-  aiHdr:{flexDirection:"row",alignItems:"center",gap:4},
-  aiK:{fontSize:9,letterSpacing:1,textTransform:"uppercase",color:A3,fontWeight:"700"},
-  aiTx:{fontSize:12,color:TM,lineHeight:17},
-  secHdr:{flexDirection:"row",alignItems:"center",gap:5},
-  secLbl:{fontSize:10,letterSpacing:.7,color:TM,fontWeight:"600"},
-  dc:{backgroundColor:SF,borderRadius:14,padding:12,flexDirection:"row",alignItems:"center",gap:10,borderWidth:1,borderColor:BORDER},
-  dcDim:{backgroundColor:"rgba(35,37,50,0.5)",borderColor:"rgba(233,233,237,0.06)"},
-  dIco:{width:34,height:34,borderRadius:10,backgroundColor:AB,alignItems:"center",justifyContent:"center"},
-  dNm:{fontSize:13,fontWeight:"600",color:TX},
-  dMeta:{fontSize:10,color:TM,marginTop:1},
-  dBtn:{height:30,paddingHorizontal:12,borderRadius:8,alignItems:"center",justifyContent:"center"},
-  bPd:{backgroundColor:AC},bTk:{backgroundColor:"rgba(145,132,217,0.12)",borderWidth:1,borderColor:"rgba(145,132,217,0.2)"},bSk:{backgroundColor:"rgba(229,133,133,0.12)"},
-  dBtnTx:{fontSize:11,fontWeight:"700"},
-  empty:{backgroundColor:SF,borderRadius:18,padding:36,alignItems:"center",gap:8,borderWidth:1,borderColor:BORDER},
-  emIco:{width:52,height:52,borderRadius:26,backgroundColor:AB,alignItems:"center",justifyContent:"center",marginBottom:4},
-  emTitle:{fontSize:15,fontWeight:"700",color:TX},emSub:{fontSize:12,color:TM,textAlign:"center"},
-  fab:{position:"absolute",right:18,bottom:90,width:52,height:52,borderRadius:26,backgroundColor:AC,alignItems:"center",justifyContent:"center",elevation:6},
-  overlay:{flex:1,backgroundColor:"rgba(0,0,0,0.55)",justifyContent:"flex-end"},
-  calSheet:{backgroundColor:N800,borderTopLeftRadius:20,borderTopRightRadius:20,padding:18,gap:12},
-  sheetHandle:{width:36,height:4,borderRadius:2,backgroundColor:"rgba(233,233,237,0.25)",alignSelf:"center",marginBottom:4},
-  sheetTitle:{fontSize:15,fontWeight:"700",color:TX,textAlign:"center"},
-  calGrid:{flexDirection:"row",flexWrap:"wrap",gap:4},
-  calDayHdr:{width:"14.28%",textAlign:"center",fontSize:9,color:TM,fontWeight:"600",paddingBottom:4},
-  calDay:{width:"14.28%",aspectRatio:1,borderRadius:999,alignItems:"center",justifyContent:"center"},
-  calDayOn:{backgroundColor:AC},
-  calDayTx:{fontSize:12,color:TX},
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG }, hdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
+  appNm: { fontSize: 16, fontWeight: "600", color: TX }, hdrR: { flexDirection: "row", alignItems: "center", gap: 7 },
+  iBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: "rgba(233,233,237,0.15)", alignItems: "center", justifyContent: "center" },
+  sTag: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: AB, borderWidth: 1, borderColor: "rgba(145,132,217,0.25)" },
+  sTx: { fontSize: 13, fontWeight: "600", color: A3 }, body: { paddingHorizontal: 16, paddingBottom: 110, gap: 10 },
+  ov: { backgroundColor: SF, borderRadius: 18, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: BD },
+  ovTag: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: AB, marginBottom: 4 },
+  ovTagTx: { fontSize: 9, fontWeight: "700", color: A3, letterSpacing: 1 }, ovTitle: { fontSize: 19, fontWeight: "700", color: TX, lineHeight: 25, letterSpacing: -.4 },
+  ovSub: { fontSize: 12, color: TM }, mRow: { flexDirection: "row", alignItems: "center", gap: 5 }, mTx: { fontSize: 11, color: TM },
+  strip: { paddingVertical: 2, gap: 6 }, pill: { width: 46, height: 60, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 2, borderWidth: 1, borderColor: BD },
+  pillOn: { backgroundColor: AB, borderColor: AC }, pL: { fontSize: 9, letterSpacing: .6, textTransform: "uppercase", color: TD, fontWeight: "700" }, pLOn: { color: A3 },
+  pN: { fontSize: 17, fontWeight: "700", color: TX }, pNOn: { color: A3 },
+  aiCard: { backgroundColor: "rgba(145,132,217,0.07)", borderRadius: 14, padding: 13, gap: 5, borderWidth: 1, borderColor: "rgba(145,132,217,0.22)" },
+  aiH: { flexDirection: "row", alignItems: "center", gap: 4 }, aiK: { fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: A3, fontWeight: "700" },
+  aiTx: { fontSize: 12, color: TM, lineHeight: 17 }, sH: { flexDirection: "row", alignItems: "center", gap: 5 }, sL: { fontSize: 10, letterSpacing: .7, color: TM, fontWeight: "600" },
+  dc: { backgroundColor: SF, borderRadius: 14, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: BD },
+  dcD: { backgroundColor: "rgba(35,37,50,0.5)", borderColor: "rgba(233,233,237,0.06)" },
+  dI: { width: 34, height: 34, borderRadius: 10, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
+  dN: { fontSize: 13, fontWeight: "600", color: TX }, dM: { fontSize: 10, color: TM, marginTop: 2 },
+  bP: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: AC, alignItems: "center", justifyContent: "center" },
+  bTk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(145,132,217,0.12)", borderWidth: 1, borderColor: "rgba(145,132,217,0.2)", alignItems: "center", justifyContent: "center", flexDirection: "row" },
+  bSk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(229,133,133,0.12)", alignItems: "center", justifyContent: "center" },
+  bMs: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(229,133,133,0.1)", borderWidth: 1, borderColor: "rgba(229,133,133,0.2)", alignItems: "center", justifyContent: "center" },
+  empty: { backgroundColor: SF, borderRadius: 18, padding: 36, alignItems: "center", gap: 8, borderWidth: 1, borderColor: BD },
+  emI: { width: 52, height: 52, borderRadius: 26, backgroundColor: AB, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  emT: { fontSize: 15, fontWeight: "700", color: TX }, emS: { fontSize: 12, color: TM, textAlign: "center" },
+  fab: { position: "absolute", right: 18, bottom: 90, width: 52, height: 52, borderRadius: 26, backgroundColor: AC, alignItems: "center", justifyContent: "center", elevation: 6 },
+  ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  cal: { backgroundColor: N8, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, gap: 10 },
+  hand: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.25)", alignSelf: "center", marginBottom: 4 },
+  calT: { fontSize: 15, fontWeight: "700", color: TX, textAlign: "center" },
+  calG: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  calH: { width: "14.28%", textAlign: "center", fontSize: 9, color: TM, fontWeight: "600", paddingBottom: 4 },
+  calD: { width: "14.28%", aspectRatio: 1, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  calDT: { fontSize: 12, color: TX },
 });

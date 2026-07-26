@@ -652,6 +652,134 @@ async def adherence(days: int = 7, user_id: str = Depends(get_current_user_id)):
     return await _adherence_for_user(user_id, days)
 
 
+@api.get("/yoga-tip")
+async def yoga_tip(user_id: str = Depends(get_current_user_id)):
+    """Groq-generated yoga routine based on user's active medications."""
+    meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(20)
+    med_names = [m["name"] for m in meds] if meds else []
+    default = {
+        "title": "Gentle Digestion Flow",
+        "subtitle": "General wellness routine",
+        "duration": "12 min",
+        "level": "Beginner",
+        "description": "A gentle yoga flow to support your overall wellness and medication routine.",
+        "steps": [
+            {"num": 1, "name": "Seated Cat-Cow", "duration": "2 min", "reference": "https://www.yogajournal.com/poses/cat-cow-pose/"},
+            {"num": 2, "name": "Wind-Relieving Pose (Pawanmuktasana)", "duration": "3 min", "reference": "https://yoga.ayush.gov.in/"},
+            {"num": 3, "name": "Seated Twist", "duration": "2 min", "reference": "https://www.yogajournal.com/poses/seated-twist/"},
+            {"num": 4, "name": "Child's Pose", "duration": "3 min", "reference": "https://www.yogajournal.com/poses/childs-pose/"},
+            {"num": 5, "name": "Legs-Up-the-Wall", "duration": "2 min", "reference": "https://www.yogajournal.com/poses/legs-up-the-wall-pose/"},
+        ],
+        "disclaimer": "Postures cross-checked against Ministry of AYUSH Yoga Protocol and Yoga Journal.",
+    }
+    if not GROQ_API_KEY:
+        return default
+    try:
+        med_str = ", ".join(med_names) if med_names else "general wellness"
+        prompt = (
+            f"The user takes these medications: {med_str}. "
+            "Recommend a specific yoga routine (5 poses, 10-15 min total) that complements these medications. "
+            "Return ONLY valid JSON with these exact keys: title (string), subtitle (string), duration (string like '12 min'), "
+            "level (string: Beginner/Intermediate), description (string, 2 sentences), "
+            "steps (array of 5 objects each with: num (int), name (string), duration (string), reference (url string from yogajournal.com or yoga.ayush.gov.in)). "
+            "No markdown, no explanation, just pure JSON."
+        )
+        resp = await _groq_chat(
+            system_message="You are a certified yoga therapist. Respond with only valid JSON, no markdown.",
+            user_text=prompt,
+        )
+        import json as _json
+        clean = resp.strip().replace("```json", "").replace("```", "").strip()
+        data = _json.loads(clean)
+        data["disclaimer"] = "Postures cross-checked against Ministry of AYUSH Yoga Protocol and Yoga Journal."
+        return data
+    except Exception as e:
+        logger.warning(f"Yoga tip failed: {e}")
+        return default
+
+
+@api.get("/doses/history")
+async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_id)):
+    """Dose history grouped by date for the Progress List tab."""
+    today = datetime.now(timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+    result = []
+    for i in range(days - 1, -1, -1):
+        d = (start + timedelta(days=i)).isoformat()
+        doses = await db.doses.find({"user_id": user_id, "date": d}, PROJECTION).to_list(1000)
+        if not doses:
+            continue
+        med_ids = list({x["medication_id"] for x in doses})
+        meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
+        med_map = {m["id"]: m for m in meds}
+        entries = []
+        for dose in sorted(doses, key=lambda x: x["scheduled_time"]):
+            m = med_map.get(dose["medication_id"], {})
+            entries.append({
+                "id": dose["id"],
+                "name": m.get("name", "Unknown"),
+                "generic_name": m.get("generic_name", ""),
+                "dosage": m.get("dosage", ""),
+                "unit": m.get("unit", ""),
+                "time": dose["scheduled_time"],
+                "status": dose["status"],
+            })
+        taken = sum(1 for e in entries if e["status"] == "taken")
+        missed = sum(1 for e in entries if e["status"] in ("missed", "skipped"))
+        result.append({"date": d, "entries": entries, "taken": taken, "missed": missed, "total": len(entries)})
+    return result
+
+
+# Doctor Appointments
+class AppointmentCreate(BaseModel):
+    doctor_name: str
+    specialty: Optional[str] = None
+    phone: Optional[str] = None
+    date: str  # ISO date
+    time: str  # HH:MM
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    reminder: Optional[str] = "1_day"  # "1_day", "2_hours", "none"
+
+class Appointment(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4()))
+    user_id: str
+    doctor_name: str
+    specialty: Optional[str] = None
+    phone: Optional[str] = None
+    date: str
+    time: str
+    location: Optional[str] = None
+    notes: Optional[str] = None
+    reminder: Optional[str] = "1_day"
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+@api.get("/appointments")
+async def list_appointments(user_id: str = Depends(get_current_user_id)):
+    items = await db.appointments.find({"user_id": user_id}, PROJECTION).sort("date", 1).to_list(200)
+    return items
+
+@api.post("/appointments")
+async def create_appointment(payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
+    appt = Appointment(user_id=user_id, **payload.dict())
+    await db.appointments.insert_one(appt.dict())
+    return _clean(appt.dict())
+
+@api.patch("/appointments/{appt_id}")
+async def update_appointment(appt_id: str, payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
+    res = await db.appointments.update_one(
+        {"id": appt_id, "user_id": user_id}, {"$set": payload.dict()}
+    )
+    if res.matched_count == 0:
+        raise HTTPException(404, "Appointment not found")
+    return await db.appointments.find_one({"id": appt_id}, PROJECTION)
+
+@api.delete("/appointments/{appt_id}")
+async def delete_appointment(appt_id: str, user_id: str = Depends(get_current_user_id)):
+    await db.appointments.delete_one({"id": appt_id, "user_id": user_id})
+    return {"deleted": True}
+
+
 @api.get("/ai/daily-message")
 async def ai_daily_message(user_id: str = Depends(get_current_user_id)):
     """A short personalized message from Groq based on the user's recent context."""

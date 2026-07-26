@@ -1,176 +1,243 @@
-import{useCallback,useState}from"react";
-import{View,Text,StyleSheet,ScrollView,TextInput,TouchableOpacity,Modal}from"react-native";
-import{SafeAreaView}from"react-native-safe-area-context";
-import{Ionicons}from"@expo/vector-icons";
-import{useFocusEffect}from"expo-router";
-import{AddMedicationSheet}from"@/src/components/AddMedicationSheet";
-import{api}from"@/src/lib/api";
-import{resyncReminders}from"@/src/lib/notifications";
+import { useCallback, useState } from "react";
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "expo-router";
+import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { api } from "@/src/lib/api";
+import { resyncReminders } from "@/src/lib/notifications";
+import { get, set, K } from "@/src/lib/store";
+import { backgroundRefresh } from "@/src/lib/sync";
 
-const BG="#161826",SF="#232532",N800="#3f424d",TX="#e9e9ed",TM="rgba(233,233,237,0.55)",AC="#9184d9",A3="#a7a1db",AB="rgba(145,132,217,0.14)",BORDER="rgba(233,233,237,0.1)";
-const MOOD_EMOJI=["","😟","😔","😐","😊","😄"];
-const MOOD_COLORS=["","#e58585","#e5b285","#a7a1db","#85c1e5","#85e5a5"];
+const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
+  TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
+  AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
+const TABS = ["Medications", "Measurements", "Activities", "Mood"];
+const ME = ["", "😟", "😔", "😐", "😊", "😄"];
+const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 
-export default function Treatment(){
-  const[filter,setFilter]=useState("all");
-  const[meds,setMeds]=useState<any[]>([]);
-  const[catalog,setCatalog]=useState<any>(null);
-  const[measurements,setMeasurements]=useState<any[]>([]);
-  const[activities,setActivities]=useState<any[]>([]);
-  const[mood,setMood]=useState<any[]>([]);
-  const[addMed,setAddMed]=useState(false);
-  const[sheet,setSheet]=useState(false);
-  const[measureModal,setMeasureModal]=useState<{open:boolean,type:any}>({open:false,type:null});
-  const[actModal,setActModal]=useState<{open:boolean,type:any}>({open:false,type:null});
-  const[moodScore,setMoodScore]=useState(3);
-  const[moodNote,setMoodNote]=useState("");
-  const[vPrimary,setVPrimary]=useState("");
-  const[vSecondary,setVSecondary]=useState("");
-  const[vNote,setVNote]=useState("");
-  const[saving,setSaving]=useState(false);
+export default function Treatment() {
+  const [tab, setTab] = useState(0);
+  const [filter, setFilter] = useState("all");
+  const [meds, setMeds] = useState<any[]>([]);
+  const [catalog, setCatalog] = useState<any>(null);
+  const [measurements, setMeasurements] = useState<any[]>([]);
+  const [activities, setActivities] = useState<any[]>([]);
+  const [mood, setMood] = useState<any[]>([]);
+  const [yoga, setYoga] = useState<any>(null);
+  const [yogaOpen, setYogaOpen] = useState(false);
+  const [addMed, setAddMed] = useState(false);
+  const [sheet, setSheet] = useState(false);
+  const [mModal, setMModal] = useState<{ open: boolean; type: any }>({ open: false, type: null });
+  const [aModal, setAModal] = useState<{ open: boolean; type: any }>({ open: false, type: null });
+  const [ms, setMs] = useState(3);
+  const [mn, setMn] = useState("");
+  const [vP, setVP] = useState("");
+  const [vS, setVS] = useState("");
+  const [vN, setVN] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  const load=useCallback(async()=>{try{const[m,mes,act,mo,mc,ac]=await Promise.all([api.listMedications(true),api.listMeasurements(),api.listActivities(),api.listMood(),api.measurementCatalog(),api.activityCatalog()]);setMeds(m);setMeasurements(mes);setActivities(act);setMood(mo);setCatalog({measurements:mc.measurements,activities:ac.activities});resyncReminders().catch(()=>{});}catch{}},[]);
-  useFocusEffect(useCallback(()=>{load();},[load]));
+  // Load cache instantly
+  const loadCache = useCallback(async () => {
+    get<any[]>(K.medications).then(m => { if (m) setMeds(m); });
+    get<any[]>(K.measurements).then(m => { if (m) setMeasurements(m); });
+    get<any[]>(K.mood).then(m => { if (m) setMood(m); });
+    get<any>(K.yogaTip).then(y => { if (y) setYoga(y); });
+  }, []);
 
-  const refillMeds=meds.filter(m=>m.stock<=m.refill_threshold);
-  const filteredMeds=filter==="refill"?refillMeds:meds;
+  const loadServer = useCallback(async () => {
+    try {
+      const [m, mes, act, mo, mc, ac, y] = await Promise.all([
+        api.listMedications(true), api.listMeasurements(), api.listActivities(),
+        api.listMood(), api.measurementCatalog(), api.activityCatalog(), api.yogaTip()
+      ]);
+      setMeds(m); setMeasurements(mes); setActivities(act); setMood(mo);
+      setCatalog({ m: mc.measurements, a: ac.activities }); setYoga(y);
+      set(K.medications, m); set(K.measurements, mes); set(K.mood, mo); set(K.yogaTip, y);
+      resyncReminders().catch(() => {});
+    } catch {}
+  }, []);
 
-  const submitMeasurement=async()=>{if(!measureModal.type||!vPrimary)return;setSaving(true);try{await api.createMeasurement({type:measureModal.type.key,value:parseFloat(vPrimary),value_secondary:vSecondary?parseFloat(vSecondary):undefined,unit:measureModal.type.unit,note:vNote||undefined});setMeasureModal({open:false,type:null});setVPrimary("");setVSecondary("");setVNote("");load();}catch{}finally{setSaving(false);}};
-  const submitActivity=async()=>{if(!actModal.type||!vPrimary)return;setSaving(true);try{await api.createActivity({type:actModal.type.key,value:parseFloat(vPrimary),unit:actModal.type.unit,note:vNote||undefined});setActModal({open:false,type:null});setVPrimary("");setVNote("");load();}catch{}finally{setSaving(false);}};
-  const submitMood=async()=>{setSaving(true);try{await api.createMood({score:moodScore,note:moodNote||undefined});setMoodNote("");setMoodScore(3);load();}catch{}finally{setSaving(false);}};
+  useFocusEffect(useCallback(() => {
+    loadCache();
+    backgroundRefresh(loadServer);
+  }, [loadCache, loadServer]));
 
-  const SHEET_OPTIONS=[
-    {icon:"medical-outline",title:"Add Medication",body:"Add a new medication to your routine",action:()=>{setSheet(false);setAddMed(true);}},
-    {icon:"pulse-outline",title:"Log Measurement",body:"Record blood pressure, glucose, weight",action:()=>{setSheet(false);if(catalog?.measurements?.[0])setMeasureModal({open:true,type:catalog.measurements[0]});}},
-    {icon:"body-outline",title:"Log Activity",body:"Record exercise, steps, or other activity",action:()=>{setSheet(false);if(catalog?.activities?.[0])setActModal({open:true,type:catalog.activities[0]});}},
-    {icon:"heart-outline",title:"Log Mood",body:"Track your mood and wellbeing",action:()=>{setSheet(false);}},
+  const saveMeasure = async () => {
+    if (!mModal.type || !vP) return; setSaving(true);
+    try { await api.createMeasurement({ type: mModal.type.key, value: parseFloat(vP), value_secondary: vS ? parseFloat(vS) : undefined, unit: mModal.type.unit, note: vN || undefined }); setMModal({ open: false, type: null }); setVP(""); setVS(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+  };
+  const saveActivity = async () => {
+    if (!aModal.type || !vP) return; setSaving(true);
+    try { await api.createActivity({ type: aModal.type.key, value: parseFloat(vP), unit: aModal.type.unit, note: vN || undefined }); setAModal({ open: false, type: null }); setVP(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+  };
+  const saveMood = async () => {
+    setSaving(true);
+    try { await api.createMood({ score: ms, note: mn || undefined }); setMn(""); setMs(3); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+  };
+
+  const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold) : filter === "active" ? meds.filter(m => m.active !== false) : meds;
+  const OPTS = [
+    { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setSheet(false); setAddMed(true); } },
+    { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setSheet(false); if (catalog?.m?.[0]) setMModal({ open: true, type: catalog.m[0] }); } },
+    { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setSheet(false); if (catalog?.a?.[0]) setAModal({ open: true, type: catalog.a[0] }); } },
+    { icon: "heart-outline", title: "Log Mood", body: "Track how you're feeling today", fn: () => { setSheet(false); setTab(3); } },
   ];
 
-  return(
-    <SafeAreaView style={s.safe}edges={["top"]}>
-      <View style={s.hdr}>
-        <Text style={s.title}>Treatment</Text>
-      </View>
-
-      {/* Filter tags - exactly like design */}
-      <View style={s.filterRow}>
-        <TouchableOpacity onPress={()=>setFilter("all")}style={[s.tag,filter==="all"&&s.tagOn]}><Text style={[s.tagTx,filter==="all"&&s.tagTxOn]}>All ({meds.length})</Text></TouchableOpacity>
-        <TouchableOpacity onPress={()=>setFilter("active")}style={[s.tag,filter==="active"&&s.tagOn]}><Text style={[s.tagTx,filter==="active"&&s.tagTxOn]}>Active</Text></TouchableOpacity>
-        <TouchableOpacity onPress={()=>setFilter("refill")}style={[s.tag,filter==="refill"&&s.tagOn]}><Text style={[s.tagTx,filter==="refill"&&s.tagTxOn]}>Refill Soon</Text></TouchableOpacity>
-      </View>
-
-      <ScrollView contentContainerStyle={s.body}showsVerticalScrollIndicator={false}>
-        {filteredMeds.length===0?(
-          <View style={s.empty}><View style={s.emIco}><Ionicons name="medical-outline"size={26}color={AC}/></View><Text style={s.emTitle}>No medications</Text><Text style={s.emSub}>Tap + to add one</Text></View>
-        ):filteredMeds.map(m=>(<View key={m.id}style={s.card}>
-          <View style={s.cardRow}>
-            <View style={s.cardIco}><Ionicons name="medical-outline"size={17}color={A3}/></View>
-            <View style={{flex:1}}>
-              <Text style={s.cardTitle}>{m.name}</Text>
-              <Text style={s.cardSub}>{m.dosage?`${m.dosage} ${m.unit}`:m.unit||""}</Text>
-            </View>
-            {m.stock<=m.refill_threshold&&(<View style={s.refillTag}><Text style={s.refillTx}>Refill Soon</Text></View>)}
-          </View>
-          <View style={s.cardFoot}>
-            <View style={{flexDirection:"row",alignItems:"center",gap:5}}>
-              <Ionicons name="calendar-check-outline"size={11}color={A3}/>
-              <Text style={s.footTx}>{(m.times||[]).join(" • ")||"No times set"}</Text>
-            </View>
-            <Text style={s.footTx}>{m.stock} left</Text>
-          </View>
-        </View>))}
-
-        {/* Measurements section */}
-        {measurements.length>0&&(<>
-          <Text style={s.secLabel}>RECENT MEASUREMENTS</Text>
-          {measurements.slice(0,5).map((m:any,i:number)=>(<View key={i}style={s.card}>
-            <View style={s.cardRow}>
-              <View style={s.cardIco}><Ionicons name="pulse-outline"size={15}color={A3}/></View>
-              <View style={{flex:1}}><Text style={s.cardTitle}>{m.type?.replace(/_/g," ")}</Text><Text style={s.cardSub}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View>
-              <Text style={{fontSize:16,fontWeight:"700",color:A3}}>{m.value}{m.value_secondary?`/${m.value_secondary}`:""}<Text style={{fontSize:10,color:TM}}> {m.unit}</Text></Text>
-            </View>
-          </View>))}
-        </>)}
-
-        {/* Activities section */}
-        {activities.length>0&&(<>
-          <Text style={s.secLabel}>RECENT ACTIVITIES</Text>
-          {activities.slice(0,5).map((a:any,i:number)=>(<View key={i}style={s.card}>
-            <View style={s.cardRow}>
-              <View style={s.cardIco}><Ionicons name="body-outline"size={15}color={A3}/></View>
-              <View style={{flex:1}}><Text style={s.cardTitle}>{a.type?.replace(/_/g," ")}</Text><Text style={s.cardSub}>{new Date(a.recorded_at).toLocaleDateString()}</Text></View>
-              <Text style={{fontSize:16,fontWeight:"700",color:A3}}>{a.value}<Text style={{fontSize:10,color:TM}}> {a.unit}</Text></Text>
-            </View>
-          </View>))}
-        </>)}
-
-        {/* Mood section */}
-        {mood.length>0&&(<>
-          <Text style={s.secLabel}>MOOD LOG</Text>
-          <View style={s.card}>
-            <View style={s.moodRow}>
-              {[1,2,3,4,5].map(n=>(<TouchableOpacity key={n}onPress={()=>setMoodScore(n)}style={[s.moodBtn,moodScore===n&&{borderColor:MOOD_COLORS[n],backgroundColor:`${MOOD_COLORS[n]}22`}]}>
-                <Text style={{fontSize:22}}>{MOOD_EMOJI[n]}</Text>
-                <Text style={[s.moodNum,moodScore===n&&{color:MOOD_COLORS[n]}]}>{n}</Text>
-              </TouchableOpacity>))}
-            </View>
-            <TextInput value={moodNote}onChangeText={setMoodNote}placeholder="Add a note..."placeholderTextColor={TM}style={s.input}/>
-            <TouchableOpacity style={s.submitBtn}onPress={submitMood}disabled={saving}><Text style={s.submitTx}>{saving?"Saving…":"Log Mood"}</Text></TouchableOpacity>
-          </View>
-          {mood.slice(0,3).map((m:any,i:number)=>(<View key={i}style={[s.card,{flexDirection:"row",alignItems:"center",gap:12}]}>
-            <Text style={{fontSize:24}}>{MOOD_EMOJI[m.score]||"😐"}</Text>
-            <View><Text style={s.cardTitle}>Mood {m.score}/5</Text><Text style={s.cardSub}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View>
-          </View>))}
-        </>)}
+  return (
+    <SafeAreaView style={s.safe} edges={["top"]}>
+      <View style={s.hdr}><Text style={s.title}>Treatment</Text></View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
+        {TABS.map((t, i) => (<TouchableOpacity key={t} onPress={() => setTab(i)} style={[s.tab, i === tab && s.tabOn]}><Text style={[s.tabT, i === tab && s.tabTOn]}>{t}</Text></TouchableOpacity>))}
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity style={s.fab}onPress={()=>setSheet(true)}>
-        <Ionicons name="add"size={24}color={BG}/>
-      </TouchableOpacity>
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+        {/* MEDICATIONS */}
+        {tab === 0 && (<View style={{ gap: 10 }}>
+          {yoga && (<View style={[s.card, { borderColor: "rgba(145,132,217,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
+            <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}><Ionicons name="body-outline" size={17} color={A3} /></View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}><Ionicons name="sparkles" size={10} color={A3} /><Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text></View>
+              <Text style={s.cT}>{yoga.title || "Gentle Flow"}</Text>
+              <Text style={s.cS}>{yoga.duration || "12 min"} • {yoga.level || "Beginner"}</Text>
+            </View>
+            <TouchableOpacity style={s.viewBtn} onPress={() => setYogaOpen(true)}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
+          </View>)}
+          <View style={s.fRow}>
+            {["all", "active", "refill"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : "Refill Soon"}</Text></TouchableOpacity>))}
+          </View>
+          {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>No medications</Text><Text style={s.emS}>Tap + to add one</Text></View>
+          ) : fm.map(m => (<View key={m.id} style={s.card}>
+            <View style={s.cRow}>
+              <View style={s.cI}><Ionicons name="medical-outline" size={17} color={A3} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cT}>{m.name}</Text>
+                {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
+                <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
+              </View>
+              {m.stock <= m.refill_threshold && <View style={s.rTag}><Text style={s.rTx}>Refill Soon</Text></View>}
+            </View>
+            <View style={s.cFt}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.ftT}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
+              <Text style={s.ftT}>{m.stock} left</Text>
+            </View>
+          </View>))}
+        </View>)}
 
-      {/* Sheet modal - "What would you like to do?" */}
-      <Modal visible={sheet}transparent animationType="slide"onRequestClose={()=>setSheet(false)}>
-        <TouchableOpacity style={s.overlay}activeOpacity={1}onPress={()=>setSheet(false)}>
-          <View style={s.sheetBox}>
-            <View style={s.handle}/>
-            <Text style={s.sheetTitle}>What would you like to do?</Text>
-            {SHEET_OPTIONS.map(o=>(<TouchableOpacity key={o.title}style={s.sheetOpt}onPress={o.action}>
-              <View style={s.cardIco}><Ionicons name={o.icon as any}size={17}color={TX}/></View>
-              <View style={{flex:1}}><Text style={s.cardTitle}>{o.title}</Text><Text style={s.cardSub}>{o.body}</Text></View>
-              <Ionicons name="chevron-forward"size={14}color={TM}/>
-            </TouchableOpacity>))}
+        {/* MEASUREMENTS */}
+        {tab === 1 && (<View style={{ gap: 10 }}>
+          <Text style={s.secL}>Log a measurement</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+            {(catalog?.m || []).map((mt: any) => (<TouchableOpacity key={mt.key} style={s.chip} onPress={() => { setMModal({ open: true, type: mt }); setVP(""); setVS(""); setVN(""); }}><Ionicons name="pulse-outline" size={12} color={A3} /><Text style={s.chipT}>{mt.label}</Text></TouchableOpacity>))}
+          </ScrollView>
+          {measurements.length > 0 ? (<><Text style={s.secL}>Recent</Text>{measurements.slice(0, 10).map((m: any, i: number) => (<View key={i} style={s.card}><View style={s.cRow}><View style={s.cI}><Ionicons name="pulse-outline" size={15} color={A3} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{m.type?.replace(/_/g, " ")}</Text><Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View><Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>{m.value}{m.value_secondary ? `/${m.value_secondary}` : ""}<Text style={{ fontSize: 10, color: TM }}> {m.unit}</Text></Text></View></View>))}</>) : (<View style={s.empty}><Ionicons name="pulse-outline" size={28} color={AC} /><Text style={s.emT}>No measurements yet</Text><Text style={s.emS}>Tap a category above to log one</Text></View>)}
+        </View>)}
+
+        {/* ACTIVITIES */}
+        {tab === 2 && (<View style={{ gap: 10 }}>
+          <Text style={s.secL}>Log an activity</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+            {(catalog?.a || []).map((at: any) => (<TouchableOpacity key={at.key} style={s.chip} onPress={() => { setAModal({ open: true, type: at }); setVP(""); setVN(""); }}><Ionicons name="body-outline" size={12} color={A3} /><Text style={s.chipT}>{at.label}</Text></TouchableOpacity>))}
+          </ScrollView>
+          {activities.length > 0 ? (<><Text style={s.secL}>Recent</Text>{activities.slice(0, 10).map((a: any, i: number) => (<View key={i} style={s.card}><View style={s.cRow}><View style={s.cI}><Ionicons name="body-outline" size={15} color={A3} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{a.type?.replace(/_/g, " ")}</Text><Text style={s.cS}>{new Date(a.recorded_at).toLocaleDateString()}</Text></View><Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>{a.value}<Text style={{ fontSize: 10, color: TM }}> {a.unit}</Text></Text></View></View>))}</>) : (<View style={s.empty}><Ionicons name="body-outline" size={28} color={AC} /><Text style={s.emT}>No activities yet</Text><Text style={s.emS}>Tap a category above to log one</Text></View>)}
+        </View>)}
+
+        {/* MOOD */}
+        {tab === 3 && (<View style={{ gap: 10 }}>
+          <View style={s.card}>
+            <Text style={s.cT}>How are you feeling?</Text>
+            <View style={s.mRow}>{[1, 2, 3, 4, 5].map(n => (<TouchableOpacity key={n} onPress={() => setMs(n)} style={[s.mBtn, ms === n && { borderColor: MC[n], backgroundColor: `${MC[n]}22` }]}><Text style={{ fontSize: 22 }}>{ME[n]}</Text><Text style={[s.mNum, ms === n && { color: MC[n] }]}>{n}</Text></TouchableOpacity>))}</View>
+            <TextInput value={mn} onChangeText={setMn} placeholder="Add a note (optional)" placeholderTextColor={TM} style={s.inp} multiline />
+            <TouchableOpacity style={s.subBtn} onPress={saveMood} disabled={saving}><Text style={s.subT}>{saving ? "Saving…" : "Log Mood"}</Text></TouchableOpacity>
+          </View>
+          {mood.length > 0 && (<><Text style={s.secL}>Recent</Text>{mood.slice(0, 6).map((m: any, i: number) => (<View key={i} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}><Text style={{ fontSize: 24 }}>{ME[m.score] || "😐"}</Text><View style={{ flex: 1 }}><Text style={s.cT}>Mood {m.score}/5</Text><Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View>{m.note && <Text style={[s.cS, { maxWidth: 100, textAlign: "right" }]}>{m.note}</Text>}</View>))}</>)}
+        </View>)}
+      </ScrollView>
+
+      <TouchableOpacity style={s.fab} onPress={() => setSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
+
+      {/* Action Sheet */}
+      <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)}>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setSheet(false)}>
+          <View style={s.sBox}><View style={s.hand} /><Text style={s.sTitle}>What would you like to do?</Text>
+            {OPTS.map(o => (<TouchableOpacity key={o.title} style={s.sOpt} onPress={o.fn}><View style={s.cI}><Ionicons name={o.icon as any} size={17} color={TX} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{o.title}</Text><Text style={s.cS}>{o.body}</Text></View><Ionicons name="chevron-forward" size={14} color={TM} /></TouchableOpacity>))}
           </View>
         </TouchableOpacity>
       </Modal>
 
+      {/* Yoga Detail Modal */}
+      <Modal visible={yogaOpen} transparent animationType="slide" onRequestClose={() => setYogaOpen(false)}>
+        <View style={s.ovl}><View style={[s.sBox, { maxHeight: "90%" }]}>
+          <View style={s.hand} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}><Ionicons name="sparkles" size={10} color={A3} /><Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text></View>
+          <Text style={s.sTitle}>{yoga?.title || "Gentle Flow"}</Text>
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <View style={s.chip}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.chipT}>{yoga?.duration || "12 min"}</Text></View>
+            <View style={s.chip}><Ionicons name="speedometer-outline" size={11} color={A3} /><Text style={s.chipT}>{yoga?.level || "Beginner"}</Text></View>
+          </View>
+          <Text style={[s.cS, { lineHeight: 17 }]}>{yoga?.description || ""}</Text>
+          <Text style={[s.secL, { marginTop: 4 }]}>ROUTINE</Text>
+          <ScrollView>
+            {(yoga?.steps || []).map((step: any) => (<View key={step.num} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 }]}>
+              <View style={[s.cI, { borderRadius: 13 }]}><Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text></View>
+              <View style={{ flex: 1 }}><Text style={s.cT}>{step.name}</Text><Text style={s.cS}>{step.duration}</Text></View>
+              <TouchableOpacity onPress={() => Linking.openURL(step.reference || "https://www.yogajournal.com")}><Text style={{ fontSize: 10, color: A3 }}>Reference</Text></TouchableOpacity>
+            </View>))}
+            <Text style={[s.cS, { fontStyle: "italic", marginTop: 4, marginBottom: 12 }]}>{yoga?.disclaimer || ""}</Text>
+          </ScrollView>
+          <TouchableOpacity style={s.subBtn} onPress={() => setYogaOpen(false)}><Text style={s.subT}>Start Routine</Text></TouchableOpacity>
+        </View></View>
+      </Modal>
+
       {/* Measurement Modal */}
-      <Modal visible={measureModal.open}transparent animationType="slide"onRequestClose={()=>setMeasureModal({open:false,type:null})}>
-        <View style={s.overlay}><View style={s.sheetBox}>
-          <View style={s.handle}/>
-          <Text style={s.sheetTitle}>{measureModal.type?.label}</Text>
-          <TextInput value={vPrimary}onChangeText={setVPrimary}keyboardType="decimal-pad"placeholder="Value"placeholderTextColor={TM}style={s.input}/>
-          {measureModal.type?.composite&&<TextInput value={vSecondary}onChangeText={setVSecondary}keyboardType="decimal-pad"placeholder="Second value"placeholderTextColor={TM}style={s.input}/>}
-          <TextInput value={vNote}onChangeText={setVNote}placeholder="Note (optional)"placeholderTextColor={TM}style={s.input}/>
-          <TouchableOpacity style={s.submitBtn}onPress={submitMeasurement}disabled={saving||!vPrimary}><Text style={s.submitTx}>{saving?"Saving…":"Save"}</Text></TouchableOpacity>
-          <TouchableOpacity style={{padding:12,alignItems:"center"}}onPress={()=>setMeasureModal({open:false,type:null})}><Text style={{color:TM}}>Cancel</Text></TouchableOpacity>
+      <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
+        <View style={s.ovl}><View style={s.sBox}><View style={s.hand} />
+          <Text style={s.sTitle}>{mModal.type?.label}</Text><Text style={s.cS}>Unit: {mModal.type?.unit}</Text>
+          <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={mModal.type?.composite ? `${mModal.type.composite[0]} value` : "Value"} placeholderTextColor={TM} style={s.inp} />
+          {mModal.type?.composite && <TextInput value={vS} onChangeText={setVS} keyboardType="decimal-pad" placeholder={`${mModal.type.composite[1]} value`} placeholderTextColor={TM} style={s.inp} />}
+          <TextInput value={vN} onChangeText={setVN} placeholder="Note (optional)" placeholderTextColor={TM} style={s.inp} />
+          <TouchableOpacity style={s.subBtn} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save"}</Text></TouchableOpacity>
+          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
         </View></View>
       </Modal>
 
       {/* Activity Modal */}
-      <Modal visible={actModal.open}transparent animationType="slide"onRequestClose={()=>setActModal({open:false,type:null})}>
-        <View style={s.overlay}><View style={s.sheetBox}>
-          <View style={s.handle}/>
-          <Text style={s.sheetTitle}>{actModal.type?.label}</Text>
-          <TextInput value={vPrimary}onChangeText={setVPrimary}keyboardType="decimal-pad"placeholder="Value"placeholderTextColor={TM}style={s.input}/>
-          <TextInput value={vNote}onChangeText={setVNote}placeholder="Note (optional)"placeholderTextColor={TM}style={s.input}/>
-          <TouchableOpacity style={s.submitBtn}onPress={submitActivity}disabled={saving||!vPrimary}><Text style={s.submitTx}>{saving?"Saving…":"Save"}</Text></TouchableOpacity>
-          <TouchableOpacity style={{padding:12,alignItems:"center"}}onPress={()=>setActModal({open:false,type:null})}><Text style={{color:TM}}>Cancel</Text></TouchableOpacity>
+      <Modal visible={aModal.open} transparent animationType="slide" onRequestClose={() => setAModal({ open: false, type: null })}>
+        <View style={s.ovl}><View style={s.sBox}><View style={s.hand} />
+          <Text style={s.sTitle}>{aModal.type?.label}</Text><Text style={s.cS}>Unit: {aModal.type?.unit}</Text>
+          <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder="Value" placeholderTextColor={TM} style={s.inp} />
+          <TextInput value={vN} onChangeText={setVN} placeholder="Note (optional)" placeholderTextColor={TM} style={s.inp} />
+          <TouchableOpacity style={s.subBtn} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save"}</Text></TouchableOpacity>
+          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
         </View></View>
       </Modal>
 
-      <AddMedicationSheet visible={addMed}onClose={()=>setAddMed(false)}onSaved={()=>{setAddMed(false);load();}}/>
+      <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />
     </SafeAreaView>
   );
 }
-const s=StyleSheet.create({safe:{flex:1,backgroundColor:BG},hdr:{paddingHorizontal:16,paddingTop:10,paddingBottom:4},title:{fontSize:20,fontWeight:"700",color:TX,letterSpacing:-.4},filterRow:{flexDirection:"row",gap:7,paddingHorizontal:16,paddingBottom:10},tag:{paddingHorizontal:12,height:28,borderRadius:999,borderWidth:1,borderColor:BORDER,alignItems:"center",justifyContent:"center"},tagOn:{backgroundColor:AB,borderColor:AC},tagTx:{fontSize:11,color:TM,fontWeight:"600"},tagTxOn:{color:A3},body:{padding:16,paddingBottom:120,gap:10},card:{backgroundColor:SF,borderRadius:14,padding:13,gap:8,borderWidth:1,borderColor:BORDER},cardRow:{flexDirection:"row",alignItems:"center",gap:10},cardIco:{width:36,height:36,borderRadius:10,backgroundColor:AB,alignItems:"center",justifyContent:"center"},cardTitle:{fontSize:13,fontWeight:"600",color:TX},cardSub:{fontSize:10,color:TM,marginTop:1},cardFoot:{flexDirection:"row",justifyContent:"space-between",alignItems:"center",paddingTop:8,borderTopWidth:1,borderTopColor:BORDER},footTx:{fontSize:10,color:TM},refillTag:{paddingHorizontal:7,paddingVertical:2,borderRadius:6,backgroundColor:"rgba(167,161,219,0.18)"},refillTx:{fontSize:9,color:A3,fontWeight:"700"},secLabel:{fontSize:10,letterSpacing:1,color:TM,fontWeight:"700",marginTop:4},moodRow:{flexDirection:"row",justifyContent:"space-between",paddingVertical:4},moodBtn:{alignItems:"center",gap:3,padding:6,borderRadius:10,borderWidth:1.5,borderColor:BORDER,flex:1,margin:2},moodNum:{fontSize:10,color:TM,fontWeight:"700"},input:{backgroundColor:"#1e2030",borderRadius:10,padding:12,color:TX,fontSize:14,borderWidth:1,borderColor:BORDER,marginTop:4},submitBtn:{backgroundColor:AC,borderRadius:11,padding:13,alignItems:"center",marginTop:6},submitTx:{color:"#fff",fontWeight:"700",fontSize:14},fab:{position:"absolute",right:18,bottom:90,width:52,height:52,borderRadius:26,backgroundColor:AC,alignItems:"center",justifyContent:"center",elevation:6},overlay:{flex:1,backgroundColor:"rgba(0,0,0,0.55)",justifyContent:"flex-end"},sheetBox:{backgroundColor:N800,borderTopLeftRadius:22,borderTopRightRadius:22,padding:22,gap:12},handle:{width:36,height:4,borderRadius:2,backgroundColor:"rgba(233,233,237,0.2)",alignSelf:"center",marginBottom:6},sheetTitle:{fontSize:16,fontWeight:"700",color:TX},sheetOpt:{flexDirection:"row",alignItems:"center",gap:12,backgroundColor:SF,borderRadius:14,padding:13,borderWidth:1,borderColor:BORDER},empty:{backgroundColor:SF,borderRadius:14,padding:32,alignItems:"center",gap:8,borderWidth:1,borderColor:BORDER},emIco:{width:48,height:48,borderRadius:24,backgroundColor:AB,alignItems:"center",justifyContent:"center",marginBottom:2},emTitle:{fontSize:14,fontWeight:"700",color:TX},emSub:{fontSize:12,color:TM,textAlign:"center"}});
+const s = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG }, hdr: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 4 }, title: { fontSize: 20, fontWeight: "700", color: TX, letterSpacing: -.4 },
+  tabs: { paddingHorizontal: 16, paddingVertical: 8, gap: 7 }, tab: { paddingHorizontal: 14, height: 32, borderRadius: 999, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" },
+  tabOn: { backgroundColor: AB, borderColor: AC }, tabT: { fontSize: 12, color: TM, fontWeight: "600" }, tabTOn: { color: A3 },
+  body: { padding: 16, paddingBottom: 120, gap: 10 }, fRow: { flexDirection: "row", gap: 7 },
+  tag: { paddingHorizontal: 12, height: 28, borderRadius: 999, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" },
+  tagOn: { backgroundColor: AB, borderColor: AC }, tagT: { fontSize: 11, color: TM, fontWeight: "600" }, tagTOn: { color: A3 },
+  card: { backgroundColor: SF, borderRadius: 14, padding: 13, gap: 8, borderWidth: 1, borderColor: BD },
+  cRow: { flexDirection: "row", alignItems: "center", gap: 10 }, cI: { width: 36, height: 36, borderRadius: 10, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
+  cT: { fontSize: 13, fontWeight: "600", color: TX }, cS: { fontSize: 10, color: TM, marginTop: 1 },
+  cFt: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 8, borderTopWidth: 1, borderTopColor: BD }, ftT: { fontSize: 10, color: TM },
+  rTag: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6, backgroundColor: "rgba(167,161,219,0.18)" }, rTx: { fontSize: 9, color: A3, fontWeight: "700" },
+  secL: { fontSize: 10, letterSpacing: 1, color: TM, fontWeight: "700" },
+  chip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, height: 32, borderRadius: 999, backgroundColor: SF, borderWidth: 1, borderColor: BD }, chipT: { fontSize: 11, color: TM, fontWeight: "600" },
+  viewBtn: { paddingHorizontal: 12, height: 28, borderRadius: 8, backgroundColor: SF, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" }, viewBtnT: { fontSize: 11, color: TX, fontWeight: "600" },
+  mRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 6 }, mBtn: { alignItems: "center", gap: 3, padding: 6, borderRadius: 10, borderWidth: 1.5, borderColor: BD, flex: 1, margin: 2 }, mNum: { fontSize: 10, color: TM, fontWeight: "700" },
+  inp: { backgroundColor: "#1e2030", borderRadius: 10, padding: 12, color: TX, fontSize: 14, borderWidth: 1, borderColor: BD, marginTop: 4 },
+  subBtn: { backgroundColor: AC, borderRadius: 11, padding: 13, alignItems: "center", marginTop: 6 }, subT: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  fab: { position: "absolute", right: 18, bottom: 90, width: 52, height: 52, borderRadius: 26, backgroundColor: AC, alignItems: "center", justifyContent: "center", elevation: 6 },
+  ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
+  sBox: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 },
+  hand: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }, sTitle: { fontSize: 16, fontWeight: "700", color: TX },
+  sOpt: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: SF, borderRadius: 14, padding: 13, borderWidth: 1, borderColor: BD },
+  empty: { backgroundColor: SF, borderRadius: 14, padding: 32, alignItems: "center", gap: 8, borderWidth: 1, borderColor: BD }, emT: { fontSize: 14, fontWeight: "700", color: TX }, emS: { fontSize: 12, color: TM, textAlign: "center" },
+});
