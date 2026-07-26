@@ -433,6 +433,10 @@ async def auth_google(payload: GoogleAuthRequest):
 
     token = _create_session_token(user_id)
     user_doc = await db.users.find_one({"id": user_id}, PROJECTION)
+    # Analytics — track login + new signups
+    await track_event("login", user_id)
+    if not existing_user:
+        await track_event("signup", user_id, {"source": "google"})
     return {"token": token, "user": user_doc}
 
 
@@ -1278,6 +1282,287 @@ async def export_csv(user_id: str = Depends(get_current_user_id)):
     csv_bytes = buf.getvalue().encode("utf-8")
     return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=pillcare-history.csv"})
 
+
+
+# ═══════════════════════════════════════════════════════════
+# ANALYTICS & BUSINESS INTELLIGENCE
+# All data collected with user consent (stated in privacy policy)
+# Used for: product improvement, B2B reporting, monetization
+# ═══════════════════════════════════════════════════════════
+
+async def track_event(event: str, user_id: str, props: dict = {}):
+    """Fire-and-forget analytics event. Never blocks user actions."""
+    try:
+        await db.analytics.insert_one({
+            "event": event,
+            "user_id": user_id,
+            "props": props,
+            "ts": datetime.now(timezone.utc),
+        })
+    except Exception:
+        pass  # analytics must never break the app
+
+# Admin auth — separate secret for dashboard access
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+
+def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
+    """Accept either admin secret key OR admin JWT (from Google Sign-In)."""
+    if authorization.startswith("Bearer "):
+        try:
+            token = authorization.removeprefix("Bearer ").strip()
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            if payload.get("role") == "admin":
+                return payload
+        except Exception:
+            pass
+    if ADMIN_SECRET and x_admin_secret == ADMIN_SECRET:
+        return {"role": "admin", "sub": "secret_key"}
+    raise HTTPException(401, "Admin access required")
+
+# ── Admin Analytics Endpoints ────────────────────────────────
+@app.get("/admin/stats")
+async def admin_stats(_: None = Depends(require_admin)):
+    """Business KPIs for the admin dashboard."""
+    now = datetime.now(timezone.utc)
+    today = now.date().isoformat()
+    week_ago = (now - timedelta(days=7)).isoformat()
+    month_ago = (now - timedelta(days=30)).isoformat()
+
+    # User counts
+    total_users = await db.profile.count_documents({})
+    new_today = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(today)}})
+    new_week = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(week_ago)}})
+    new_month = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(month_ago)}})
+
+    # Active users (logged in last 7 days)
+    active_week = await db.audit_log.distinct("user_id", {"ts": {"$gte": datetime.fromisoformat(week_ago)}})
+
+    # Dose stats
+    total_doses = await db.doses.count_documents({})
+    taken_doses = await db.doses.count_documents({"status": "taken"})
+    missed_doses = await db.doses.count_documents({"status": "missed"})
+    adherence_rate = round(taken_doses / total_doses * 100, 1) if total_doses > 0 else 0
+
+    # Top medications
+    pipeline = [
+        {"$group": {"_id": "$name", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    top_meds = await db.medications.aggregate(pipeline).to_list(10)
+
+    # Geographic distribution
+    geo_pipeline = [
+        {"$group": {"_id": "$location_city", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    top_cities = await db.profile.aggregate(geo_pipeline).to_list(10)
+
+    # Gender distribution
+    gender_pipeline = [
+        {"$group": {"_id": "$gender", "count": {"$sum": 1}}},
+    ]
+    gender_dist = await db.profile.aggregate(gender_pipeline).to_list(10)
+
+    # Daily signups last 30 days
+    daily_pipeline = [
+        {"$match": {"event": "signup", "ts": {"$gte": datetime.fromisoformat(month_ago)}}},
+        {"$group": {"_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}}, "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    daily_signups = await db.analytics.aggregate(daily_pipeline).to_list(30)
+
+    # Feature usage
+    feature_pipeline = [
+        {"$match": {"event": {"$in": ["yoga_viewed", "nearby_searched", "appointment_booked", "caregiver_connected"]}}},
+        {"$group": {"_id": "$event", "count": {"$sum": 1}}},
+    ]
+    feature_usage = await db.analytics.aggregate(feature_pipeline).to_list(20)
+
+    return {
+        "users": {
+            "total": total_users,
+            "new_today": new_today,
+            "new_week": new_week,
+            "new_month": new_month,
+            "active_week": len(active_week),
+            "retention_rate": round(len(active_week) / total_users * 100, 1) if total_users > 0 else 0,
+        },
+        "health": {
+            "total_doses_tracked": total_doses,
+            "taken": taken_doses,
+            "missed": missed_doses,
+            "global_adherence_rate": adherence_rate,
+        },
+        "top_medications": [{"name": m["_id"], "users": m["count"]} for m in top_meds if m["_id"]],
+        "top_cities": [{"city": c["_id"] or "Unknown", "users": c["count"]} for c in top_cities],
+        "gender_distribution": [{"gender": g["_id"] or "Unknown", "count": g["count"]} for g in gender_dist],
+        "daily_signups": [{"date": d["_id"], "count": d["count"]} for d in daily_signups],
+        "feature_usage": [{"feature": f["_id"], "count": f["count"]} for f in feature_usage],
+        "generated_at": now.isoformat(),
+    }
+
+@app.get("/admin/users")
+async def admin_users(limit: int = 50, skip: int = 0, _: None = Depends(require_admin)):
+    """Paginated user list with key metrics."""
+    users = await db.profile.find({}, PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    result = []
+    for u in users:
+        med_count = await db.medications.count_documents({"user_id": u["user_id"]})
+        dose_count = await db.doses.count_documents({"user_id": u["user_id"], "status": "taken"})
+        last_login = await db.audit_log.find_one({"user_id": u["user_id"]}, sort=[("ts", -1)])
+        result.append({
+            "user_id": u["user_id"],
+            "nickname": u.get("nickname", ""),
+            "email": u.get("email", ""),
+            "gender": u.get("gender", ""),
+            "year_of_birth": u.get("year_of_birth"),
+            "location": f"{u.get('location_city', '')} {u.get('location_state', '')}".strip(),
+            "medications": med_count,
+            "doses_taken": dose_count,
+            "has_caregiver": bool(u.get("caregiver_phone")),
+            "last_login": last_login["ts"].isoformat() if last_login else None,
+        })
+    total = await db.profile.count_documents({})
+    return {"users": result, "total": total, "page": skip // limit + 1}
+
+@app.get("/admin/retention")
+async def admin_retention(_: None = Depends(require_admin)):
+    """Day 1, Day 7, Day 30 retention for cohort analysis."""
+    now = datetime.now(timezone.utc)
+    cohorts = []
+    for days_ago in [1, 7, 14, 30]:
+        cohort_start = now - timedelta(days=days_ago + 1)
+        cohort_end = now - timedelta(days=days_ago)
+        cohort_users = await db.analytics.distinct("user_id", {
+            "event": "signup",
+            "ts": {"$gte": cohort_start, "$lt": cohort_end}
+        })
+        if not cohort_users:
+            continue
+        retained = await db.audit_log.distinct("user_id", {
+            "user_id": {"$in": cohort_users},
+            "ts": {"$gte": now - timedelta(days=1)}
+        })
+        cohorts.append({
+            "cohort": f"D-{days_ago}",
+            "users": len(cohort_users),
+            "retained": len(retained),
+            "rate": round(len(retained) / len(cohort_users) * 100, 1) if cohort_users else 0,
+        })
+    return {"cohorts": cohorts}
+
+# ═══════════════════════════════════════════════════════════
+# SUBSCRIPTION & FEATURE FLAG SYSTEM
+# ═══════════════════════════════════════════════════════════
+
+PLAN_FEATURES = {
+    "free":       { "max_medications": 3,   "history_days": 7,   "ai_insights": "weekly",  "caregiver_alerts": 1,   "nearby_results": 5,  "yoga_full": False, "export_data": False, "priority_support": False, "ads_free": False },
+    "premium":    { "max_medications": 999, "history_days": 90,  "ai_insights": "daily",   "caregiver_alerts": 999, "nearby_results": 20, "yoga_full": True,  "export_data": True,  "priority_support": True,  "ads_free": True  },
+    "enterprise": { "max_medications": 999, "history_days": 365, "ai_insights": "realtime","caregiver_alerts": 999, "nearby_results": 50, "yoga_full": True,  "export_data": True,  "priority_support": True,  "ads_free": True, "api_access": True },
+}
+
+async def get_user_features(user_id: str) -> dict:
+    sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
+    plan = sub.get("plan", "free") if sub else "free"
+    features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["free"]))
+    if sub and sub.get("overrides"):
+        features.update(sub["overrides"])
+    features["plan"] = plan
+    features["plan_expires"] = sub.get("expires_at").isoformat() if sub and sub.get("expires_at") else None
+    return features
+
+@api.get("/me/features")
+async def my_features(user_id: str = Depends(get_current_user_id)):
+    return await get_user_features(user_id)
+
+@api.get("/me/subscription")
+async def my_subscription(user_id: str = Depends(get_current_user_id)):
+    sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
+    if not sub:
+        return {"plan": "free", "status": "active", "expires_at": None}
+    return {"plan": sub.get("plan", "free"), "status": sub.get("status", "active"), "expires_at": sub.get("expires_at").isoformat() if sub.get("expires_at") else None}
+
+class SubscriptionUpdate(BaseModel):
+    plan: str
+    expires_days: int = 30
+    status: str = "active"
+    note: str = ""
+
+class FeatureOverride(BaseModel):
+    feature: str
+    value: object
+
+@app.post("/admin/users/{user_id}/subscription")
+async def admin_set_subscription(user_id: str, body: SubscriptionUpdate, _: None = Depends(require_admin)):
+    expires = datetime.now(timezone.utc) + timedelta(days=body.expires_days) if body.expires_days > 0 else None
+    await db.subscriptions.update_one({"user_id": user_id}, {"$set": {"plan": body.plan, "status": body.status, "expires_at": expires, "updated_at": datetime.now(timezone.utc), "note": body.note}}, upsert=True)
+    await track_event("subscription_changed", user_id, {"plan": body.plan, "by": "admin"})
+    return {"ok": True, "plan": body.plan, "expires_at": expires.isoformat() if expires else None}
+
+@app.post("/admin/users/{user_id}/features")
+async def admin_set_feature(user_id: str, body: FeatureOverride, _: None = Depends(require_admin)):
+    await db.subscriptions.update_one({"user_id": user_id}, {"$set": {f"overrides.{body.feature}": body.value, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
+    return {"ok": True, "feature": body.feature, "value": body.value}
+
+@app.delete("/admin/users/{user_id}/features/{feature}")
+async def admin_remove_feature(user_id: str, feature: str, _: None = Depends(require_admin)):
+    await db.subscriptions.update_one({"user_id": user_id}, {"$unset": {f"overrides.{feature}": ""}})
+    return {"ok": True}
+
+@app.get("/admin/revenue")
+async def admin_revenue(_: None = Depends(require_admin)):
+    premium_count = await db.subscriptions.count_documents({"plan": {"$in": ["premium", "enterprise"]}, "status": "active"})
+    total_users = await db.users.count_documents({})
+    pipeline = [{"$group": {"_id": "$plan", "count": {"$sum": 1}, "revenue": {"$sum": "$total_paid"}}}]
+    by_plan = await db.subscriptions.aggregate(pipeline).to_list(10)
+    return {"premium_users": premium_count, "conversion_rate": round(premium_count / total_users * 100, 1) if total_users else 0, "by_plan": [{"plan": p["_id"], "users": p["count"], "revenue": p.get("revenue", 0)} for p in by_plan], "mrr_estimate": premium_count * 99}
+
+@app.get("/admin/subscriptions")
+async def admin_subscriptions(limit: int = 50, skip: int = 0, plan: str = "", _: None = Depends(require_admin)):
+    q = {"plan": plan} if plan else {}
+    subs = await db.subscriptions.find(q, PROJECTION).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
+    result = []
+    for s in subs:
+        user = await db.users.find_one({"id": s["user_id"]}, PROJECTION)
+        result.append({"user_id": s["user_id"], "name": user.get("name", "") if user else "", "email": user.get("email", "") if user else "", "plan": s.get("plan", "free"), "status": s.get("status", "active"), "expires_at": s.get("expires_at").isoformat() if s.get("expires_at") else None, "overrides": s.get("overrides", {})})
+    return {"subscriptions": result, "total": await db.subscriptions.count_documents(q)}
+
+# ── Admin Google Auth ─────────────────────────────────────
+ADMIN_EMAILS = set(filter(None, os.environ.get("ADMIN_EMAILS", "").split(",")))
+
+class AdminGoogleAuth(BaseModel):
+    id_token: str
+
+@app.post("/admin/auth/google")
+async def admin_google_login(payload: AdminGoogleAuth):
+    """Google Sign-In for admin panel. Only ADMIN_EMAILS are allowed."""
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            payload.id_token, google_requests.Request(), audience=None
+        )
+        if idinfo.get("aud") not in GOOGLE_VALID_AUDIENCES:
+            raise HTTPException(401, "Invalid token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(401, f"Invalid Google token: {e}")
+
+    email = idinfo.get("email", "").lower().strip()
+    if ADMIN_EMAILS and email not in ADMIN_EMAILS:
+        raise HTTPException(403, f"Access denied — {email} is not authorised as admin")
+
+    admin_token = pyjwt.encode({
+        "sub": email, "role": "admin",
+        "name": idinfo.get("name", ""),
+        "picture": idinfo.get("picture", ""),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=4),
+        "iat": datetime.now(timezone.utc),
+    }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    await track_event("admin_login", email, {"email": email})
+    return {"token": admin_token, "name": idinfo.get("name"), "email": email, "picture": idinfo.get("picture")}
 
 app.include_router(api)
 
