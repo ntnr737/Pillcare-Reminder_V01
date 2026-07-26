@@ -1,42 +1,28 @@
 import { useState } from "react";
-import {
-  View, Text, StyleSheet, Image, TouchableOpacity,
-  ActivityIndicator, Alert, ScrollView,
-} from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { signInWithGoogle } from "@/src/lib/auth";
 
-const BG = "#161826";
-const SURFACE = "#232532";
-const TEXT = "#e9e9ed";
-const TEXT_MUTED = "rgba(233,233,237,0.6)";
-const ACCENT = "#9184d9";
-const ACCENT_LIGHT = "#a7a1db";
-const ACCENT_BG = "rgba(145,132,217,0.16)";
-const ACCENT_BORDER = "rgba(145,132,217,0.28)";
+const BG = "#161826", SF = "#232532", TX = "#e9e9ed",
+  TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
+  AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
 
 const FEATURES = [
-  { icon: "notifications-outline", title: "Smart Reminders", body: "Never miss a dose with timely alerts" },
-  { icon: "people-outline", title: "Family Alerts", body: "Instant WhatsApp alerts to loved ones" },
-  { icon: "search-outline", title: "Brand to Generic", body: "Find affordable generic alternatives" },
-  { icon: "bar-chart-outline", title: "Health Insights", body: "Track progress with AI-powered reports" },
-  { icon: "body-outline", title: "Yoga & Wellness", body: "Personalized wellness recommendations" },
-  { icon: "calendar-check-outline", title: "Refill Reminders", body: "Never run out, get alerts on time" },
+  { icon: "notifications-outline", title: "Smart Reminders", body: "Never miss a dose" },
+  { icon: "people-outline", title: "Family Alerts", body: "WhatsApp alerts to caregivers" },
+  { icon: "search-outline", title: "Brand to Generic", body: "Find affordable alternatives" },
+  { icon: "bar-chart-outline", title: "Health Insights", body: "AI-powered weekly reports" },
+  { icon: "body-outline", title: "Yoga & Wellness", body: "Personalized yoga routines" },
+  { icon: "calendar-outline", title: "Refill Reminders", body: "Never run out of medication" },
 ] as const;
 
 const BADGES = [
-  { icon: "shield-checkmark-outline", label: "End-to-End\nEncrypted" },
-  { icon: "lock-closed-outline", label: "Private to\nYour Account" },
-  { icon: "cloud-outline", label: "Secure Cloud\nStorage" },
+  { icon: "shield-checkmark-outline", label: "HIPAA\nCompliant" },
+  { icon: "lock-closed-outline", label: "End-to-End\nEncrypted" },
+  { icon: "eye-off-outline", label: "Never\nSold" },
 ] as const;
-
-const AVATARS = [
-  { initials: "MK", bg: "#4a5568" },
-  { initials: "SR", bg: "#553c9a" },
-  { initials: "AN", bg: "#2d6a4f" },
-];
 
 export default function SignIn() {
   const router = useRouter();
@@ -49,152 +35,137 @@ export default function SignIn() {
       router.replace("/");
     } catch (e: any) {
       Alert.alert("Sign-in failed", e?.message || "Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   return (
-    <SafeAreaView style={s.safe}>
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+    // NO ScrollView — fixed layout fills screen exactly
+    <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
 
-        {/* Logo row */}
-        <View style={s.logoRow}>
-          <View style={s.logoIcon}>
-            <Image source={require("@/assets/images/logo-mark.png")} style={{ width: 26, height: 26 }} resizeMode="contain" />
+      {/* Logo */}
+      <View style={s.logoRow}>
+        <Image
+          source={require("@/assets/images/icon.png")}
+          style={s.logoImg}
+          resizeMode="cover"
+        />
+        <Text style={s.logoName}>PillCare</Text>
+      </View>
+
+      {/* Headline */}
+      <View style={s.headlineBlock}>
+        <Text style={s.h1}>
+          {"Never Miss\n"}<Text style={{ color: A3 }}>{"Your Medicines\n"}</Text>{"Again"}
+        </Text>
+        <Text style={s.sub}>
+          Your <Text style={{ color: A3 }}>AI</Text> health companion for medication reminders,{" "}
+          <Text style={{ color: A3 }}>yoga</Text> and family care.
+        </Text>
+      </View>
+
+      {/* Feature grid 2x3 */}
+      <View style={s.grid}>
+        {FEATURES.map(f => (
+          <View key={f.title} style={s.feCard}>
+            <View style={s.feIco}>
+              <Ionicons name={f.icon as any} size={13} color={A3} />
+            </View>
+            <Text style={s.feTitle}>{f.title}</Text>
+            <Text style={s.feBody}>{f.body}</Text>
           </View>
-          <Text style={s.logoName}>PillCare</Text>
-        </View>
+        ))}
+      </View>
 
-        {/* Headline */}
+      {/* AI stat card */}
+      <View style={s.statCard}>
+        <View style={s.statIco}><Ionicons name="sparkles" size={13} color={A3} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.statMain}>
+            Reduce missed medications by <Text style={{ color: A3, fontWeight: "700" }}>up to 90%</Text>
+          </Text>
+          <Text style={s.statSub}>Stay on track. Stay healthy.</Text>
+        </View>
+      </View>
+
+      {/* Avatar row */}
+      <View style={s.avatarRow}>
+        <View style={s.avatars}>
+          {[["MK", "#64748b"], ["SR", AC], ["AN", "#7c6f9a"]].map(([initials, bg], i) => (
+            <View key={initials} style={[s.avatar, { backgroundColor: bg, marginLeft: i > 0 ? -8 : 0 }]}>
+              <Text style={s.avatarTx}>{initials}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={{ flexDirection: "row", gap: 1 }}>
+          {[1, 2, 3, 4, 5].map(i => <Ionicons key={i} name="star" size={11} color={A3} />)}
+        </View>
         <View>
-          <Text style={s.headline}>
-            {"Never Miss\n"}<Text style={s.headlineAccent}>{"Your Medicines\n"}</Text>{"Again"}
-          </Text>
-          <Text style={s.sub}>
-            {"Your "}<Text style={s.subAccent}>AI</Text>{" health companion for medication reminders, family care and better health."}
-          </Text>
+          <Text style={s.trustMain}>Trusted by 10,000+ users</Text>
+          <Text style={s.trustSub}>Patients, caregivers & families</Text>
         </View>
+      </View>
 
-        {/* Feature grid */}
-        <View style={s.grid}>
-          {FEATURES.map((f) => (
-            <View key={f.title} style={s.featureCard}>
-              <View style={s.featureIconWrap}>
-                <Ionicons name={f.icon as any} size={16} color={ACCENT_LIGHT} />
-              </View>
-              <Text style={s.featureTitle}>{f.title}</Text>
-              <Text style={s.featureBody}>{f.body}</Text>
-            </View>
-          ))}
-        </View>
+      {/* Google Sign-In button */}
+      <TouchableOpacity style={[s.gBtn, loading && { opacity: 0.7 }]} onPress={handleSignIn} disabled={loading}>
+        <Ionicons name="logo-google" size={16} color="#fff" />
+        <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Continue with Google"}</Text>
+      </TouchableOpacity>
 
-        {/* Stat card */}
-        <View style={s.statCard}>
-          <View style={s.statIconWrap}>
-            <Ionicons name="sparkles-outline" size={16} color={ACCENT_LIGHT} />
+      {/* Trust badges */}
+      <View style={s.badges}>
+        {BADGES.map(b => (
+          <View key={b.label} style={s.badge}>
+            <Ionicons name={b.icon as any} size={14} color={A3} />
+            <Text style={s.badgeTx}>{b.label}</Text>
           </View>
-          <View>
-            <Text style={s.statText}>
-              {"Reduce missed medications by "}
-              <Text style={s.statAccent}>up to 90%</Text>
-            </Text>
-            <Text style={s.statSub}>Stay on track. Stay healthy.</Text>
-          </View>
-        </View>
+        ))}
+      </View>
 
-        {/* Trusted row */}
-        <View style={s.trustedRow}>
-          <View style={s.avatars}>
-            {AVATARS.map((a, i) => (
-              <View key={a.initials} style={[s.avatar, { backgroundColor: a.bg, marginLeft: i === 0 ? 0 : -8 }]}>
-                <Text style={s.avatarText}>{a.initials}</Text>
-              </View>
-            ))}
-          </View>
-          <View style={s.starsRow}>
-            {[0,1,2,3,4].map(i => <Text key={i} style={s.star}>★</Text>)}
-          </View>
-          <View>
-            <Text style={s.trustedTitle}>Trusted by 10,000+ users</Text>
-            <Text style={s.trustedSub}>Patients, caregivers &amp; families</Text>
-          </View>
-        </View>
+      {/* Footer */}
+      <View style={s.footer}>
+        <Ionicons name="lock-closed-outline" size={10} color={TM} />
+        <Text style={s.footTx}>Your data is safe and secure with us.</Text>
+      </View>
 
-        {/* CTA */}
-        <TouchableOpacity
-          testID="google-signin-btn"
-          style={s.googleBtn}
-          activeOpacity={0.85}
-          disabled={loading}
-          onPress={handleSignIn}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <Ionicons name="logo-google" size={18} color="#fff" />
-              <Text style={s.googleBtnText}>Continue with Google</Text>
-            </>
-          )}
-        </TouchableOpacity>
-
-        {/* Trust badges */}
-        <View style={s.badgesRow}>
-          {BADGES.map((b) => (
-            <View key={b.label} style={s.badge}>
-              <Ionicons name={b.icon as any} size={18} color={ACCENT_LIGHT} />
-              <Text style={s.badgeLabel}>{b.label}</Text>
-            </View>
-          ))}
-        </View>
-
-        {/* Fine print */}
-        <View style={s.finePrint}>
-          <Text style={s.fineText}>
-            <Ionicons name="lock-closed-outline" size={10} color="rgba(233,233,237,0.45)" /> Your data is safe and secure with us.
-          </Text>
-          <Text style={s.fineText}>By continuing, you agree to our Terms of Service and Privacy Policy.</Text>
-        </View>
-
-      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  body: { padding: 24, paddingBottom: 40, gap: 20 },
-  logoRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  logoIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: ACCENT_BG, alignItems: "center", justifyContent: "center" },
-  logoName: { fontSize: 19, fontWeight: "700", color: TEXT, letterSpacing: -0.3 },
-  headline: { fontSize: 32, fontWeight: "700", color: TEXT, lineHeight: 38, letterSpacing: -0.5 },
-  headlineAccent: { color: ACCENT_LIGHT },
-  sub: { fontSize: 13, color: TEXT_MUTED, lineHeight: 20, marginTop: 10 },
-  subAccent: { color: ACCENT_LIGHT },
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  featureCard: { width: "47.5%", backgroundColor: SURFACE, borderRadius: 14, padding: 14, gap: 8 },
-  featureIconWrap: { width: 34, height: 34, borderRadius: 17, backgroundColor: ACCENT_BG, alignItems: "center", justifyContent: "center" },
-  featureTitle: { fontSize: 13, fontWeight: "700", color: TEXT },
-  featureBody: { fontSize: 11, color: TEXT_MUTED, lineHeight: 16 },
-  statCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: SURFACE, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: ACCENT_BORDER },
-  statIconWrap: { width: 32, height: 32, borderRadius: 16, backgroundColor: ACCENT_BG, alignItems: "center", justifyContent: "center" },
-  statText: { fontSize: 13, color: TEXT },
-  statAccent: { color: ACCENT_LIGHT, fontWeight: "700" },
-  statSub: { fontSize: 11, color: TEXT_MUTED, marginTop: 2 },
-  trustedRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  safe: {
+    flex: 1, backgroundColor: BG,
+    paddingHorizontal: 18,
+    paddingTop: 6, paddingBottom: 8,
+    // flex layout distributes space evenly — no scrolling
+    justifyContent: "space-between",
+  },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 9 },
+  // Use the actual high-quality app icon, clipped to a rounded square
+  logoImg: { width: 32, height: 32, borderRadius: 8, overflow: "hidden" },
+  logoName: { fontSize: 17, fontWeight: "700", color: TX, letterSpacing: -.3 },
+  headlineBlock: { gap: 5 },
+  h1: { fontSize: 24, fontWeight: "700", color: TX, lineHeight: 30, letterSpacing: -.5 },
+  sub: { fontSize: 12, color: TM, lineHeight: 17 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  feCard: { width: "48.5%", backgroundColor: SF, borderRadius: 11, padding: 10, gap: 4, borderWidth: 1, borderColor: BD },
+  feIco: { width: 24, height: 24, borderRadius: 12, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
+  feTitle: { fontSize: 11, fontWeight: "700", color: TX },
+  feBody: { fontSize: 10, color: TM, lineHeight: 13 },
+  statCard: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: SF, borderRadius: 11, padding: 10, borderWidth: 1, borderColor: "rgba(145,132,217,0.3)" },
+  statIco: { width: 26, height: 26, borderRadius: 13, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
+  statMain: { fontSize: 11, color: TX },
+  statSub: { fontSize: 10, color: TM },
+  avatarRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatars: { flexDirection: "row" },
-  avatar: { width: 32, height: 32, borderRadius: 16, borderWidth: 2, borderColor: BG, alignItems: "center", justifyContent: "center" },
-  avatarText: { fontSize: 10, fontWeight: "700", color: "#fff" },
-  starsRow: { flexDirection: "row", gap: 1 },
-  star: { fontSize: 13, color: ACCENT_LIGHT },
-  trustedTitle: { fontSize: 12, color: TEXT },
-  trustedSub: { fontSize: 10, color: TEXT_MUTED },
-  googleBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, backgroundColor: ACCENT, borderRadius: 14, height: 50 },
-  googleBtnText: { color: "#fff", fontSize: 15, fontWeight: "700", letterSpacing: -0.1 },
-  badgesRow: { flexDirection: "row", justifyContent: "space-between" },
-  badge: { flex: 1, alignItems: "center", gap: 5 },
-  badgeLabel: { fontSize: 10, color: TEXT_MUTED, textAlign: "center", lineHeight: 14 },
-  finePrint: { gap: 4, alignItems: "center" },
-  fineText: { fontSize: 10, color: "rgba(233,233,237,0.45)", textAlign: "center", lineHeight: 16 },
+  avatar: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: BG, alignItems: "center", justifyContent: "center" },
+  avatarTx: { fontSize: 8, fontWeight: "700", color: "#fff" },
+  trustMain: { fontSize: 11, color: TX, fontWeight: "600" },
+  trustSub: { fontSize: 9, color: TM },
+  gBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: AC, borderRadius: 12, height: 46 },
+  gBtnTx: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  badges: { flexDirection: "row", justifyContent: "space-around" },
+  badge: { alignItems: "center", gap: 4 },
+  badgeTx: { fontSize: 9, color: TM, textAlign: "center", lineHeight: 12 },
+  footer: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  footTx: { fontSize: 10, color: TM },
 });

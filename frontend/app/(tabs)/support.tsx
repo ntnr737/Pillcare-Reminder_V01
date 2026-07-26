@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { signOut } from "@/src/lib/auth";
 import { api } from "@/src/lib/api";
+import { useEffect } from "react";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -58,6 +59,11 @@ export default function Support() {
   const [caregiverOpen, setCaregiverOpen] = useState(false);
   const [savingCg, setSavingCg] = useState(false);
   const [so, setSo] = useState(false);
+  const [caregiverConnected, setCaregiverConnected] = useState(false);
+
+  useEffect(() => {
+    api.getProfile().then(p => { if (p?.caregiver_phone) setCaregiverConnected(true); }).catch(() => {});
+  }, []);
 
   const openEmergency = async () => {
     setEmergencyOpen(true); setEmStatus("locating");
@@ -82,6 +88,7 @@ export default function Support() {
       const profile = await api.getProfile();
       await api.upsertProfile({ ...profile, caregiver_phone: caregiverPhone.trim() });
       Alert.alert("Connected!", "Your caregiver will now receive WhatsApp alerts when you miss a dose.");
+      setCaregiverConnected(true);
       setCaregiverOpen(false);
     } catch {
       Alert.alert("Error", "Could not save caregiver number. Please try again.");
@@ -132,7 +139,10 @@ export default function Support() {
               <Text style={s.cT}>Connect via WhatsApp</Text>
               <Text style={s.cS}>Missed-dose alerts sent to your caregiver's WhatsApp</Text>
             </View>
-            <TouchableOpacity style={s.connectBtn} onPress={() => setCaregiverOpen(true)}><Text style={s.connectTx}>Connect</Text></TouchableOpacity>
+            <TouchableOpacity style={[s.connectBtn, caregiverConnected && {backgroundColor:"rgba(74,222,128,0.1)",borderColor:"rgba(74,222,128,0.3)"}]} onPress={() => setCaregiverOpen(true)}>
+              {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
+              <Text style={[s.connectTx, caregiverConnected && {color:"#4ade80"}]}>{caregiverConnected ? "Connected" : "Connect"}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
