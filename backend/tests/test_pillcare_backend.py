@@ -8,7 +8,7 @@ import pytest
 import requests
 from datetime import datetime, timezone
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://full-handoff.preview.emergentagent.com").rstrip("/")
+BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://pillcare-backend-1082668880575.europe-west1.run.app").rstrip("/")
 API = f"{BASE_URL}/api"
 
 
@@ -91,7 +91,7 @@ def med_id(s):
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["name"] == "Crocin"
-    # generic auto-resolved via Claude
+    # generic auto-resolved via OpenFDA
     assert body.get("generic_name") is not None
     return body["id"]
 

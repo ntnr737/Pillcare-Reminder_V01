@@ -10,7 +10,7 @@ personal health tracking. Single local profile (no auth wall) — auth scaffoldi
   @react-native-community/datetimepicker, expo-image-picker, expo-haptics,
   expo-notifications, firebase (JS SDK init).
 - Backend: FastAPI + Motor (MongoDB), Pydantic v2.
-- AI: Claude Sonnet 4.5 via Emergent LLM key (emergentintegrations) — used for
+- AI: Groq LLaMA — used for
   Brand→Generic name resolution and AI medication scanner (vision).
 
 ## Screens
@@ -36,8 +36,8 @@ personal health tracking. Single local profile (no auth wall) — auth scaffoldi
 - /api/mood (GET, POST)
 - /api/catalog/units, /api/catalog/measurements, /api/catalog/activities
 - /api/progress/adherence?days=7
-- /api/resolve-generic (Claude text)
-- /api/scan-medication (Claude vision)
+- /api/resolve-generic (OpenFDA + Groq fallback)
+- /api/scan-medication (Groq vision)
 - /api/caregiver/alert (mocked OpenWA), /api/caregiver/log
 - /api/export/csv
 

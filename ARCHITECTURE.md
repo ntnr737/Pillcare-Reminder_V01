@@ -166,8 +166,8 @@ Three features, all routed through one internal helper, `_groq_chat()`, which PO
 | Brand → generic resolver | `POST /resolve-generic` | `openai/gpt-oss-120b` | **Known accuracy issue** — tested wrong on "Pan 40" (real: pantoprazole) with the original small model; migrated to `gpt-oss-120b` to improve this, not yet fully re-validated across a broad test set. "unknown" AI responses are normalized to `""` server-side so combination products (multivitamins) display cleanly instead of literally showing "unknown" |
 | Medication photo scanner | `POST /scan-medication` | `qwen/qwen3.6-27b` | Vision-capable model; expects `image_base64` in request body; returns `{name, dosage, unit, confidence}` |
 
-**Migration history**: originally used a third-party wrapper package (`emergentintegrations`,
-calling Claude Sonnet under the hood) that isn't published to public PyPI, which was blocking
+**Migration history**: originally used a third-party wrapper package (`an older library`,
+no longer in use) that isn't published to public PyPI, which was blocking
 every Cloud Build. Rewritten to call Groq directly. Model names were further migrated from
 `llama-3.1-8b-instant` / `llama-4-scout-17b-16e-instruct` to `openai/gpt-oss-120b` /
 `qwen/qwen3.6-27b` after Groq deprecated the originals in mid-2026.
@@ -272,7 +272,7 @@ production build hanging silently on the onboarding "save profile" step.
 | CORS: `allow_origins=["*"]` + `allow_credentials=True` | Works (Starlette reflects the actual origin rather than sending a literal wildcard) but is permissive | Fine for a mobile-only client (browsers don't enforce CORS against native apps); would need tightening if a web frontend is ever added |
 | Brand→generic resolver accuracy | LLM-only, no authoritative database backing it | Already produced at least one verified wrong answer in testing; not safe to fully trust for medical identification as-is |
 | `dosage: float` on `Medication` | Required field, no "no dosage applicable" concept until a recent fix relaxed the frontend's mandatory check | Combination products (multivitamins) can now save with a blank/zero dosage; the backend model still technically requires a float (defaults acceptable, just noting the constraint) |
-| Package identity | Was `com.emergent.fullhandoff.oumduj` (a scaffold-tool placeholder, not owned by the developer) | Must be corrected before Play Store submission — cannot change post-publish |
+| Package identity | Was `com.pillcare.fullhandoff.oumduj` (a scaffold-tool placeholder, not owned by the developer) | Must be corrected before Play Store submission — cannot change post-publish |
 
 ---
 
@@ -382,7 +382,7 @@ scaffolding tool.
 
 ### 10.1 Package / bundle identity
 
-Originally `com.emergent.fullhandoff.oumduj` (an unowned template placeholder from whatever
+Originally `com.pillcare.fullhandoff.oumduj` (an unowned template placeholder from whatever
 tool scaffolded the project — left over, not something the developer registered). Changed to
 `com.pillcare.reminder` for both `ios.bundleIdentifier` and `android.package` in `app.json`.
 **This required corresponding updates in Google Cloud Console** — the OAuth iOS/Android client
