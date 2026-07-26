@@ -129,18 +129,25 @@ export default function Today() {
   const onRefresh = async () => { setRefreshing(true); await Promise.all([fetchServer(), fetchAI()]); setRefreshing(false); };
 
   // Race-condition-free dose marking
+  // RULE: Taken is FINAL — once marked taken, it cannot be changed.
+  // Missed/Skipped can be acknowledged but not toggled back.
   const mark = useCallback(async (id: string, cur: string, action?: string) => {
     if (pending.current.has(id)) return;
-    const nx = action || (cur === "pending" ? "taken" : cur === "taken" ? "skipped" : "pending");
+    // If already taken — do nothing. Taken is permanent.
+    if (cur === "taken") return;
+    // Determine next status
+    const nx = action || (cur === "pending" ? "taken" : "missed");
+    // Log actual timestamp when marking taken
+    const takenAt = nx === "taken" ? new Date().toISOString() : undefined;
     pending.current.add(id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDoses(prev => {
-      const u = prev.map(d => d.id === id ? { ...d, status: nx } : d);
+      const u = prev.map(d => d.id === id ? { ...d, status: nx, taken_at: takenAt } : d);
       set(K.doses(date), u);
       return u;
     });
-    enqueue("doseStatus", { id, status: nx });
-    api.setDoseStatus(id, nx)
+    enqueue("doseStatus", { id, status: nx, taken_at: takenAt });
+    api.setDoseStatus(id, nx, takenAt)
       .then(() => { pending.current.delete(id); })
       .catch(() => { pending.current.delete(id); });
     resyncReminders().catch(() => {});
@@ -245,10 +252,13 @@ export default function Today() {
                     {(() => {
                       const win = getDoseWindow(dose.scheduled_time);
                       if (tk) return (
-                        <TouchableOpacity style={s.bTk} onPress={() => mark(dose.id, st)}>
-                          <Ionicons name="checkmark" size={11} color={A3} style={{ marginRight: 2 }} />
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>Taken</Text>
-                        </TouchableOpacity>
+                        // TAKEN = permanent, non-tappable
+                        <View style={[s.bTk, { opacity: 1 }]}>
+                          <Ionicons name="checkmark-circle" size={13} color={A3} style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>
+                            {"Taken" + (dose.taken_at ? " " + new Date(dose.taken_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "")}
+                          </Text>
+                        </View>
                       );
                       if (ms || sk) return (
                         <View style={s.bSk}>

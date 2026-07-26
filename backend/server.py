@@ -226,6 +226,7 @@ class DoseLog(BaseModel):
 
 class DoseStatusUpdate(BaseModel):
     status: Literal["pending", "taken", "skipped", "missed"]
+    taken_at: Optional[datetime] = None  # client sends actual time taken
 
 
 class Measurement(BaseModel):
@@ -569,16 +570,19 @@ async def list_doses(date_str: str, user_id: str = Depends(get_current_user_id))
 
 @api.post("/doses/{dose_id}/status")
 async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: str = Depends(get_current_user_id)):
+    # LOCK: once taken, cannot be changed
+    existing = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
+    if not existing:
+        raise HTTPException(404, "Dose not found")
+    if existing.get("status") == "taken":
+        return existing  # taken is permanent, ignore
     update = {"status": payload.status}
     if payload.status == "taken":
-        update["taken_at"] = datetime.now(timezone.utc)
-        # decrement stock
-        dose = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
-        if dose:
-            await db.medications.update_one(
-                {"id": dose["medication_id"], "user_id": user_id},
-                {"$inc": {"stock": -1}},
-            )
+        update["taken_at"] = payload.taken_at or datetime.now(timezone.utc)
+        await db.medications.update_one(
+            {"id": existing["medication_id"], "user_id": user_id},
+            {"$inc": {"stock": -1}},
+        )
     res = await db.doses.update_one({"id": dose_id, "user_id": user_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Dose not found")

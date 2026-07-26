@@ -28,7 +28,7 @@ export const api = {
   updateMedication: (id: string, data: any) => req<any>(`/medications/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteMedication: (id: string) => req<any>(`/medications/${id}`, { method: "DELETE" }),
   listDoses: (date: string) => req<any[]>(`/doses?date_str=${date}`),
-  setDoseStatus: (id: string, status: string) => req<any>(`/doses/${id}/status`, { method: "POST", body: JSON.stringify({ status }) }),
+  setDoseStatus: (id: string, status: string, taken_at?: string) => req<any>(`/doses/${id}/status`, { method: "POST", body: JSON.stringify({ status, taken_at }) }),
   listMeasurements: (type?: string) => req<any[]>(`/measurements${type ? `?type=${type}` : ""}`),
   createMeasurement: (data: any) => req<any>("/measurements", { method: "POST", body: JSON.stringify(data) }),
   deleteMeasurement: (id: string) => req<any>(`/measurements/${id}`, { method: "DELETE" }),
