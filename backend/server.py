@@ -1414,25 +1414,34 @@ async def admin_stats(_: None = Depends(require_admin)):
 @app.get("/admin/users")
 async def admin_users(limit: int = 50, skip: int = 0, _: None = Depends(require_admin)):
     """Paginated user list with key metrics."""
-    users = await db.profile.find({}, PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    # Try profile collection first (has onboarded users), fall back to users collection
+    profiles = await db.profile.find({}, PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+
+    # If profile is empty, fall back to users collection
+    if not profiles:
+        profiles = await db.users.find({}, PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+
     result = []
-    for u in users:
-        med_count = await db.medications.count_documents({"user_id": u["user_id"]})
-        dose_count = await db.doses.count_documents({"user_id": u["user_id"], "status": "taken"})
-        last_login = await db.audit_log.find_one({"user_id": u["user_id"]}, sort=[("ts", -1)])
+    for u in profiles:
+        # profile collection uses 'id' or 'user_id'
+        uid = u.get("user_id") or u.get("id", "")
+        med_count = await db.medications.count_documents({"user_id": uid})
+        dose_count = await db.doses.count_documents({"user_id": uid, "status": "taken"})
+        last_login = await db.audit_log.find_one({"user_id": uid}, sort=[("ts", -1)])
         result.append({
-            "user_id": u["user_id"],
-            "nickname": u.get("nickname", ""),
+            "user_id": uid,
+            "nickname": u.get("nickname") or u.get("name", ""),
             "email": u.get("email", ""),
             "gender": u.get("gender", ""),
             "year_of_birth": u.get("year_of_birth"),
             "location": f"{u.get('location_city', '')} {u.get('location_state', '')}".strip(),
+            "plan": (await db.subscriptions.find_one({"user_id": uid}, PROJECTION) or {}).get("plan", "free"),
             "medications": med_count,
             "doses_taken": dose_count,
             "has_caregiver": bool(u.get("caregiver_phone")),
             "last_login": last_login["ts"].isoformat() if last_login else None,
         })
-    total = await db.profile.count_documents({})
+    total = await db.profile.count_documents({}) or await db.users.count_documents({})
     return {"users": result, "total": total, "page": skip // limit + 1}
 
 @app.get("/admin/retention")
