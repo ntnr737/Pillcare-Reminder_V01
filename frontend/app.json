@@ -28,8 +28,12 @@
         "android.permission.health.READ_SLEEP",
         "android.permission.health.WRITE_STEPS",
         "android.permission.READ_CALENDAR",
-        "android.permission.WRITE_CALENDAR"
-      ]
+        "android.permission.WRITE_CALENDAR",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
+      "jsEngine": "hermes"
     },
     "web": {
       "bundler": "metro",
@@ -55,7 +59,8 @@
           "color": "#000000"
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "./health-connect-plugin"
     ],
     "experiments": {
       "typedRoutes": true

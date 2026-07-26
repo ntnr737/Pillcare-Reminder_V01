@@ -95,9 +95,26 @@ export default function Progress() {
           <View style={s.card}>
             <View style={s.cRow}>
               <View style={s.cI}><Ionicons name="heart-outline" size={16} color={A3} /></View>
-              <View style={{ flex: 1 }}><Text style={s.cT}>Health Connect</Text><Text style={s.cS}>Sync with Android health data</Text></View>
-              <TouchableOpacity style={s.conBtn} onPress={() => Linking.openURL("market://details?id=com.google.android.apps.healthdata").catch(() => Linking.openURL("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))}><Text style={s.conT}>Install</Text></TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <Text style={s.cT}>Health Connect</Text>
+                <Text style={s.cS}>Sync steps, heart rate & sleep from Android</Text>
+              </View>
+              <TouchableOpacity style={s.conBtn} onPress={async () => {
+                // Try to open Health Connect permissions for this app directly
+                const hcIntent = "intent://androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS#Intent;scheme=androidx.health;package=com.google.android.apps.healthdata;end";
+                const playUrl = "https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata";
+                const { Linking } = require("react-native");
+                try {
+                  const canOpen = await Linking.canOpenURL("package:com.google.android.apps.healthdata");
+                  if (canOpen) {
+                    await Linking.openURL("package:com.google.android.apps.healthdata");
+                  } else {
+                    await Linking.openURL(playUrl);
+                  }
+                } catch { await Linking.openURL(playUrl); }
+              }}><Text style={s.conT}>Connect</Text></TouchableOpacity>
             </View>
+            <Text style={[s.cS, { fontStyle: "italic" }]}>After installing Health Connect, open it → Apps → PillCare → Allow permissions</Text>
           </View>
           {adh && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(145,132,217,0.3)" }]}>
             <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}><Ionicons name="sparkles" size={17} color={A3} /></View>

@@ -2,7 +2,10 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
 
-// Ensure foreground notifications show alert + play sound
+/**
+ * Foreground notification handler — always show alert + play sound.
+ * This fires when a notification arrives while the app is open.
+ */
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -10,11 +13,18 @@ Notifications.setNotificationHandler({
     shouldSetBadge: true,
     shouldShowBanner: true,
     shouldShowList: true,
+    priority: Notifications.AndroidNotificationPriority.MAX,
   }),
 });
 
-// Android requires a channel to be created before scheduling.
-// Importance.MAX ensures the OS actually plays sound and shows heads-up.
+/**
+ * Android notification channel.
+ * MUST use AndroidImportance.MAX to guarantee:
+ *   - Sound plays
+ *   - Heads-up notification (pops on screen)
+ *   - Shown on lock screen
+ *   - Bypasses silent mode (bypassDnd: false keeps silent mode respected)
+ */
 async function ensureChannel() {
   if (Platform.OS !== "android") return;
   await Notifications.setNotificationChannelAsync("medication-reminders", {
@@ -23,9 +33,10 @@ async function ensureChannel() {
     importance: Notifications.AndroidImportance.MAX,
     sound: "default",
     enableVibrate: true,
-    vibrationPattern: [0, 400, 200, 400],
+    vibrationPattern: [0, 500, 250, 500],
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     bypassDnd: false,
+    showBadge: true,
   });
 }
 
@@ -34,7 +45,9 @@ export async function requestNotificationPermission(): Promise<boolean> {
     await ensureChannel();
     const { status: existing } = await Notifications.getPermissionsAsync();
     if (existing === "granted") return true;
-    const { status } = await Notifications.requestPermissionsAsync();
+    const { status } = await Notifications.requestPermissionsAsync({
+      android: { allowAlert: true, allowBadge: true, allowSound: true },
+    });
     return status === "granted";
   } catch (e) {
     console.warn("Notification permission request failed:", e);
@@ -61,24 +74,32 @@ function doseLabel(med: any): string {
 export async function resyncReminders(): Promise<void> {
   try {
     const granted = await requestNotificationPermission();
-    if (!granted) return;
+    if (!granted) {
+      console.warn("Notification permission not granted — reminders disabled");
+      return;
+    }
 
     const meds = await api.listMedications(true);
     await Notifications.cancelAllScheduledNotificationsAsync();
 
+    let scheduled = 0;
     for (const med of meds || []) {
       const times: string[] = Array.isArray(med.times) ? med.times : [];
       const label = doseLabel(med);
+
       for (const t of times) {
         const parsed = parseTime(t);
         if (!parsed) continue;
+
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: `\u{1F48A} Time for ${med.name}`,
-            body: label ? `${label} — tap to mark as taken` : "Tap to mark as taken",
-            data: { medicationId: med.id },
+            title: `💊 Time for ${med.name}`,
+            body: label
+              ? `Take ${label} — tap to mark as taken`
+              : "Tap to mark as taken",
+            data: { medicationId: med.id, scheduledTime: t },
             sound: "default",
-            // Android channel is picked up automatically from channelId below
+            // Android picks up channel from channelId in trigger
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -87,8 +108,10 @@ export async function resyncReminders(): Promise<void> {
             channelId: "medication-reminders",
           },
         });
+        scheduled++;
       }
     }
+    console.log(`Scheduled ${scheduled} medication reminders`);
   } catch (e) {
     console.warn("Notification resync failed:", e);
   }
