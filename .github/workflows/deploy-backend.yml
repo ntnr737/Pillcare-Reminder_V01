@@ -1,0 +1,40 @@
+name: Deploy Backend to Cloud Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-backend.yml'
+
+jobs:
+  deploy:
+    name: Build & Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: pillcare-5fcac
+      - run: gcloud auth configure-docker --quiet
+      - name: Build and push
+        run: gcloud builds submit --tag gcr.io/pillcare-5fcac/pillcare-backend:latest backend/
+      - name: Deploy
+        run: |
+          gcloud run deploy pillcare-backend \
+            --image gcr.io/pillcare-5fcac/pillcare-backend:latest \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --memory 512Mi --cpu 1 --timeout 30 \
+            --set-env-vars DB_NAME=pillcare,GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }},GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }},GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }} \
+            --set-secrets MONGO_URL=mongo-url:latest,GROQ_API_KEY=groq-api-key:latest,WASENDER_API_KEY=wasender-api-key:latest,SCHEDULER_SECRET=scheduler-secret:latest,JWT_SECRET=jwt-secret:latest,FDA_API_KEY=fda-api-key:latest,GOOGLE_PLACES_KEY=google-places-key:latest
+      - name: Health check
+        run: |
+          sleep 10
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://pillcare-backend-1082668880575.europe-west1.run.app/health)
+          echo "Status: $STATUS"
+          [ "$STATUS" = "200" ] && echo "✅ Healthy" || exit 1
