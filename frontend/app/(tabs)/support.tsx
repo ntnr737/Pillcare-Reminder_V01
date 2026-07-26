@@ -29,19 +29,48 @@ const EMERGENCY: Record<string, { number: string; label: string }> = {
 };
 
 const PRIVACY_SECTIONS = [
-  { icon: "server-outline", title: "What we collect", body: "Medication names, doses, schedules, and the times you mark them taken or skipped — plus basic profile info (name, birth year, gender) to personalize reminders and yoga suggestions." },
-  { icon: "ban-outline", title: "What we never do", body: "We never sell your health data, never share it with advertisers, and never show your medication list to anyone but you and the caregivers you explicitly connect." },
-  { icon: "lock-closed-outline", title: "How encryption works", body: "All data is encrypted in transit (TLS) and at rest (AES-256). Your medication history is tied to your account only — our team cannot read it without your permission." },
-  { icon: "bug-outline", title: "Crash & usage analytics", body: "We collect anonymized crash reports and app-usage patterns to fix bugs. This data is never linked back to your identity or health records." },
+  {
+    icon: "document-text-outline",
+    title: "DPDP Act 2023 Compliance",
+    body: "PillCare complies with India's Digital Personal Data Protection Act 2023 (DPDP Act). We collect your health data only with your explicit consent, use it only for the purposes stated, and allow you to access, correct or delete it at any time. We report any data breach to the Data Protection Board of India within the required timeframe.",
+  },
+  {
+    icon: "server-outline",
+    title: "What we collect",
+    body: "Medication names, doses, schedules and intake records. Basic profile info (name, birth year, gender) for personalised reminders. Measurements, activities and mood you log. Your city/state for location-based features. Caregiver phone number only if you add one.",
+  },
+  {
+    icon: "ban-outline",
+    title: "What we never do",
+    body: "We never sell your health data to anyone. We never share it with advertisers. We never show your medication list to anyone except you and caregivers you explicitly connect. We never use your data to train AI models without your consent.",
+  },
+  {
+    icon: "lock-closed-outline",
+    title: "End-to-end encryption",
+    body: "All data is encrypted in transit using TLS 1.3 and encrypted at rest using AES-256 on MongoDB Atlas (EU region). Your medication history is tied only to your Google account — our team cannot read your health records.",
+  },
+  {
+    icon: "people-outline",
+    title: "Third-party services",
+    body: "Groq AI receives only your medication names (no personal identity) to generate wellness tips. OpenFDA receives only drug brand names. WasenderAPI receives only your caregiver's phone number to send alerts. None of these services can identify you from the data sent.",
+  },
+  {
+    icon: "trash-outline",
+    title: "Your rights under DPDP Act",
+    body: "You have the right to: access all data we hold (use CSV export), correct inaccurate data (edit in app), delete all your data (Support → request deletion), and withdraw consent at any time. Contact support@pillcare.in for any data requests.",
+  },
 ];
 
 const FAQS = [
-  "How do I add a new medication?",
-  "Can I set multiple reminders?",
-  "How does the caregiver alert work?",
-  "How do I log my blood pressure?",
-  "Can I export my health data?",
-  "How do I connect a caregiver via WhatsApp?",
+  { q: "How do I add a new medication?", a: "Tap the + button on any screen → Add Medication. Enter the brand name and we automatically find the generic name. Set your dose, times and stock level." },
+  { q: "Can I set multiple reminders for one medicine?", a: "Yes. When adding a medication, you can add multiple times (morning, afternoon, evening). Each time gets its own reminder notification." },
+  { q: "How does the caregiver WhatsApp alert work?", a: "Go to Support → Connect via WhatsApp → enter your caregiver's number. If you miss a dose, they receive a WhatsApp message at 10 PM IST with your daily summary." },
+  { q: "Why can't I mark a medicine as Taken in the morning if it is scheduled for evening?", a: "PillCare time-locks each dose to a 2-hour window before and 4 hours after the scheduled time. This prevents accidental marking and ensures accurate adherence tracking." },
+  { q: "How do I log my blood pressure or glucose?", a: "Go to Treatment → Measurements tab → tap Blood Pressure or Glucose → enter your reading. It is saved to your history and shown in the Progress screen." },
+  { q: "Can I export my health data?", a: "Yes. The backend supports CSV export via the API. A one-tap export button is coming in the next update." },
+  { q: "How do I connect a smartband or fitness tracker?", a: "Install Google Health Connect from the Play Store, then go to Progress → Connect. Your smartband data (steps, heart rate, sleep) syncs automatically once permissions are granted." },
+  { q: "Is my data stored in India or abroad?", a: "Your data is stored on MongoDB Atlas servers in the European Union (eu-west region), encrypted with AES-256. PillCare complies with India's DPDP Act 2023." },
+  { q: "How do I delete my account and all data?", a: "Email support@pillcare.in with your registered Google email and request account deletion. We will delete all your data within 30 days as required by the DPDP Act 2023." },
 ];
 
 type EmStatus = "idle" | "locating" | "ready" | "error";
@@ -102,7 +131,8 @@ export default function Support() {
     ]);
   };
 
-  const faqs = FAQS.filter(f => !search || f.toLowerCase().includes(search.toLowerCase()));
+  const faqs = FAQS.filter(f => !search || f.q.toLowerCase().includes(search.toLowerCase()) || f.a.toLowerCase().includes(search.toLowerCase()));
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -158,12 +188,17 @@ export default function Support() {
 
         {/* FAQs */}
         <Text style={s.secL}>FREQUENTLY ASKED</Text>
-        {faqs.map((f, i) => (<TouchableOpacity key={i} style={s.card}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <Text style={[s.cT, { flex: 1 }]}>{f}</Text>
-            <Ionicons name="chevron-forward" size={13} color={TM} />
-          </View>
-        </TouchableOpacity>))}
+        {faqs.map((f, i) => (
+          <TouchableOpacity key={i} style={s.card} onPress={() => setOpenFaq(openFaq === i ? null : i)}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <Text style={[s.cT, { flex: 1, paddingRight: 8 }]}>{f.q}</Text>
+              <Ionicons name={openFaq === i ? "chevron-down" : "chevron-forward"} size={13} color={TM} />
+            </View>
+            {openFaq === i && (
+              <Text style={[s.cS, { marginTop: 6, lineHeight: 17 }]}>{f.a}</Text>
+            )}
+          </TouchableOpacity>
+        ))}
 
         {/* Sign out */}
         <TouchableOpacity style={[s.card, { borderColor: "rgba(229,133,133,0.2)" }]} onPress={handleSO}>
