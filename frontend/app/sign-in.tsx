@@ -19,7 +19,7 @@ const FEATURES = [
 ] as const;
 
 const BADGES = [
-  { icon: "shield-checkmark-outline", label: "HIPAA\nCompliant" },
+  { icon: "shield-checkmark-outline", label: "DPDP Act\n2023 Ready" },
   { icon: "lock-closed-outline", label: "End-to-End\nEncrypted" },
   { icon: "eye-off-outline", label: "Never\nSold" },
 ] as const;
