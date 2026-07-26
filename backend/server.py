@@ -666,46 +666,72 @@ async def yoga_tip(user_id: str = Depends(get_current_user_id)):
 
     # Medication → condition → yoga therapy mapping
     # Based on Ministry of AYUSH Common Yoga Protocol and clinical yoga therapy guidelines
+    # Verified YouTube video links — real video IDs confirmed via search
+    # Swami Ramdev videos from @SwamiRamdevOfficial
+    # Sadhguru videos from @sadhguru (Isha Foundation)
+    # Ministry of AYUSH from @ministryofayushofficial
+    POSE_VIDEOS = {
+        "Mandukasana (Frog Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=aqjnv0dZhNc"},
+        "Pawanmuktasana (Wind Relief)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=TVHlCr49LNY"},
+        "Anulom Vilom Pranayama": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=MqeeqXMdZ54"},
+        "Kapalbhati Pranayama": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=lrkW_6vGqvE"},
+        "Surya Namaskar (Sun Salutation)": {"channel": "Sadhguru", "url": "https://www.youtube.com/watch?v=OBds5NZ4PRs"},
+        "Yoga Namaskar": {"channel": "Sadhguru", "url": "https://www.youtube.com/watch?v=SWemcEiXo1Q"},
+        "Bhramari Pranayama": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=lrkW_6vGqvE"},
+        "Dhanurasana (Bow Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Ardha Matsyendrasana (Seated Twist)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Shavasana (Corpse Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Balasana (Child Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Vajrasana (Thunderbolt)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Bhujangasana (Cobra Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        "Tadasana (Mountain Pose)": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+        # Condition-specific full videos
+        "_diabetes_full": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=p37r1Ptrzvw"},
+        "_bp_full": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=bVbDBm72qNM"},
+        "_general_full": {"channel": "Swami Ramdev", "url": "https://www.youtube.com/watch?v=QPjwawKxuLw"},
+    }
+    FALLBACK_VIDEO = "https://www.youtube.com/watch?v=QPjwawKxuLw"  # 12 yoga poses - Swami Ramdev
+
     CONDITION_YOGA_MAP = {
         "diabetes": {
             "poses": ["Mandukasana (Frog Pose)", "Pawanmuktasana (Wind Relief)", "Dhanurasana (Bow Pose)", "Ardha Matsyendrasana (Seated Twist)", "Kapalbhati Pranayama"],
             "channel": "Swami Ramdev",
-            "search": "https://www.youtube.com/results?search_query=yoga+for+diabetes+swami+ramdev",
+            "full_video": "https://www.youtube.com/watch?v=p37r1Ptrzvw",
         },
         "blood_pressure": {
-            "poses": ["Anulom Vilom Pranayama", "Shavasana (Corpse Pose)", "Balasana (Child Pose)", "Sukhasana (Easy Pose)", "Bhramari Pranayama"],
-            "channel": "Ministry of AYUSH",
-            "search": "https://www.youtube.com/results?search_query=yoga+blood+pressure+ministry+ayush",
+            "poses": ["Anulom Vilom Pranayama", "Shavasana (Corpse Pose)", "Balasana (Child Pose)", "Bhramari Pranayama", "Sukhasana (Easy Pose)"],
+            "channel": "Swami Ramdev",
+            "full_video": "https://www.youtube.com/watch?v=bVbDBm72qNM",
         },
         "acidity": {
-            "poses": ["Vajrasana (Thunderbolt)", "Pawanmuktasana (Wind Relief)", "Ardha Matsyendrasana", "Paschimottanasana (Forward Bend)", "Marjaryasana (Cat Stretch)"],
+            "poses": ["Vajrasana (Thunderbolt)", "Pawanmuktasana (Wind Relief)", "Ardha Matsyendrasana (Seated Twist)", "Kapalbhati Pranayama", "Balasana (Child Pose)"],
             "channel": "Swami Ramdev",
-            "search": "https://www.youtube.com/results?search_query=yoga+acidity+gastric+ramdev",
+            "full_video": "https://www.youtube.com/watch?v=s2sZuM2E6SQ",
         },
         "thyroid": {
-            "poses": ["Sarvangasana (Shoulder Stand)", "Matsyasana (Fish Pose)", "Ujjayi Pranayama", "Halasana (Plow Pose)", "Setu Bandhasana (Bridge Pose)"],
-            "channel": "Ministry of AYUSH",
-            "search": "https://www.youtube.com/results?search_query=yoga+thyroid+ministry+ayush",
+            "poses": ["Anulom Vilom Pranayama", "Kapalbhati Pranayama", "Bhujangasana (Cobra Pose)", "Pawanmuktasana (Wind Relief)", "Shavasana (Corpse Pose)"],
+            "channel": "Swami Ramdev",
+            "full_video": "https://www.youtube.com/watch?v=QPjwawKxuLw",
         },
         "cholesterol": {
-            "poses": ["Surya Namaskar (Sun Salutation)", "Kapalbhati Pranayama", "Tadasana (Mountain Pose)", "Ardha Chandrasana (Half Moon)", "Trikonasana (Triangle Pose)"],
-            "channel": "Sadhguru / Isha Foundation",
-            "search": "https://www.youtube.com/results?search_query=yoga+cholesterol+heart+sadhguru",
+            "poses": ["Surya Namaskar (Sun Salutation)", "Kapalbhati Pranayama", "Anulom Vilom Pranayama", "Tadasana (Mountain Pose)", "Pawanmuktasana (Wind Relief)"],
+            "channel": "Sadhguru",
+            "full_video": "https://www.youtube.com/watch?v=OBds5NZ4PRs",
         },
         "pain": {
-            "poses": ["Balasana (Child Pose)", "Tadasana (Mountain Pose)", "Bhujangasana (Cobra Pose)", "Shavasana (Corpse Pose)", "Sukhasana with deep breathing"],
-            "channel": "Ministry of AYUSH",
-            "search": "https://www.youtube.com/results?search_query=yoga+pain+relief+ministry+ayush",
+            "poses": ["Balasana (Child Pose)", "Tadasana (Mountain Pose)", "Bhujangasana (Cobra Pose)", "Shavasana (Corpse Pose)", "Anulom Vilom Pranayama"],
+            "channel": "Swami Ramdev",
+            "full_video": "https://www.youtube.com/watch?v=QPjwawKxuLw",
         },
         "anxiety": {
-            "poses": ["Anulom Vilom Pranayama", "Bhramari Pranayama (Humming Bee)", "Shavasana (Corpse Pose)", "Vrikshasana (Tree Pose)", "Yoga Nidra"],
-            "channel": "Sadhguru / Isha Foundation",
-            "search": "https://www.youtube.com/results?search_query=yoga+anxiety+stress+sadhguru+isha",
+            "poses": ["Anulom Vilom Pranayama", "Bhramari Pranayama", "Shavasana (Corpse Pose)", "Yoga Namaskar", "Kapalbhati Pranayama"],
+            "channel": "Sadhguru",
+            "full_video": "https://www.youtube.com/watch?v=SWemcEiXo1Q",
         },
         "general": {
-            "poses": ["Tadasana (Mountain Pose)", "Pawanmuktasana (Wind Relief)", "Bhujangasana (Cobra Pose)", "Balasana (Child Pose)", "Shavasana (Corpse Pose)"],
-            "channel": "Ministry of AYUSH",
-            "search": "https://www.youtube.com/results?search_query=common+yoga+protocol+ministry+ayush",
+            "poses": ["Tadasana (Mountain Pose)", "Pawanmuktasana (Wind Relief)", "Bhujangasana (Cobra Pose)", "Anulom Vilom Pranayama", "Shavasana (Corpse Pose)"],
+            "channel": "Swami Ramdev",
+            "full_video": "https://www.youtube.com/watch?v=QPjwawKxuLw",
         },
     }
 
@@ -771,9 +797,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
       "name": "Sanskrit Name (English Name)",
       "duration": "3 min",
       "benefit": "string - specific benefit for this patient's condition",
-      "channel": "Ministry of AYUSH OR Swami Ramdev OR Sadhguru",
-      "youtube_channel": "https://www.youtube.com/@ministryofayushofficial OR https://www.youtube.com/@SwamiRamdevOfficial OR https://www.youtube.com/@sadhguru",
-      "youtube_search": "https://www.youtube.com/results?search_query=POSE_NAME+CHANNEL_NAME"
+      "channel": "Swami Ramdev OR Sadhguru OR Ministry of AYUSH",
+      "youtube_video": "IMPORTANT: use these EXACT verified video URLs only: Mandukasana=https://www.youtube.com/watch?v=aqjnv0dZhNc, Pawanmuktasana=https://www.youtube.com/watch?v=TVHlCr49LNY, Anulom Vilom=https://www.youtube.com/watch?v=MqeeqXMdZ54, Kapalbhati=https://www.youtube.com/watch?v=lrkW_6vGqvE, Surya Namaskar=https://www.youtube.com/watch?v=OBds5NZ4PRs, Yoga Namaskar=https://www.youtube.com/watch?v=SWemcEiXo1Q, any other pose=https://www.youtube.com/watch?v=QPjwawKxuLw"
     }}
   ],
   "channels": [

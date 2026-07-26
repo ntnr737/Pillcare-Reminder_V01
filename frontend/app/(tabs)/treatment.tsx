@@ -192,10 +192,10 @@ export default function Treatment() {
                 </View>
                 <TouchableOpacity
                   style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,0,0,0.08)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: "rgba(255,0,0,0.15)" }}
-                  onPress={() => Linking.openURL(step.youtube_search || step.youtube_channel || "https://www.youtube.com/@ministryofayushofficial")}>
+                  onPress={() => Linking.openURL(step.youtube_video || step.youtube_channel || "https://www.youtube.com/watch?v=QPjwawKxuLw")}>
                   <Ionicons name="logo-youtube" size={14} color="#FF0000" />
                   <Text style={{ fontSize: 10, color: TX, flex: 1 }}>Watch on YouTube</Text>
-                  <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Ministry of AYUSH"}</Text>
+                  <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Swami Ramdev"}</Text>
                   <Ionicons name="open-outline" size={10} color={TM} />
                 </TouchableOpacity>
               </View>
