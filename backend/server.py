@@ -3,6 +3,9 @@ from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 import logging
 import io
@@ -99,6 +102,11 @@ async def _groq_chat(system_message: str, user_text: str, image_base64: str = No
 
 app = FastAPI(title="PillCare API")
 api = APIRouter(prefix="/api")
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ---------- Catalogs (static) ----------
 MED_UNITS = [
