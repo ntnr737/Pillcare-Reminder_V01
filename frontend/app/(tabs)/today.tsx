@@ -25,6 +25,38 @@ function getWD(c: string) {
   });
 }
 function gs(t: string) { const [h] = t.split(":").map(Number); return h < 12 ? "morning" : h < 17 ? "afternoon" : h < 21 ? "evening" : "night"; }
+
+/**
+ * Time window for dose marking.
+ * A dose can only be marked TAKEN within 2h before and 4h after scheduled time.
+ * Outside this window: future = UPCOMING (locked), past = auto MISSED.
+ * This prevents morning dose being marked from evening and vice versa.
+ */
+function getDoseWindow(scheduledTime: string): { canMark: boolean; isFuture: boolean; isPast: boolean; minutesUntil: number } {
+  const now = new Date();
+  const [h, m] = scheduledTime.split(":").map(Number);
+  const scheduled = new Date();
+  scheduled.setHours(h, m, 0, 0);
+  const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
+  const BEFORE_WINDOW = -240; // 4 hours after
+  const AFTER_WINDOW = 120;   // 2 hours before
+  return {
+    canMark: diffMinutes >= BEFORE_WINDOW && diffMinutes <= AFTER_WINDOW,
+    isFuture: diffMinutes > AFTER_WINDOW,
+    isPast: diffMinutes < BEFORE_WINDOW,
+    minutesUntil: Math.round(diffMinutes),
+  };
+}
+
+function formatTimeUntil(minutes: number): string {
+  if (minutes > 0) {
+    if (minutes < 60) return `in ${minutes}m`;
+    return `in ${Math.round(minutes / 60)}h`;
+  }
+  const abs = Math.abs(minutes);
+  if (abs < 60) return `${abs}m ago`;
+  return `${Math.round(abs / 60)}h ago`;
+}
 const SI: any = { morning: "sunny-outline", afternoon: "partly-sunny-outline", evening: "moon-outline", night: "moon-outline" };
 
 function Ring({ pct }: { pct: number }) {
@@ -203,34 +235,47 @@ export default function Today() {
                       <Ionicons name="medical-outline" size={16} color={tk ? TM : A3} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[s.dN, tk && { color: TM }]}>{m.name || "Unknown"}</Text>
+                      <Text style={[s.dN, (tk) && { color: TM }]}>{m.name || "Unknown"}</Text>
                       {m.generic_name ? <Text style={[s.dM, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                       <Text style={s.dM}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                     </View>
-                    {/* Three action buttons: Take / Missed / Skip */}
-                    <View style={{ flexDirection: "row", gap: 4 }}>
-                      {!tk && !sk && !ms && (
-                        <>
+                    {/* Time-locked dose actions */}
+                    {(() => {
+                      const win = getDoseWindow(dose.scheduled_time);
+                      if (tk) return (
+                        <TouchableOpacity style={s.bTk} onPress={() => mark(dose.id, st)}>
+                          <Ionicons name="checkmark" size={11} color={A3} style={{ marginRight: 2 }} />
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>Taken</Text>
+                        </TouchableOpacity>
+                      );
+                      if (ms || sk) return (
+                        <View style={s.bSk}>
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : "Skipped"}</Text>
+                        </View>
+                      );
+                      if (win.isFuture) return (
+                        <View style={s.bLock}>
+                          <Ionicons name="lock-closed" size={10} color={TM} />
+                          <Text style={{ fontSize: 10, color: TM }}>{formatTimeUntil(win.minutesUntil)}</Text>
+                        </View>
+                      );
+                      if (win.isPast) return (
+                        <TouchableOpacity style={s.bMs} onPress={() => mark(dose.id, st, "missed")}>
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>Mark Missed</Text>
+                        </TouchableOpacity>
+                      );
+                      // Within window
+                      return (
+                        <View style={{ flexDirection: "row", gap: 4 }}>
                           <TouchableOpacity style={s.bP} onPress={() => mark(dose.id, st, "taken")}>
                             <Text style={{ fontSize: 11, fontWeight: "700", color: "#fff" }}>Take</Text>
                           </TouchableOpacity>
                           <TouchableOpacity style={s.bMs} onPress={() => mark(dose.id, st, "missed")}>
                             <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>Missed</Text>
                           </TouchableOpacity>
-                        </>
-                      )}
-                      {tk && (
-                        <TouchableOpacity style={s.bTk} onPress={() => mark(dose.id, st)}>
-                          <Ionicons name="checkmark" size={11} color={A3} style={{ marginRight: 2 }} />
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>Taken</Text>
-                        </TouchableOpacity>
-                      )}
-                      {(sk || ms) && (
-                        <TouchableOpacity style={s.bSk} onPress={() => mark(dose.id, st)}>
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{sk ? "Skipped" : "Missed"}</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                        </View>
+                      );
+                    })()}
                   </View>
                 );
               })}
@@ -307,6 +352,7 @@ const s = StyleSheet.create({
   bTk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(145,132,217,0.12)", borderWidth: 1, borderColor: "rgba(145,132,217,0.2)", alignItems: "center", justifyContent: "center", flexDirection: "row" },
   bSk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(229,133,133,0.12)", alignItems: "center", justifyContent: "center" },
   bMs: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(229,133,133,0.1)", borderWidth: 1, borderColor: "rgba(229,133,133,0.2)", alignItems: "center", justifyContent: "center" },
+  bLock: { height: 30, paddingHorizontal: 10, borderRadius: 8, backgroundColor: "rgba(233,233,237,0.06)", borderWidth: 1, borderColor: "rgba(233,233,237,0.1)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 },
   empty: { backgroundColor: SF, borderRadius: 18, padding: 36, alignItems: "center", gap: 8, borderWidth: 1, borderColor: BD },
   emI: { width: 52, height: 52, borderRadius: 26, backgroundColor: AB, alignItems: "center", justifyContent: "center", marginBottom: 4 },
   emT: { fontSize: 15, fontWeight: "700", color: TX }, emS: { fontSize: 12, color: TM, textAlign: "center" },
