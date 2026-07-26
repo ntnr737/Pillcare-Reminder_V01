@@ -22,8 +22,8 @@ jobs:
           gcloud run deploy pillcare-backend \
             --image gcr.io/pillcare-5fcac/pillcare-backend:latest \
             --region europe-west1 --allow-unauthenticated \
-            --memory 512Mi --cpu 1 --timeout 30 \
+            --memory 512Mi --cpu 1 --timeout 60 \
             --set-env-vars DB_NAME=pillcare,GOOGLE_WEB_CLIENT_ID=${{ secrets.GOOGLE_WEB_CLIENT_ID }},GOOGLE_IOS_CLIENT_ID=${{ secrets.GOOGLE_IOS_CLIENT_ID }},GOOGLE_ANDROID_CLIENT_ID=${{ secrets.GOOGLE_ANDROID_CLIENT_ID }} \
-            --set-secrets MONGO_URL=mongo-url:latest,GROQ_API_KEY=groq-api-key:latest,WASENDER_API_KEY=wasender-api-key:latest,SCHEDULER_SECRET=scheduler-secret:latest,JWT_SECRET=jwt-secret:latest,FDA_API_KEY=fda-api-key:latest,GOOGLE_PLACES_KEY=google-places-key:latest
+            --set-secrets MONGO_URL=mongo-url:latest,GROQ_API_KEY=groq-api-key:latest,WASENDER_API_KEY=wasender-api-key:latest,SCHEDULER_SECRET=scheduler-secret:latest,JWT_SECRET=jwt-secret:latest,FDA_API_KEY=fda-api-key:latest,GOOGLE_PLACES_KEY=google-places-key:latest,ADMIN_SECRET=admin-secret:latest,ADMIN_EMAILS=admin-emails:latest
       - name: Done
-        run: echo "Deployed successfully"
+        run: echo "✅ Deployed successfully"
