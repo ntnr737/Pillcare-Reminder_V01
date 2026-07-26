@@ -158,6 +158,14 @@ export default function Support() {
             <View style={s.qIco}><Ionicons name="person-outline" size={15} color={A3} /></View>
             <Text style={s.qLbl}>My Profile</Text>
           </TouchableOpacity>
+          <TouchableOpacity style={s.qCard} onPress={() => (router as any).push("/nearby?type=pharmacy")}>
+            <View style={[s.qIco, { backgroundColor: "rgba(74,222,128,0.12)" }]}><Ionicons name="medkit-outline" size={15} color="#4ade80" /></View>
+            <Text style={s.qLbl}>Medical Store</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.qCard} onPress={() => (router as any).push("/nearby?type=diagnostic")}>
+            <View style={[s.qIco, { backgroundColor: "rgba(161,150,219,0.15)" }]}><Ionicons name="flask-outline" size={15} color={A3} /></View>
+            <Text style={s.qLbl}>Diagnostic Lab</Text>
+          </TouchableOpacity>
         </View>
 
         {/* CAREGIVER & FAMILY */}

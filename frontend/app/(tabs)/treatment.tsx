@@ -149,7 +149,7 @@ export default function Treatment() {
             </View>
             <TouchableOpacity style={s.viewBtn} onPress={() => setYogaOpen(true)}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
           </View>)}
-          {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>No medications</Text><Text style={s.emS}>Tap + to add one</Text></View>
+          {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>{filter === "refill" ? "No refills needed" : "No medications"}</Text><Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : "Tap + to add one"}</Text></View>
           ) : fm.map(m => (<View key={m.id} style={s.card}>
             <View style={s.cRow}>
               <View style={s.cI}><Ionicons name="medical-outline" size={17} color={A3} /></View>
@@ -165,6 +165,18 @@ export default function Treatment() {
               <Text style={s.ftT}>{m.stock} left</Text>
             </View>
           </View>))}
+          {/* Find Medical Store — always shown at bottom of medications */}
+          <TouchableOpacity style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12, borderColor: "rgba(74,222,128,0.25)", marginTop: 4 }]}
+            onPress={() => router.push("/nearby?type=pharmacy" as any)}>
+            <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(74,222,128,0.1)", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="medkit-outline" size={18} color="#4ade80" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cT}>Find Nearest Medical Store</Text>
+              <Text style={s.cS}>Pharmacies & chemists near you</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={14} color={TM} />
+          </TouchableOpacity>
         </View>)}
 
         {/* MEASUREMENTS */}

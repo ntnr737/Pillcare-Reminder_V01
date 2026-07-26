@@ -1108,6 +1108,55 @@ async def caregiver_log(limit: int = 50, user_id: str = Depends(get_current_user
     return items
 
 
+
+# ─── Nearby Places ───────────────────────────────────────────────
+GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", "")
+
+@api.get("/api/nearby")
+async def nearby_places(
+    lat: float, lng: float, radius: int = 1000,
+    type: str = "pharmacy",
+    user_id: str = Depends(get_current_user_id)
+):
+    """Find nearby pharmacies, diagnostic labs, hospitals using Google Places API.
+    Frontend falls back to OpenStreetMap automatically if key not set."""
+    if not GOOGLE_PLACES_KEY:
+        return {"places": [], "source": "no_key"}
+    keyword_map = {
+        "pharmacy":   ("pharmacy",  "medical store chemist pharmacy"),
+        "diagnostic": ("hospital",  "diagnostic lab pathology blood test"),
+        "hospital":   ("hospital",  "hospital clinic nursing home"),
+    }
+    gtype, keyword = keyword_map.get(type, ("pharmacy", "medical store"))
+    url = (
+        f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+        f"?location={lat},{lng}&radius={radius}&type={gtype}"
+        f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
+    )
+    try:
+        import httpx, math
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(url)
+        data = r.json()
+        places = []
+        for p in (data.get("results") or [])[:15]:
+            loc = p.get("geometry", {}).get("location", {})
+            elat, elng = loc.get("lat", 0), loc.get("lng", 0)
+            dlat = (elat - lat) * 111000
+            dlng = (elng - lng) * 111000 * math.cos(lat * math.pi / 180)
+            dist = int(math.sqrt(dlat**2 + dlng**2))
+            places.append({
+                "id": p.get("place_id", ""), "name": p.get("name", ""),
+                "address": p.get("vicinity", ""), "distance": dist,
+                "rating": p.get("rating"), "lat": elat, "lng": elng,
+                "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
+            })
+        places.sort(key=lambda x: x["distance"])
+        return {"places": places, "source": "google"}
+    except Exception as e:
+        logger.warning(f"Google Places failed: {e}")
+        return {"places": [], "source": "error"}
+
 # Daily caregiver report - triggered by Cloud Scheduler at 10 PM IST.
 # Runs for every registered user who has a caregiver phone number set,
 # since this endpoint has no per-user auth context of its own (called by a cron job).
