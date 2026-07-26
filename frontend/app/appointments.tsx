@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import * as Calendar from "expo-calendar";
 import { api } from "@/src/lib/api";
 import { useFocusEffect } from "expo-router";
 import { get, set } from "@/src/lib/store";
@@ -65,24 +64,20 @@ export default function Appointments() {
 
   const addToCalendar = async (appt: Appt) => {
     try {
-      const { status } = await Calendar.requestCalendarPermissionsAsync();
-      if (status !== "granted") { Alert.alert("Permission needed", "Allow calendar access to add appointments."); return; }
-      const calendars = await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
-      const cal = calendars.find(c => c.allowsModifications) || calendars[0];
-      if (!cal) { Alert.alert("No calendar found"); return; }
       const [year, month, day] = appt.date.split("-").map(Number);
       const [hour, min] = appt.time.split(":").map(Number);
       const start = new Date(year, month - 1, day, hour, min);
       const end = new Date(start.getTime() + 60 * 60 * 1000);
-      await Calendar.createEventAsync(cal.id, {
-        title: `Dr. ${appt.doctor_name} — PillCare`,
-        startDate: start, endDate: end,
-        location: appt.location || "",
-        notes: `${appt.specialty || ""}\n${appt.notes || ""}`.trim(),
-        alarms: appt.reminder !== "none" ? [{ relativeOffset: appt.reminder === "1_day" ? -1440 : -120 }] : [],
-      });
-      Alert.alert("Added to Calendar", `Appointment with Dr. ${appt.doctor_name} added.`);
-    } catch (e) { Alert.alert("Error", "Could not add to calendar."); }
+      const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+      const title = encodeURIComponent(`Dr. ${appt.doctor_name} — PillCare`);
+      const details = encodeURIComponent([appt.specialty, appt.notes].filter(Boolean).join("\n"));
+      const location = encodeURIComponent(appt.location || "");
+      // Google Calendar web link — works on all Android devices
+      const url = `https://calendar.google.com/calendar/r/eventedit?text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`;
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Could not open calendar", "Please add this appointment manually to your calendar.");
+    }
   };
 
   const upcoming = appts.filter(a => a.date >= new Date().toISOString().slice(0, 10));
