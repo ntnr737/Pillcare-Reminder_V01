@@ -1634,6 +1634,15 @@ async def admin_unblock_ip(ip: str, _: None = Depends(require_admin)):
     result = await db.admin_login_attempts.delete_many({"ip": ip, "success": False})
     return {"ok": True, "cleared": result.deleted_count, "ip": ip}
 
+@app.get("/health")
+async def health_check():
+    try:
+        await db.command("ping")
+        db_ok = True
+    except Exception:
+        db_ok = False
+    return {"status": "ok" if db_ok else "degraded", "db": "connected" if db_ok else "error", "v": "1.0.0"}
+
 app.include_router(api)
 
 app.add_middleware(
