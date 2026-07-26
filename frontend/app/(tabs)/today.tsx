@@ -239,4 +239,3 @@ const s=StyleSheet.create({
   calDayOn:{backgroundColor:AC},
   calDayTx:{fontSize:12,color:TX},
 });
-"""
