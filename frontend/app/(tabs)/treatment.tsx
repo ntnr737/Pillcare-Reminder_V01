@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
@@ -17,6 +17,7 @@ const ME = ["", "😟", "😔", "😐", "😊", "😄"];
 const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 
 export default function Treatment() {
+  const router = useRouter();
   const [tab, setTab] = useState(0);
   const [filter, setFilter] = useState("all");
   const [meds, setMeds] = useState<any[]>([]);
@@ -79,6 +80,7 @@ export default function Treatment() {
   const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold) : filter === "active" ? meds.filter(m => m.active !== false) : meds;
   const OPTS = [
     { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setSheet(false); setAddMed(true); } },
+    { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setSheet(false); router.push("/appointments"); } },
     { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setSheet(false); if (catalog?.m?.[0]) setMModal({ open: true, type: catalog.m[0] }); } },
     { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setSheet(false); if (catalog?.a?.[0]) setAModal({ open: true, type: catalog.a[0] }); } },
     { icon: "heart-outline", title: "Log Mood", body: "Track how you're feeling today", fn: () => { setSheet(false); setTab(3); } },

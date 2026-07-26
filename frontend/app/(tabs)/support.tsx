@@ -109,7 +109,7 @@ export default function Support() {
             <View style={s.qIco}><Ionicons name="call-outline" size={15} color={A3} /></View>
             <Text style={s.qLbl}>Call Doctor</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={() => { }}>
+          <TouchableOpacity style={s.qCard} onPress={() => router.push("/appointments")}>
             <View style={s.qIco}><Ionicons name="calendar-outline" size={15} color={A3} /></View>
             <Text style={s.qLbl}>Book Appointment</Text>
           </TouchableOpacity>
@@ -117,7 +117,7 @@ export default function Support() {
             <View style={[s.qIco, { backgroundColor: "rgba(229,133,133,0.14)" }]}><Ionicons name="medkit-outline" size={15} color="#e58585" /></View>
             <Text style={[s.qLbl, { color: "#e58585" }]}>Emergency</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={() => { }}>
+          <TouchableOpacity style={s.qCard} onPress={() => router.push("/profile")}>
             <View style={s.qIco}><Ionicons name="person-outline" size={15} color={A3} /></View>
             <Text style={s.qLbl}>My Profile</Text>
           </TouchableOpacity>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
@@ -96,7 +96,7 @@ export default function Progress() {
             <View style={s.cRow}>
               <View style={s.cI}><Ionicons name="heart-outline" size={16} color={A3} /></View>
               <View style={{ flex: 1 }}><Text style={s.cT}>Health Connect</Text><Text style={s.cS}>Sync with Android health data</Text></View>
-              <TouchableOpacity style={s.conBtn}><Text style={s.conT}>Connect</Text></TouchableOpacity>
+              <TouchableOpacity style={s.conBtn} onPress={() => Linking.openURL("market://details?id=com.google.android.apps.healthdata").catch(() => Linking.openURL("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata"))}><Text style={s.conT}>Install</Text></TouchableOpacity>
             </View>
           </View>
           {adh && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(145,132,217,0.3)" }]}>
