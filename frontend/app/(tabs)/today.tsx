@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
@@ -83,6 +83,9 @@ export default function Today() {
   const [sheet, setSheet] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const router = useRouter();
+  const [addMed, setAddMed] = useState(false);
+  const [actionSheet, setActionSheet] = useState(false);
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
 
@@ -172,7 +175,6 @@ export default function Today() {
         <View style={s.hdrR}>
           <TouchableOpacity style={s.iBtn} onPress={() => setCalOpen(true)}><Ionicons name="calendar-outline" size={15} color={TX} /></TouchableOpacity>
           <View style={s.sTag}><Ionicons name="flame" size={13} color={A3} /><Text style={s.sTx}>{streak}</Text></View>
-          <TouchableOpacity style={s.iBtn} onPress={() => setSheet(true)}><Ionicons name="add" size={16} color={TX} /></TouchableOpacity>
         </View>
       </View>
 
@@ -285,7 +287,7 @@ export default function Today() {
       </ScrollView>
 
       {/* FAB */}
-      <TouchableOpacity style={s.fab} onPress={() => setSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
+      <TouchableOpacity style={s.fab} onPress={() => setActionSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
 
       {/* Calendar modal with green/red coloring */}
       <Modal visible={calOpen} transparent animationType="fade" onRequestClose={() => setCalOpen(false)}>
@@ -323,7 +325,36 @@ export default function Today() {
         </TouchableOpacity>
       </Modal>
 
-      <AddMedicationSheet visible={sheet} onClose={() => setSheet(false)} onSaved={() => { setSheet(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
+      {/* Action sheet — same as Treatment tab */}
+      <Modal visible={actionSheet} transparent animationType="slide" onRequestClose={() => setActionSheet(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setActionSheet(false)}>
+          <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
+            <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>What would you like to do?</Text>
+            {[
+              { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); setAddMed(true); } },
+              { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
+              { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
+              { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
+              { icon: "heart-outline", title: "Log Mood", body: "Track how you are feeling today", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
+            ].map(o => (
+              <TouchableOpacity key={o.title} onPress={o.fn}
+                style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
+                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(145,132,217,0.14)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={o.icon as any} size={17} color={A3} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: TX }}>{o.title}</Text>
+                  <Text style={{ fontSize: 10, color: TM, marginTop: 1 }}>{o.body}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={14} color={TM} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
     </SafeAreaView>
   );
 }
