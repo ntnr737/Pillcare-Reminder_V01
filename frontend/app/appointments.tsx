@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { api } from "@/src/lib/api";
 import { useFocusEffect } from "expo-router";
 import { get, set } from "@/src/lib/store";
@@ -25,6 +26,20 @@ export default function Appointments() {
   const [editing, setEditing] = useState<Appt>(BLANK);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Derive Date objects from editing.date and editing.time for the pickers
+  const getPickerDate = () => {
+    try {
+      if (editing.date) {
+        const [y, m, d] = editing.date.split("-").map(Number);
+        const [h, min] = editing.time ? editing.time.split(":").map(Number) : [9, 0];
+        return new Date(y, m - 1, d, h || 9, min || 0);
+      }
+    } catch {}
+    return new Date();
+  };
 
   const load = useCallback(async () => {
     try {
@@ -177,11 +192,58 @@ export default function Appointments() {
               <Text style={s.label}>Phone (for calling)</Text>
               <TextInput value={editing.phone} onChangeText={v => setEditing(e => ({ ...e, phone: v }))} placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM} style={s.inp} keyboardType="phone-pad" />
 
-              <Text style={s.label}>Date * (YYYY-MM-DD)</Text>
-              <TextInput value={editing.date} onChangeText={v => setEditing(e => ({ ...e, date: v }))} placeholder="2026-08-15" placeholderTextColor={TM} style={s.inp} keyboardType="numeric" />
+              {/* Date picker */}
+              <Text style={s.label}>Date *</Text>
+              <TouchableOpacity style={[s.inp, { justifyContent: "space-between", flexDirection: "row", alignItems: "center" }]}
+                onPress={() => setShowDatePicker(true)}>
+                <Text style={{ color: editing.date ? TX : TM, fontSize: 14 }}>
+                  {editing.date ? new Date(editing.date + "T00:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "long", year: "numeric" }) : "Select date"}
+                </Text>
+                <Ionicons name="calendar-outline" size={16} color={A3} />
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={getPickerDate()}
+                  mode="date"
+                  display={Platform.OS === "android" ? "calendar" : "spinner"}
+                  minimumDate={new Date()}
+                  onChange={(event, selected) => {
+                    setShowDatePicker(false);
+                    if (selected) {
+                      const y = selected.getFullYear();
+                      const m = String(selected.getMonth() + 1).padStart(2, "0");
+                      const d = String(selected.getDate()).padStart(2, "0");
+                      setEditing(e => ({ ...e, date: `${y}-${m}-${d}` }));
+                    }
+                  }}
+                />
+              )}
 
-              <Text style={s.label}>Time * (HH:MM)</Text>
-              <TextInput value={editing.time} onChangeText={v => setEditing(e => ({ ...e, time: v }))} placeholder="10:30" placeholderTextColor={TM} style={s.inp} keyboardType="numeric" />
+              {/* Time picker */}
+              <Text style={s.label}>Time *</Text>
+              <TouchableOpacity style={[s.inp, { justifyContent: "space-between", flexDirection: "row", alignItems: "center" }]}
+                onPress={() => setShowTimePicker(true)}>
+                <Text style={{ color: editing.time ? TX : TM, fontSize: 14 }}>
+                  {editing.time || "Select time"}
+                </Text>
+                <Ionicons name="time-outline" size={16} color={A3} />
+              </TouchableOpacity>
+              {showTimePicker && (
+                <DateTimePicker
+                  value={getPickerDate()}
+                  mode="time"
+                  display={Platform.OS === "android" ? "clock" : "spinner"}
+                  is24Hour={false}
+                  onChange={(event, selected) => {
+                    setShowTimePicker(false);
+                    if (selected) {
+                      const h = String(selected.getHours()).padStart(2, "0");
+                      const min = String(selected.getMinutes()).padStart(2, "0");
+                      setEditing(e => ({ ...e, time: `${h}:${min}` }));
+                    }
+                  }}
+                />
+              )}
 
               <Text style={s.label}>Location / Clinic</Text>
               <TextInput value={editing.location} onChangeText={v => setEditing(e => ({ ...e, location: v }))} placeholder="Clinic name or address" placeholderTextColor={TM} style={s.inp} />
