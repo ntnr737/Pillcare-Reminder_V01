@@ -21,7 +21,7 @@ const SECTIONS = [
   },
   {
     title: "4. Data Storage and Security",
-    body: "Your data is stored on MongoDB Atlas servers in the European Union (eu-west region). All data is encrypted in transit using TLS 1.2+ and encrypted at rest using AES-256. Access to your data requires your Google account authentication. Our team cannot access your health records without your explicit permission.",
+    body: "Your data is protected with 256-bit encryption in transit and at rest, hosted on certified enterprise cloud infrastructure with global security standards and redundancy. Access requires your authenticated account. Our team cannot access your health records without your explicit permission.",
   },
   {
     title: "5. Third-Party Services",

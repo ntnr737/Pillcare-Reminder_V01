@@ -1,39 +1,67 @@
 /**
  * health-connect-plugin.js
- * Expo config plugin to make PillCare appear in Health Connect's app list.
+ * Makes PillCare appear in Android Health Connect's app permissions list.
  *
- * Health Connect requires two things in AndroidManifest.xml:
- * 1. <queries> block to query Health Connect app
- * 2. Intent filter on the main activity for permissions rationale screen
+ * Required for Health Connect to recognise the app:
+ * 1. <queries> package entry for Health Connect
+ * 2. Intent filter ACTION_SHOW_PERMISSIONS_RATIONALE on MainActivity
+ * 3. Health Connect permission declarations
  */
 const { withAndroidManifest } = require("@expo/config-plugins");
 
-function addHealthConnectToManifest(androidManifest) {
+const HC_PERMISSIONS = [
+  "android.permission.health.READ_STEPS",
+  "android.permission.health.READ_HEART_RATE",
+  "android.permission.health.READ_BLOOD_PRESSURE",
+  "android.permission.health.READ_BLOOD_GLUCOSE",
+  "android.permission.health.READ_WEIGHT",
+  "android.permission.health.READ_SLEEP",
+  "android.permission.health.WRITE_STEPS",
+];
+
+function addHealthConnect(androidManifest) {
   const manifest = androidManifest.manifest;
 
-  // 1. Add <queries> block so app can discover Health Connect
+  // 1. Add <queries> so Android allows querying Health Connect
   if (!manifest.queries) manifest.queries = [];
-  const hasHCQuery = manifest.queries.some(
-    q => q?.package?.[0]?.['$']?.['android:name'] === 'com.google.android.apps.healthdata'
+  const alreadyHasQuery = manifest.queries.some(
+    q => q?.package?.[0]?.["$"]?.["android:name"] === "com.google.android.apps.healthdata"
   );
-  if (!hasHCQuery) {
+  if (!alreadyHasQuery) {
     manifest.queries.push({
-      package: [{ '$': { 'android:name': 'com.google.android.apps.healthdata' } }]
+      package: [{ "$": { "android:name": "com.google.android.apps.healthdata" } }],
     });
   }
 
-  // 2. Add intent filter to main activity for Health Connect permission rationale
-  const mainActivity = manifest.application?.[0]?.activity?.find(
-    a => a['$']?.['android:name'] === '.MainActivity'
+  // 2. Add health permissions to manifest
+  if (!manifest["uses-permission"]) manifest["uses-permission"] = [];
+  const existing = manifest["uses-permission"].map(p => p["$"]?.["android:name"]);
+  for (const perm of HC_PERMISSIONS) {
+    if (!existing.includes(perm)) {
+      manifest["uses-permission"].push({ "$": { "android:name": perm } });
+    }
+  }
+
+  // 3. Add intent filter to MainActivity so Health Connect lists the app
+  const app = manifest.application?.[0];
+  if (!app) return androidManifest;
+
+  let mainActivity = app.activity?.find(
+    a => a["$"]?.["android:name"] === ".MainActivity"
+      || a["$"]?.["android:name"]?.endsWith("MainActivity")
   );
+
   if (mainActivity) {
-    if (!mainActivity['intent-filter']) mainActivity['intent-filter'] = [];
-    const hasHCFilter = mainActivity['intent-filter'].some(
-      f => f?.action?.[0]?.['$']?.['android:name'] === 'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE'
+    if (!mainActivity["intent-filter"]) mainActivity["intent-filter"] = [];
+
+    const alreadyHasHCFilter = mainActivity["intent-filter"].some(
+      f => f?.action?.some(
+        a => a["$"]?.["android:name"] === "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE"
+      )
     );
-    if (!hasHCFilter) {
-      mainActivity['intent-filter'].push({
-        action: [{ '$': { 'android:name': 'androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE' } }]
+    if (!alreadyHasHCFilter) {
+      mainActivity["intent-filter"].push({
+        action: [{ "$": { "android:name": "androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" } }],
       });
     }
   }
@@ -43,7 +71,7 @@ function addHealthConnectToManifest(androidManifest) {
 
 module.exports = function healthConnectPlugin(config) {
   return withAndroidManifest(config, async config => {
-    config.modResults = addHealthConnectToManifest(config.modResults);
+    config.modResults = addHealthConnect(config.modResults);
     return config;
   });
 };

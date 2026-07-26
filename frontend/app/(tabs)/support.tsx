@@ -47,7 +47,7 @@ const PRIVACY_SECTIONS = [
   {
     icon: "lock-closed-outline",
     title: "End-to-end encryption",
-    body: "All data is encrypted in transit using TLS 1.3 and encrypted at rest using AES-256 on MongoDB Atlas (EU region). Your medication history is tied only to your Google account — our team cannot read your health records.",
+    body: "Your data is protected with bank-grade 256-bit encryption in transit and at rest. It is stored on certified enterprise cloud infrastructure across secure global data centres. Your health records are accessible only to you — our team cannot read your data without your explicit permission.",
   },
   {
     icon: "people-outline",
@@ -69,7 +69,7 @@ const FAQS = [
   { q: "How do I log my blood pressure or glucose?", a: "Go to Treatment → Measurements tab → tap Blood Pressure or Glucose → enter your reading. It is saved to your history and shown in the Progress screen." },
   { q: "Can I export my health data?", a: "Yes. The backend supports CSV export via the API. A one-tap export button is coming in the next update." },
   { q: "How do I connect a smartband or fitness tracker?", a: "Install Google Health Connect from the Play Store, then go to Progress → Connect. Your smartband data (steps, heart rate, sleep) syncs automatically once permissions are granted." },
-  { q: "Is my data stored in India or abroad?", a: "Your data is stored on MongoDB Atlas servers in the European Union (eu-west region), encrypted with AES-256. PillCare complies with India's DPDP Act 2023." },
+  { q: "Is my data stored securely?", a: "Yes. Your data is encrypted with 256-bit encryption both in transit and at rest, stored on certified enterprise cloud infrastructure with multiple layers of security and access controls. We comply with data protection laws applicable in your region worldwide. For data requests, contact support@pillcare.in." },
   { q: "How do I delete my account and all data?", a: "Email support@pillcare.in with your registered Google email and request account deletion. We will delete all your data within 30 days as required by the DPDP Act 2023." },
 ];
 
