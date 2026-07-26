@@ -1529,6 +1529,37 @@ async def admin_subscriptions(limit: int = 50, skip: int = 0, plan: str = "", _:
         result.append({"user_id": s["user_id"], "name": user.get("name", "") if user else "", "email": user.get("email", "") if user else "", "plan": s.get("plan", "free"), "status": s.get("status", "active"), "expires_at": s.get("expires_at").isoformat() if s.get("expires_at") else None, "overrides": s.get("overrides", {})})
     return {"subscriptions": result, "total": await db.subscriptions.count_documents(q)}
 
+
+# ── Admin IP Rate Limiting & Brute Force Protection ───────
+# Tracks failed admin login attempts per IP in MongoDB
+# Blocks after 3 failures for 24 hours
+
+async def check_admin_ip(ip: str):
+    """Block IP if it has 3+ failed admin login attempts in last 24h."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    failed = await db.admin_login_attempts.count_documents({
+        "ip": ip, "success": False, "ts": {"$gte": cutoff}
+    })
+    if failed >= 3:
+        # Log the blocked attempt
+        await db.admin_login_attempts.insert_one({
+            "ip": ip, "success": False, "blocked": True,
+            "ts": datetime.now(timezone.utc)
+        })
+        raise HTTPException(429, f"Too many failed attempts. IP {ip} blocked for 24 hours.")
+
+async def record_admin_attempt(ip: str, success: bool, email: str = ""):
+    """Record admin login attempt for rate limiting."""
+    await db.admin_login_attempts.insert_one({
+        "ip": ip, "success": success, "email": email,
+        "blocked": False, "ts": datetime.now(timezone.utc)
+    })
+    # Auto-delete after 48h
+    await db.admin_login_attempts.create_index(
+        [("ts", 1)], expireAfterSeconds=172800, background=True
+    )
+
+
 # ── Admin Google Auth ─────────────────────────────────────
 ADMIN_EMAILS = set(filter(None, os.environ.get("ADMIN_EMAILS", "").split(",")))
 
@@ -1536,23 +1567,34 @@ class AdminGoogleAuth(BaseModel):
     id_token: str
 
 @app.post("/admin/auth/google")
-async def admin_google_login(payload: AdminGoogleAuth):
-    """Google Sign-In for admin panel. Only ADMIN_EMAILS are allowed."""
+async def admin_google_login(request: Request, payload: AdminGoogleAuth):
+    """Google Sign-In for admin panel. Blocks IP after 3 failed attempts."""
+    ip = request.client.host if request.client else "unknown"
+
+    # Check if IP is blocked
+    await check_admin_ip(ip)
+
     try:
         idinfo = google_id_token.verify_oauth2_token(
             payload.id_token, google_requests.Request(), audience=None
         )
         if idinfo.get("aud") not in GOOGLE_VALID_AUDIENCES:
+            await record_admin_attempt(ip, False, "invalid_token")
             raise HTTPException(401, "Invalid token")
     except HTTPException:
         raise
     except Exception as e:
+        await record_admin_attempt(ip, False, "verify_error")
         raise HTTPException(401, f"Invalid Google token: {e}")
 
     email = idinfo.get("email", "").lower().strip()
-    if ADMIN_EMAILS and email not in ADMIN_EMAILS:
-        raise HTTPException(403, f"Access denied — {email} is not authorised as admin")
+    # Strict check — only whitelisted emails can enter, no hints given to attacker
+    if not ADMIN_EMAILS or email not in ADMIN_EMAILS:
+        await record_admin_attempt(ip, False, email)
+        raise HTTPException(403, "Access denied")
 
+    # Success
+    await record_admin_attempt(ip, True, email)
     admin_token = pyjwt.encode({
         "sub": email, "role": "admin",
         "name": idinfo.get("name", ""),
@@ -1561,8 +1603,28 @@ async def admin_google_login(payload: AdminGoogleAuth):
         "iat": datetime.now(timezone.utc),
     }, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-    await track_event("admin_login", email, {"email": email})
+    await track_event("admin_login", email, {"ip": ip, "email": email})
     return {"token": admin_token, "name": idinfo.get("name"), "email": email, "picture": idinfo.get("picture")}
+
+@app.get("/admin/blocked-ips")
+async def admin_blocked_ips(_: None = Depends(require_admin)):
+    """See all blocked IPs and recent failed attempts."""
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+    pipeline = [
+        {"$match": {"success": False, "ts": {"$gte": cutoff}}},
+        {"$group": {"_id": "$ip", "attempts": {"$sum": 1}, "last": {"$max": "$ts"}, "emails": {"$addToSet": "$email"}}},
+        {"$sort": {"attempts": -1}}
+    ]
+    blocked = await db.admin_login_attempts.aggregate(pipeline).to_list(50)
+    return {
+        "blocked": [{"ip": b["_id"], "attempts": b["attempts"], "last_attempt": b["last"].isoformat(), "tried_emails": b["emails"], "is_blocked": b["attempts"] >= 3} for b in blocked]
+    }
+
+@app.delete("/admin/blocked-ips/{ip}")
+async def admin_unblock_ip(ip: str, _: None = Depends(require_admin)):
+    """Manually unblock an IP address."""
+    result = await db.admin_login_attempts.delete_many({"ip": ip, "success": False})
+    return {"ok": True, "cleared": result.deleted_count, "ip": ip}
 
 app.include_router(api)
 
