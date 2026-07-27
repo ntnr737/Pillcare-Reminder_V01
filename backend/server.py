@@ -533,6 +533,11 @@ async def create_medication(payload: MedicationCreate, user_id: str = Depends(ge
     data["generic_name"] = generic
     med = Medication(user_id=user_id, **data)
     await db.medications.insert_one(med.dict())
+    await track_event("medication_added", user_id, {
+        "medication_name": med.name if hasattr(med, 'name') else "",
+        "frequency": med.frequency if hasattr(med, 'frequency') else "",
+        "total_medications": await db.medications.count_documents({"user_id": user_id, "active": True}),
+    })
     return _clean(med.dict())
 
 
@@ -590,11 +595,28 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
         return existing  # taken is permanent, ignore
     update = {"status": payload.status}
     if payload.status == "taken":
-        update["taken_at"] = payload.taken_at or datetime.now(timezone.utc)
+        taken_at = payload.taken_at or datetime.now(timezone.utc)
+        update["taken_at"] = taken_at
         await db.medications.update_one(
             {"id": existing["medication_id"], "user_id": user_id},
             {"$inc": {"stock": -1}},
         )
+        # Get medication details for analytics
+        med = await db.medications.find_one({"id": existing["medication_id"]}, PROJECTION) or {}
+        now = datetime.now(timezone.utc)
+        await track_event("dose_taken", user_id, {
+            "medication_name": med.get("name", ""),
+            "medication_id": existing.get("medication_id", ""),
+            "dose_time": existing.get("scheduled_time", ""),
+            "hour": now.hour,
+            "day_of_week": now.weekday(),
+            "date": now.strftime("%Y-%m-%d"),
+            "section": existing.get("section", ""),
+        })
+    elif payload.status == "skipped":
+        await track_event("dose_skipped", user_id, {"medication_id": existing.get("medication_id", "")})
+    elif payload.status == "missed":
+        await track_event("dose_missed", user_id, {"medication_id": existing.get("medication_id", "")})
     res = await db.doses.update_one({"id": dose_id, "user_id": user_id}, {"$set": update})
     if res.matched_count == 0:
         raise HTTPException(404, "Dose not found")
@@ -1642,6 +1664,104 @@ async def admin_unblock_ip(ip: str, _: None = Depends(require_admin)):
     """Manually unblock an IP address."""
     result = await db.admin_login_attempts.delete_many({"ip": ip, "success": False})
     return {"ok": True, "cleared": result.deleted_count, "ip": ip}
+
+
+@app.get("/admin/analytics/doses")
+async def admin_dose_analytics(_: None = Depends(require_admin)):
+    """Deep dose analytics: hourly patterns, top meds, taken vs missed."""
+    now = datetime.now(timezone.utc)
+    month_ago = now - timedelta(days=30)
+
+    # Hourly dose pattern (when do people take meds?)
+    hourly_pipeline = [
+        {"$match": {"event": "dose_taken", "ts": {"$gte": month_ago}}},
+        {"$group": {"_id": "$props.hour", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    hourly = await db.analytics.aggregate(hourly_pipeline).to_list(24)
+
+    # Top medications being tracked
+    top_meds_pipeline = [
+        {"$match": {"event": "dose_taken", "ts": {"$gte": month_ago}}},
+        {"$group": {"_id": "$props.medication_name", "taken": {"$sum": 1}}},
+        {"$sort": {"taken": -1}},
+        {"$limit": 15}
+    ]
+    top_meds = await db.analytics.aggregate(top_meds_pipeline).to_list(15)
+
+    # Day of week pattern
+    dow_pipeline = [
+        {"$match": {"event": "dose_taken", "ts": {"$gte": month_ago}}},
+        {"$group": {"_id": "$props.day_of_week", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    dow = await db.analytics.aggregate(dow_pipeline).to_list(7)
+
+    # Missed vs taken vs skipped
+    taken = await db.analytics.count_documents({"event": "dose_taken", "ts": {"$gte": month_ago}})
+    missed = await db.analytics.count_documents({"event": "dose_missed", "ts": {"$gte": month_ago}})
+    skipped = await db.analytics.count_documents({"event": "dose_skipped", "ts": {"$gte": month_ago}})
+
+    # Daily trend last 30 days
+    daily_pipeline = [
+        {"$match": {"event": "dose_taken", "ts": {"$gte": month_ago}}},
+        {"$group": {"_id": "$props.date", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}}
+    ]
+    daily = await db.analytics.aggregate(daily_pipeline).to_list(30)
+
+    days = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"]
+    return {
+        "hourly_pattern": [{"hour": f"{h['_id']}:00", "doses": h["count"]} for h in hourly if h["_id"] is not None],
+        "top_medications": [{"name": m["_id"] or "Unknown", "doses_taken": m["taken"]} for m in top_meds if m["_id"]],
+        "day_of_week": [{"day": days[d["_id"]] if d["_id"] is not None and 0<=d["_id"]<=6 else "?", "count": d["count"]} for d in dow],
+        "dose_outcomes": {"taken": taken, "missed": missed, "skipped": skipped},
+        "daily_trend": [{"date": d["_id"], "taken": d["count"]} for d in daily],
+        "period": "last_30_days",
+    }
+
+@app.get("/admin/analytics/medications")
+async def admin_medication_analytics(_: None = Depends(require_admin)):
+    """All medications in the system with user counts."""
+    pipeline = [
+        {"$match": {"active": True}},
+        {"$group": {
+            "_id": "$name",
+            "users": {"$addToSet": "$user_id"},
+            "total_doses_scheduled": {"$sum": 1},
+        }},
+        {"$project": {"name": "$_id", "user_count": {"$size": "$users"}, "total_doses_scheduled": 1}},
+        {"$sort": {"user_count": -1}},
+        {"$limit": 50}
+    ]
+    meds = await db.medications.aggregate(pipeline).to_list(50)
+    return {"medications": [{"name": m["_id"], "users": m["user_count"]} for m in meds]}
+
+@app.get("/admin/analytics/users/{user_id}")
+async def admin_user_detail(user_id: str, _: None = Depends(require_admin)):
+    """Full profile for a specific user."""
+    profile = await db.profile.find_one({"user_id": user_id}, PROJECTION) or               await db.users.find_one({"id": user_id}, PROJECTION) or {}
+    meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(50)
+    recent_doses = await db.doses.find({"user_id": user_id}).sort("date", -1).limit(30).to_list(30)
+    taken = sum(1 for d in recent_doses if d.get("status") == "taken")
+    missed = sum(1 for d in recent_doses if d.get("status") == "missed")
+    events = await db.analytics.find({"user_id": user_id}).sort("ts", -1).limit(20).to_list(20)
+    sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION) or {}
+    return {
+        "profile": {
+            "name": profile.get("nickname") or profile.get("name", ""),
+            "email": profile.get("email", ""),
+            "gender": profile.get("gender", ""),
+            "year_of_birth": profile.get("year_of_birth"),
+            "location": f"{profile.get('location_city','')} {profile.get('location_state','')}".strip(),
+            "phone": profile.get("phone", ""),
+            "caregiver_phone": profile.get("caregiver_phone", ""),
+        },
+        "subscription": {"plan": sub.get("plan","free"), "expires_at": sub.get("expires_at","").isoformat() if sub.get("expires_at") else None},
+        "medications": [{"name": m.get("name",""), "frequency": m.get("frequency",""), "stock": m.get("stock",0)} for m in meds],
+        "adherence": {"taken": taken, "missed": missed, "rate": round(taken/(taken+missed)*100,1) if (taken+missed)>0 else 0},
+        "recent_events": [{"event": e.get("event",""), "ts": e["ts"].isoformat(), "props": e.get("props",{})} for e in events],
+    }
 
 @app.get("/health")
 async def health_check():
