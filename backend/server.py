@@ -1497,9 +1497,43 @@ async def admin_retention(_: None = Depends(require_admin)):
 # ═══════════════════════════════════════════════════════════
 
 PLAN_FEATURES = {
-    "free":       { "max_medications": 3,   "history_days": 7,   "ai_insights": "weekly",  "caregiver_alerts": 1,   "nearby_results": 5,  "yoga_full": False, "export_data": False, "priority_support": False, "ads_free": False },
-    "premium":    { "max_medications": 999, "history_days": 90,  "ai_insights": "daily",   "caregiver_alerts": 999, "nearby_results": 20, "yoga_full": True,  "export_data": True,  "priority_support": True,  "ads_free": True  },
-    "enterprise": { "max_medications": 999, "history_days": 365, "ai_insights": "realtime","caregiver_alerts": 999, "nearby_results": 50, "yoga_full": True,  "export_data": True,  "priority_support": True,  "ads_free": True, "api_access": True },
+    "free": {
+        "max_medications": 3,        # Today screen — max 3 meds
+        "history_days": 7,           # Progress screen — 7 day history
+        "ai_insights": "weekly",     # Progress screen — weekly AI tip
+        "caregiver_alerts": 1,       # Support screen — 1 caregiver
+        "nearby_results": 5,         # Nearby screen — 5 results
+        "yoga_full": False,          # Treatment tab — basic yoga only
+        "export_data": False,        # History screen — CSV export locked
+        "brand_generic": False,      # Medications tab — brand/generic lookup locked
+        "scanner": False,            # Add medication — scanner locked
+        "max_appointments": 3,       # Appointments screen — 3 max
+    },
+    "premium": {
+        "max_medications": 999,
+        "history_days": 90,
+        "ai_insights": "daily",
+        "caregiver_alerts": 999,
+        "nearby_results": 20,
+        "yoga_full": True,
+        "export_data": True,
+        "brand_generic": True,
+        "scanner": True,
+        "max_appointments": 999,
+    },
+    "enterprise": {
+        "max_medications": 999,
+        "history_days": 365,
+        "ai_insights": "realtime",
+        "caregiver_alerts": 999,
+        "nearby_results": 50,
+        "yoga_full": True,
+        "export_data": True,
+        "brand_generic": True,
+        "scanner": True,
+        "max_appointments": 999,
+        "api_access": True,
+    }
 }
 
 async def get_user_features(user_id: str) -> dict:
