@@ -1,4 +1,12 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request
+from fastapi.responses import StreamingResponse
+import io
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment
+    EXCEL_OK = True
+except ImportError:
+    EXCEL_OK = False
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -152,6 +160,10 @@ class User(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     id_token: str
+    device_model: Optional[str] = None      # e.g. "Samsung Galaxy S23"
+    device_os: Optional[str] = None         # e.g. "Android 14"
+    app_version: Optional[str] = None       # e.g. "1.0.0"
+    device_brand: Optional[str] = None      # e.g. "Samsung"
 
 
 class Profile(BaseModel):
@@ -441,10 +453,19 @@ async def auth_google(payload: GoogleAuthRequest):
 
     token = _create_session_token(user_id)
     user_doc = await db.users.find_one({"id": user_id}, PROJECTION)
-    # Analytics — track login + new signups
-    await track_event("login", user_id)
+    # Analytics — track login + new signups with device info
+    device_props = {
+        "device_model": payload.device_model or "unknown",
+        "device_os": payload.device_os or "unknown",
+        "device_brand": payload.device_brand or "unknown",
+        "app_version": payload.app_version or "unknown",
+        "ip": request.client.host if request.client else "unknown",
+    }
+    await track_event("login", user_id, device_props)
     if not existing_user:
-        await track_event("signup", user_id, {"source": "google"})
+        await track_event("signup", user_id, {"source": "google", **device_props})
+    # Store latest device info on user record
+    await db.users.update_one({"id": user_id}, {"$set": {"last_device": device_props, "last_seen": datetime.now(timezone.utc)}})
     return {"token": token, "user": user_doc}
 
 
@@ -1796,6 +1817,202 @@ async def admin_user_detail(user_id: str, _: None = Depends(require_admin)):
         "adherence": {"taken": taken, "missed": missed, "rate": round(taken/(taken+missed)*100,1) if (taken+missed)>0 else 0},
         "recent_events": [{"event": e.get("event",""), "ts": e["ts"].isoformat(), "props": e.get("props",{})} for e in events],
     }
+
+
+# ── Rich Analytics & Export ───────────────────────────────
+
+@app.get("/admin/analytics/location")
+async def admin_location_analytics(_: None = Depends(require_admin)):
+    """State, city, and area breakdown of users."""
+    # State breakdown
+    state_pipe = [
+        {"$match": {"location_state": {"$exists": True, "$ne": ""}}},
+        {"$group": {"_id": "$location_state", "users": {"$sum": 1}}},
+        {"$sort": {"users": -1}}, {"$limit": 20}
+    ]
+    states = await db.profile.aggregate(state_pipe).to_list(20)
+
+    # City breakdown
+    city_pipe = [
+        {"$match": {"location_city": {"$exists": True, "$ne": ""}}},
+        {"$group": {"_id": {"city": "$location_city", "state": "$location_state"}, "users": {"$sum": 1}}},
+        {"$sort": {"users": -1}}, {"$limit": 30}
+    ]
+    cities = await db.profile.aggregate(city_pipe).to_list(30)
+
+    # Gender breakdown
+    gender_pipe = [
+        {"$group": {"_id": "$gender", "count": {"$sum": 1}}}
+    ]
+    genders = await db.profile.aggregate(gender_pipe).to_list(10)
+
+    # Age bracket breakdown
+    current_year = datetime.now(timezone.utc).year
+    users_with_age = await db.profile.find({"year_of_birth": {"$exists": True}}, PROJECTION).to_list(10000)
+    age_brackets = {"18-24": 0, "25-34": 0, "35-44": 0, "45-54": 0, "55-64": 0, "65+": 0, "Unknown": 0}
+    for u in users_with_age:
+        yob = u.get("year_of_birth")
+        if not yob:
+            age_brackets["Unknown"] += 1
+        else:
+            age = current_year - int(yob)
+            if age < 25: age_brackets["18-24"] += 1
+            elif age < 35: age_brackets["25-34"] += 1
+            elif age < 45: age_brackets["35-44"] += 1
+            elif age < 55: age_brackets["45-54"] += 1
+            elif age < 65: age_brackets["55-64"] += 1
+            else: age_brackets["65+"] += 1
+
+    return {
+        "states": [{"state": s["_id"] or "Unknown", "users": s["users"]} for s in states],
+        "cities": [{"city": c["_id"]["city"] or "Unknown", "state": c["_id"]["state"] or "", "users": c["users"]} for c in cities],
+        "gender": [{"gender": g["_id"] or "Unknown", "count": g["count"]} for g in genders],
+        "age_brackets": [{"bracket": k, "count": v} for k, v in age_brackets.items()],
+    }
+
+@app.get("/admin/analytics/devices")
+async def admin_device_analytics(_: None = Depends(require_admin)):
+    """Device model, OS, brand breakdown."""
+    brand_pipe = [
+        {"$match": {"event": "login", "props.device_brand": {"$exists": True, "$ne": "unknown"}}},
+        {"$group": {"_id": "$props.device_brand", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}, {"$limit": 10}
+    ]
+    brands = await db.analytics.aggregate(brand_pipe).to_list(10)
+
+    os_pipe = [
+        {"$match": {"event": "login", "props.device_os": {"$exists": True, "$ne": "unknown"}}},
+        {"$group": {"_id": "$props.device_os", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}, {"$limit": 10}
+    ]
+    os_versions = await db.analytics.aggregate(os_pipe).to_list(10)
+
+    model_pipe = [
+        {"$match": {"event": "login", "props.device_model": {"$exists": True, "$ne": "unknown"}}},
+        {"$group": {"_id": "$props.device_model", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}, {"$limit": 15}
+    ]
+    models = await db.analytics.aggregate(model_pipe).to_list(15)
+
+    version_pipe = [
+        {"$match": {"event": "login", "props.app_version": {"$exists": True, "$ne": "unknown"}}},
+        {"$group": {"_id": "$props.app_version", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}}
+    ]
+    app_versions = await db.analytics.aggregate(version_pipe).to_list(10)
+
+    return {
+        "brands": [{"brand": b["_id"], "count": b["count"]} for b in brands],
+        "os_versions": [{"os": o["_id"], "count": o["count"]} for o in os_versions],
+        "models": [{"model": m["_id"], "count": m["count"]} for m in models],
+        "app_versions": [{"version": v["_id"], "count": v["count"]} for v in app_versions],
+    }
+
+@app.get("/admin/export/users")
+async def admin_export_users(_: None = Depends(require_admin)):
+    """Export all users to Excel with full analytics."""
+    if not EXCEL_OK:
+        raise HTTPException(500, "Excel export not available — openpyxl not installed")
+
+    wb = openpyxl.Workbook()
+
+    # ── Sheet 1: Users ──────────────────────────────────────
+    ws = wb.active
+    ws.title = "Users"
+    header_fill = PatternFill("solid", fgColor="9184d9")
+    header_font = Font(bold=True, color="FFFFFF")
+    headers = ["Name", "Email", "Gender", "Birth Year", "Age", "City", "State", "Phone", "Caregiver", "Plan", "Medications", "Doses Taken", "Doses Missed", "Adherence %", "Last Login", "Joined"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    profiles = await db.profile.find({}).to_list(10000)
+    current_year = datetime.now(timezone.utc).year
+    for row_idx, u in enumerate(profiles, 2):
+        uid = u.get("user_id") or u.get("id", "")
+        yob = u.get("year_of_birth")
+        age = current_year - int(yob) if yob else ""
+        med_count = await db.medications.count_documents({"user_id": uid, "active": True})
+        taken = await db.doses.count_documents({"user_id": uid, "status": "taken"})
+        missed = await db.doses.count_documents({"user_id": uid, "status": "missed"})
+        adh = round(taken / (taken + missed) * 100, 1) if (taken + missed) > 0 else ""
+        sub = await db.subscriptions.find_one({"user_id": uid}) or {}
+        last_login = await db.audit_log.find_one({"user_id": uid}, sort=[("ts", -1)])
+        row_data = [
+            u.get("nickname") or u.get("name", ""),
+            u.get("email", ""),
+            u.get("gender", ""),
+            yob, age,
+            u.get("location_city", ""),
+            u.get("location_state", ""),
+            u.get("phone", ""),
+            u.get("caregiver_phone", ""),
+            sub.get("plan", "free"),
+            med_count, taken, missed, adh,
+            last_login["ts"].strftime("%Y-%m-%d %H:%M") if last_login else "",
+            u.get("created_at", ""),
+        ]
+        for col, val in enumerate(row_data, 1):
+            ws.cell(row=row_idx, column=col, value=val)
+
+    for col in ws.columns:
+        ws.column_dimensions[col[0].column_letter].width = 16
+
+    # ── Sheet 2: Medications ───────────────────────────────
+    ws2 = wb.create_sheet("Medications")
+    med_headers = ["Medication Name", "Users Tracking", "Total Doses Scheduled"]
+    for col, h in enumerate(med_headers, 1):
+        cell = ws2.cell(row=1, column=col, value=h)
+        cell.fill = header_fill; cell.font = header_font
+    pipe = [{"$match": {"active": True}}, {"$group": {"_id": "$name", "users": {"$addToSet": "$user_id"}, "count": {"$sum": 1}}}, {"$sort": {"count": -1}}]
+    meds = await db.medications.aggregate(pipe).to_list(500)
+    for i, m in enumerate(meds, 2):
+        ws2.cell(row=i, column=1, value=m["_id"])
+        ws2.cell(row=i, column=2, value=len(m["users"]))
+        ws2.cell(row=i, column=3, value=m["count"])
+
+    # ── Sheet 3: Location ──────────────────────────────────
+    ws3 = wb.create_sheet("Location")
+    loc_headers = ["City", "State", "Users"]
+    for col, h in enumerate(loc_headers, 1):
+        cell = ws3.cell(row=1, column=col, value=h)
+        cell.fill = header_fill; cell.font = header_font
+    city_pipe = [{"$group": {"_id": {"city": "$location_city", "state": "$location_state"}, "users": {"$sum": 1}}}, {"$sort": {"users": -1}}]
+    cities = await db.profile.aggregate(city_pipe).to_list(500)
+    for i, c in enumerate(cities, 2):
+        ws3.cell(row=i, column=1, value=c["_id"].get("city", "Unknown"))
+        ws3.cell(row=i, column=2, value=c["_id"].get("state", "Unknown"))
+        ws3.cell(row=i, column=3, value=c["users"])
+
+    # ── Sheet 4: Dose Analytics ────────────────────────────
+    ws4 = wb.create_sheet("Dose Analytics")
+    dose_headers = ["Date", "Medication", "User ID", "Status", "Hour", "Day of Week"]
+    for col, h in enumerate(dose_headers, 1):
+        cell = ws4.cell(row=1, column=col, value=h)
+        cell.fill = header_fill; cell.font = header_font
+    events = await db.analytics.find({"event": {"$in": ["dose_taken", "dose_missed", "dose_skipped"]}}).sort("ts", -1).limit(5000).to_list(5000)
+    for i, e in enumerate(events, 2):
+        props = e.get("props", {})
+        ws4.cell(row=i, column=1, value=e["ts"].strftime("%Y-%m-%d") if e.get("ts") else "")
+        ws4.cell(row=i, column=2, value=props.get("medication_name", ""))
+        ws4.cell(row=i, column=3, value=e.get("user_id", ""))
+        ws4.cell(row=i, column=4, value=e.get("event", "").replace("dose_", ""))
+        ws4.cell(row=i, column=5, value=props.get("hour", ""))
+        ws4.cell(row=i, column=6, value=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][props["day_of_week"]] if isinstance(props.get("day_of_week"), int) else "")
+
+    # Stream as download
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = f"pillcare_export_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 
 @app.get("/health")
 async def health_check():
