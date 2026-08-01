@@ -24,7 +24,7 @@ export default function Progress() {
 
   const loadServer = useCallback(async () => {
     try {
-      const [a, h] = await Promise.all([api.adherence(7), api.doseHistory(30)]);
+      const [a, h] = await Promise.all([api.adherence(30), api.doseHistory(30)]);
       setAdh(a); setHistory(h || []);
       set(K.adherence, a); set(K.history, h || []);
     } catch {}
@@ -34,6 +34,8 @@ export default function Progress() {
   const onRefresh = async () => { setRefreshing(true); await loadServer(); setRefreshing(false); };
 
   const daily = adh?.daily || [], avg = adh?.average || 0, streak = adh?.streak || 0;
+  // Show last 30 days in graph
+  const graphDays = daily.slice(-30);
   const maxP = Math.max(...daily.map((d: any) => d.pct || 0), 1);
   const totalTaken = daily.reduce((s: number, d: any) => s + (d.taken || 0), 0);
 
@@ -68,22 +70,52 @@ export default function Progress() {
         {tab === "charts" && (<>
           <View style={s.card}>
             <View style={s.cH}>
-              <View><Text style={s.cT}>Weekly Adherence</Text><Text style={s.cS}>Last 7 days</Text></View>
+              <View><Text style={s.cT}>30-Day Adherence</Text><Text style={s.cS}>Tap a bar to see that day</Text></View>
               <View style={{ alignItems: "flex-end" }}>
                 <Text style={[s.big, { color: avg >= 80 ? "#4ade80" : avg >= 50 ? "#e5b285" : "#e58585" }]}>{avg}%</Text>
                 <Text style={s.bigS}>{avg >= 80 ? "on track" : avg >= 50 ? "improving" : "needs work"}</Text>
               </View>
             </View>
-            <View style={s.bars}>
-              {daily.length > 0 ? daily.map((d: any, i: number) => {
-                const h = Math.max((d.pct / maxP) * 64, 4), isT = i === daily.length - 1;
-                return (<View key={i} style={s.bCol}><View style={{ flex: 1, justifyContent: "flex-end" }}><View style={[s.bar, { height: h, backgroundColor: barColor(d.pct, isT) }]} /></View><Text style={s.bL}>{DL[i]}</Text></View>);
-              }) : DL.map((l, i) => (<View key={i} style={s.bCol}><View style={{ flex: 1, justifyContent: "flex-end" }}><View style={[s.bar, { height: 16, backgroundColor: "rgba(233,233,237,0.1)" }]} /></View><Text style={s.bL}>{l}</Text></View>))}
-            </View>
-            {/* Legend */}
-            <View style={{ flexDirection: "row", gap: 12, justifyContent: "center" }}>
-              {[["#4ade80", "≥80%"], ["#e5b285", "50-79%"], ["#e58585", "<50%"]].map(([c, l]) => (
-                <View key={l} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: c }} /><Text style={{ fontSize: 9, color: TM }}>{l}</Text></View>
+            {graphDays.length === 0 ? (
+              <View style={{ alignItems: "center", paddingVertical: 24, gap: 8 }}>
+                <Ionicons name="bar-chart-outline" size={32} color={TM} />
+                <Text style={{ fontSize: 13, color: TM, textAlign: "center" }}>Start marking doses as taken{"\n"}to see your progress chart here</Text>
+              </View>
+            ) : (
+              <View style={[s.bars, { height: 100, gap: 2 }]}>
+                {graphDays.map((d: any, i: number) => {
+                  const h = Math.max((d.pct / 100) * 80, d.total > 0 ? 4 : 2);
+                  const isT = i === graphDays.length - 1;
+                  const dayLabel = d.date ? new Date(d.date + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric" }) : "";
+                  return (
+                    <View key={i} style={[s.bCol, { gap: 2 }]}>
+                      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+                        {d.total > 0 && (
+                          <Text style={{ fontSize: 7, color: TM, textAlign: "center", marginBottom: 2 }}>
+                            {d.pct > 0 ? `${d.pct}%` : ""}
+                          </Text>
+                        )}
+                        <View style={[s.bar, {
+                          height: h,
+                          backgroundColor: isT ? AC : barColor(d.pct, false),
+                          borderTopLeftRadius: 3,
+                          borderTopRightRadius: 3,
+                        }]} />
+                      </View>
+                      {(i === 0 || i === Math.floor(graphDays.length / 2) || i === graphDays.length - 1) ? (
+                        <Text style={[s.bL, { fontSize: 7 }]}>{dayLabel}</Text>
+                      ) : <Text style={s.bL}></Text>}
+                    </View>
+                  );
+                })}
+              </View>
+            )}
+            <View style={{ flexDirection: "row", gap: 12, justifyContent: "center", marginTop: 8 }}>
+              {[["#4ade80", "Good (≥80%)"], ["#e5b285", "OK (50-79%)"], ["#e58585", "Low (<50%)"]].map(([c, l]) => (
+                <View key={l} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: c }} />
+                  <Text style={{ fontSize: 9, color: TM }}>{l}</Text>
+                </View>
               ))}
             </View>
           </View>
@@ -101,17 +133,19 @@ export default function Progress() {
               </View>
               <TouchableOpacity style={s.conBtn} onPress={async () => {
                 // Try to open Health Connect permissions for this app directly
-                const hcIntent = "intent://androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS#Intent;scheme=androidx.health;package=com.google.android.apps.healthdata;end";
-                const playUrl = "https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata";
                 const { Linking } = require("react-native");
+                // Open Health Connect app permissions page for PillCare directly
+                const hcDeepLink = "healthconnect://androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS?package=com.pillcare.reminder";
+                const hcFallback = "android.settings.APP_SETTINGS";
                 try {
-                  const canOpen = await Linking.canOpenURL("package:com.google.android.apps.healthdata");
-                  if (canOpen) {
+                  await Linking.openURL(hcDeepLink);
+                } catch {
+                  try {
                     await Linking.openURL("package:com.google.android.apps.healthdata");
-                  } else {
-                    await Linking.openURL(playUrl);
+                  } catch {
+                    await Linking.openURL("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata");
                   }
-                } catch { await Linking.openURL(playUrl); }
+                }
               }}><Text style={s.conT}>Connect</Text></TouchableOpacity>
             </View>
             <Text style={[s.cS, { fontStyle: "italic" }]}>After installing Health Connect, open it → Apps → PillCare → Allow permissions</Text>

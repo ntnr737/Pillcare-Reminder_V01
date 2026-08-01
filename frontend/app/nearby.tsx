@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Linking, RefreshControl
+  ActivityIndicator, Linking, RefreshControl, Modal
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -114,8 +114,11 @@ export default function Nearby() {
   useEffect(() => { search(); }, [type, radius]);
 
   const openMaps = (p: Place) => {
+    // Directions via Google Maps (external) — only when user explicitly taps Directions
     Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}&travelmode=walking`);
   };
+
+  const [selectedPlace, setSelectedPlace] = useState<Place | null>(null);
 
   const openGoogleMaps = () => {
     if (!coords) return;
@@ -186,7 +189,7 @@ export default function Nearby() {
         )}
 
         {places.map(p => (
-          <View key={p.id} style={s.card}>
+          <TouchableOpacity key={p.id} style={s.card} onPress={() => setSelectedPlace(p)}>
             <View style={s.cardTop}>
               <View style={[s.placeIco, { backgroundColor: `${cfg.color}18` }]}>
                 <Ionicons name={cfg.icon as any} size={18} color={cfg.color} />
@@ -214,27 +217,23 @@ export default function Nearby() {
                   )}
                 </View>
               </View>
+              <Ionicons name="chevron-forward" size={14} color={TM} />
             </View>
 
             <View style={s.cardActions}>
               {p.phone ? (
                 <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.08)" }]}
-                  onPress={() => Linking.openURL(`tel:${p.phone}`)}>
+                  onPress={e => { e.stopPropagation(); Linking.openURL(`tel:${(p.phone||"").replace(/[\s\-()]/g,"")}`); }}>
                   <Ionicons name="call" size={14} color="#4ade80" />
-                  <Text style={[s.actionTx, { color: "#4ade80" }]}>Call</Text>
+                  <Text style={[s.actionTx, { color: "#4ade80" }]}>Call now</Text>
                 </TouchableOpacity>
               ) : null}
-              <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={() => openMaps(p)}>
+              <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
                 <Ionicons name="navigate" size={14} color={A3} />
                 <Text style={s.actionTx}>Directions</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={s.actionBtn}
-                onPress={() => Linking.openURL(`https://www.google.com/maps/search/${encodeURIComponent(p.name)}/@${p.lat},${p.lng},17z`)}>
-                <Ionicons name="map" size={14} color={TM} />
-                <Text style={[s.actionTx, { color: TM }]}>View</Text>
-              </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
 
         {places.length > 0 && (
@@ -247,6 +246,74 @@ export default function Nearby() {
         )}
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      {/* Place detail sheet — shown inside app, no redirect */}
+      <Modal visible={!!selectedPlace} transparent animationType="slide" onRequestClose={() => setSelectedPlace(null)}>
+        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
+          <View style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 16, borderWidth: 1, borderColor: BD }}>
+            {selectedPlace && (<>
+              <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+                <View style={{ flex: 1, gap: 4 }}>
+                  <View style={[s.placeIco, { backgroundColor: `${cfg.color}18`, marginBottom: 8 }]}>
+                    <Ionicons name={cfg.icon as any} size={20} color={cfg.color} />
+                  </View>
+                  <Text style={{ fontSize: 17, fontWeight: "700", color: TX }}>{selectedPlace.name}</Text>
+                  <Text style={{ fontSize: 13, color: TM }}>{selectedPlace.address}</Text>
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                    <View style={s.distBadge}>
+                      <Ionicons name="navigate-outline" size={10} color={A3} />
+                      <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>{fmt(selectedPlace.distance)}</Text>
+                    </View>
+                    {selectedPlace.rating ? (
+                      <View style={s.distBadge}>
+                        <Ionicons name="star" size={10} color="#fbbf24" />
+                        <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "600" }}>{selectedPlace.rating.toFixed(1)}</Text>
+                      </View>
+                    ) : null}
+                    {selectedPlace.open !== undefined ? (
+                      <View style={[s.distBadge, { backgroundColor: selectedPlace.open ? "rgba(74,222,128,0.1)" : "rgba(229,133,133,0.1)" }]}>
+                        <Text style={{ fontSize: 11, color: selectedPlace.open ? "#4ade80" : "#e58585", fontWeight: "600" }}>
+                          {selectedPlace.open ? "Open now" : "Closed"}
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setSelectedPlace(null)} style={{ padding: 4 }}>
+                  <Ionicons name="close" size={22} color={TM} />
+                </TouchableOpacity>
+              </View>
+
+              {/* Action buttons — all inside the app */}
+              {selectedPlace.phone ? (
+                <TouchableOpacity style={[s.actionBtn, { paddingVertical: 14, justifyContent: "center", borderColor: "rgba(74,222,128,0.4)", backgroundColor: "rgba(74,222,128,0.1)" }]}
+                  onPress={() => Linking.openURL(`tel:${(selectedPlace.phone||"").replace(/[\s\-()]/g,"")}`)}> 
+                  <Ionicons name="call" size={18} color="#4ade80" />
+                  <Text style={[s.actionTx, { color: "#4ade80", fontSize: 15 }]}>Call {selectedPlace.phone}</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={[s.card, { padding: 12, alignItems: "center" }]}>
+                  <Text style={{ fontSize: 13, color: TM }}>No phone number available for this location</Text>
+                </View>
+              )}
+
+              <View style={{ flexDirection: "row", gap: 10 }}>
+                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center" }]}
+                  onPress={() => openMaps(selectedPlace)}>
+                  <Ionicons name="navigate" size={16} color={A3} />
+                  <Text style={[s.actionTx, { fontSize: 13 }]}>Walking directions</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center" }]}
+                  onPress={() => Linking.openURL(`https://www.google.com/maps/search/${encodeURIComponent(selectedPlace.name)}/@${selectedPlace.lat},${selectedPlace.lng},17z`)}>
+                  <Ionicons name="car-outline" size={16} color={A3} />
+                  <Text style={[s.actionTx, { fontSize: 13 }]}>Driving route</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ height: 8 }} />
+            </>)}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

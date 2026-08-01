@@ -60,7 +60,8 @@
         }
       ],
       "@react-native-google-signin/google-signin",
-      "./health-connect-plugin"
+      "./health-connect-plugin",
+      "./sound-plugin"
     ],
     "experiments": {
       "typedRoutes": true
