@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -102,7 +102,7 @@ export default function Treatment() {
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "🧘 Time for your Yoga Routine",
-          body: yoga?.title ?  : "Open PillCare to start your daily yoga practice",
+          body: yoga?.title ? `Today: ${yoga.title}` : "Open PillCare to start your daily yoga practice",
           data: { isYogaReminder: true },
           sound: "default",
         },
