@@ -1,4 +1,5 @@
 import { getStoredToken } from "./auth";
+import type { Features } from "./features";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
@@ -52,4 +53,6 @@ export const api = {
   caregiverAlert: (message: string, medication_name?: string) => req<any>("/caregiver/alert", { method: "POST", body: JSON.stringify({ message, medication_name }) }),
   caregiverLog: () => req<any[]>("/caregiver/log"),
   exportCsvUrl: () => `${BASE}/api/export/csv`,
+  getFeatures: () => req<Features>("/me/features"),
+  getSubscription: () => req<any>("/me/subscription"),
 };
