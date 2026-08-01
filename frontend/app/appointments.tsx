@@ -55,8 +55,11 @@ export default function Appointments() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const save = async () => {
-    if (!editing.doctor_name.trim() || !editing.date || !editing.time) {
-      Alert.alert("Required", "Doctor name, date and time are required."); return;
+    if (!editing.doctor_name.trim()) {
+      Alert.alert("Required", "Doctor name is required."); return;
+    }
+    if (!editing.date || !editing.time) {
+      Alert.alert("Required", "Please select a date and time for the appointment."); return;
     }
     setSaving(true);
     try {
@@ -116,7 +119,7 @@ export default function Appointments() {
       </View>
       <View style={s.cardActions}>
         {appt.phone ? (
-          <TouchableOpacity style={s.actionBtn} onPress={() => Linking.openURL(`tel:${appt.phone}`)}>
+          <TouchableOpacity style={s.actionBtn} onPress={() => Linking.openURL(`tel:${(appt.phone || '').replace(/[\s\-()]/g, '')}`)}>
             <Ionicons name="call" size={13} color="#4ade80" />
             <Text style={[s.actionTx, { color: "#4ade80" }]}>Call</Text>
           </TouchableOpacity>

@@ -16,7 +16,8 @@ export async function flushQueue(): Promise<void> {
       try {
         switch (item.type) {
           case "doseStatus":
-            await api.setDoseStatus(item.payload.id, item.payload.status);
+            // Pass taken_at so the server records the correct local time
+            await api.setDoseStatus(item.payload.id, item.payload.status, item.payload.taken_at);
             break;
           case "measurement":
             await api.createMeasurement(item.payload);

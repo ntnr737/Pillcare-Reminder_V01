@@ -405,9 +405,14 @@ async def _adherence_for_user(user_id: str, days: int = 7):
         daily.append({"date": d, "total": total, "taken": taken, "pct": pct})
     for entry in reversed(daily):
         if entry["total"] > 0 and entry["pct"] >= 80:
+            # Good adherence day — count it
             if streak_ongoing:
                 streak += 1
+        elif entry["total"] == 0:
+            # No doses scheduled — don't break streak (rest day)
+            pass
         else:
+            # Had doses but poor adherence — stop streak
             streak_ongoing = False
     avg = round(sum(d["pct"] for d in daily) / len(daily)) if daily else 0
     return {"daily": daily, "streak": streak, "average": avg}

@@ -79,6 +79,7 @@ export default function Today() {
   const [profile, setProfile] = useState<any>(null);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [streak, setStreak] = useState(0);
+  const [yogaReminderTime, setYogaReminderTime] = useState<string | null>(null);
   const [adherenceMap, setAdherenceMap] = useState<Record<string, number>>({});
   const [sheet, setSheet] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
@@ -89,26 +90,40 @@ export default function Today() {
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
 
-  // Load from local cache instantly
+  // Load from local cache instantly — always shown even offline
   useEffect(() => {
     get<any[]>(K.doses(date)).then(d => { if (d) setDoses(d); });
     get<any>(K.profile).then(p => { if (p) setProfile(p); });
-    get<number>(K.streak).then(s => { if (s) setStreak(s); });
+    get<number>(K.streak).then(s => { if (s !== null) setStreak(s); });
     get<any>(K.aiMsg).then(a => { if (a) setAiMsg(a); });
+    get<string>("yoga_reminder_time").then(t => { if (t) setYogaReminderTime(t); });
   }, [date]);
 
   const fetchServer = useCallback(async () => {
     try {
       const [d, p, a] = await Promise.all([api.listDoses(date), api.getProfile(), api.adherence(30)]);
-      const dss = d || [];
-      if (pending.current.size === 0) setDoses(dss);
+      const serverDoses = d || [];
+      // Merge: always keep local "taken" status — never let server overwrite a locally marked taken dose
+      setDoses(prev => {
+        const localTaken = new Set(prev.filter(d => d.status === "taken").map(d => d.id));
+        const merged = serverDoses.map((sd: any) => {
+          if (localTaken.has(sd.id)) {
+            const local = prev.find(ld => ld.id === sd.id);
+            return local || sd; // keep local version with taken_at
+          }
+          return sd;
+        });
+        set(K.doses(date), merged);
+        return merged;
+      });
       setProfile(p); setStreak(a?.streak || 0);
-      set(K.doses(date), dss); set(K.profile, p); set(K.streak, a?.streak || 0);
-      // Build adherence map for calendar coloring
+      set(K.profile, p); set(K.streak, a?.streak || 0);
       const map: Record<string, number> = {};
       for (const day of (a?.daily || [])) map[day.date] = day.pct;
       setAdherenceMap(map);
-    } catch {}
+    } catch {
+      // Offline — keep showing cached data, don't clear anything
+    }
   }, [date]);
 
   const fetchAI = useCallback(async () => {
@@ -137,8 +152,8 @@ export default function Today() {
     if (cur === "taken") return;
     // Determine next status
     const nx = action || (cur === "pending" ? "taken" : "missed");
-    // Log actual timestamp when marking taken
-    const takenAt = nx === "taken" ? new Date().toISOString() : undefined;
+    // Use local time for taken_at — not UTC
+    const takenAt = nx === "taken" ? new Date().toLocaleString("sv-SE", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }).replace(" ", "T") : undefined;
     pending.current.add(id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setDoses(prev => {
@@ -223,6 +238,13 @@ export default function Today() {
           </View>
         )}
 
+        {yogaReminderTime && (
+          <TouchableOpacity style={[s.aiCard, { borderColor: "rgba(145,132,217,0.25)" }]} onPress={() => router.push("/(tabs)/treatment")}>
+            <View style={s.aiH}><Ionicons name="leaf-outline" size={10} color={A3} /><Text style={s.aiK}>YOGA REMINDER</Text></View>
+            <Text style={s.aiTx}>Daily yoga routine scheduled at {yogaReminderTime}. Tap to view your routine.</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Dose sections */}
         {total === 0 ? (
           <View style={s.empty}>
@@ -256,7 +278,7 @@ export default function Today() {
                         <View style={[s.bTk, { opacity: 1 }]}>
                           <Ionicons name="checkmark-circle" size={13} color={A3} style={{ marginRight: 3 }} />
                           <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>
-                            {"Taken" + (dose.taken_at ? " " + new Date(dose.taken_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "")}
+                            {"Taken" + (dose.taken_at ? " " + new Date(dose.taken_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) : "")}
                           </Text>
                         </View>
                       );

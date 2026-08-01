@@ -101,7 +101,7 @@ export default function Treatment() {
       }
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: "🧘 Time for your Yoga Routine",
+          title: "Time for your Yoga Routine",
           body: yoga?.title ? `Today: ${yoga.title}` : "Open PillCare to start your daily yoga practice",
           data: { isYogaReminder: true },
           sound: "default",
@@ -115,11 +115,13 @@ export default function Treatment() {
       });
       const h = String(time.getHours()).padStart(2, "0");
       const m = String(time.getMinutes()).padStart(2, "0");
+      // Persist yoga time so Today screen can show it
+      await set("yoga_reminder_time", `${h}:${m}`);
       setYogaTime(time);
       setYogaTimePicker(false);
       setYogaOpen(false);
-      Alert.alert("Yoga Reminder Set ✓", );
-    } catch (e) {
+      Alert.alert("Yoga Reminder Set", `Daily reminder set for ${h}:${m}`);
+    } catch {
       Alert.alert("Error", "Could not set yoga reminder. Please try again.");
     }
   };
