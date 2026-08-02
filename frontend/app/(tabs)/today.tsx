@@ -6,6 +6,8 @@ import { useFocusEffect, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { getFeatures } from "@/src/lib/features";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
@@ -86,6 +88,17 @@ export default function Today() {
   const [refreshing, setRefreshing] = useState(false);
   const router = useRouter();
   const [addMed, setAddMed] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+
+  const handleAddMedication = () => {
+    const features = getFeatures();
+    const uniqueMeds = new Set(doses.map((d: any) => d.medication_id)).size;
+    if (uniqueMeds >= features.max_medications) {
+      setShowUpgrade(true);
+      return;
+    }
+    setAddMed(true);
+  };
   const [actionSheet, setActionSheet] = useState(false);
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
@@ -380,7 +393,7 @@ export default function Today() {
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
             <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>What would you like to do?</Text>
             {[
-              { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); setAddMed(true); } },
+              { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); handleAddMedication(); } },
               { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
               { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
               { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
@@ -402,6 +415,12 @@ export default function Today() {
         </TouchableOpacity>
       </Modal>
 
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Medication limit reached"
+        description={`Free plan supports up to ${getFeatures().max_medications} medications. Upgrade to Premium for unlimited.`}
+      />
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
     </SafeAreaView>
   );

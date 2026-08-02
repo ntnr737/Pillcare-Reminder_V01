@@ -5,11 +5,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
+import { getFeatures } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { useState } from "react";
 
 export default function History() {
   const router = useRouter();
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const downloadCsv = async () => {
+    if (!getFeatures().export_data) { setShowUpgrade(true); return; }
     const url = api.exportCsvUrl();
     Linking.openURL(url);
   };
@@ -43,6 +48,12 @@ export default function History() {
           <Text style={styles.bullet}>• Mood entries with score and note</Text>
         </Card>
       </ScrollView>
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="CSV data export"
+        description="Export your full dose history as a CSV file. Available on Premium plan."
+      />
     </SafeAreaView>
   );
 }
