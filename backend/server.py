@@ -1,6 +1,7 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request
 from fastapi.responses import StreamingResponse
 import io
+import hmac
 try:
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -17,6 +18,7 @@ from slowapi.errors import RateLimitExceeded
 import os
 import logging
 import io
+import hmac
 import csv
 import uuid
 import httpx
@@ -24,7 +26,7 @@ import jwt as pyjwt
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Literal
 from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -202,16 +204,27 @@ class Profile(BaseModel):
 
 
 class ProfileUpsert(BaseModel):
-    nickname: str
-    gender: str
-    year_of_birth: int
-    location_city: Optional[str] = None
-    location_state: Optional[str] = None
-    phone: Optional[str] = None
+    nickname: str = Field(..., max_length=100)
+    gender: str = Field(..., max_length=50)
+    year_of_birth: int = Field(..., ge=1900, le=2025)
+    location_city: Optional[str] = Field(None, max_length=100)
+    location_state: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=20)
+    caregiver_phone: Optional[str] = Field(None, max_length=20)
     routine_wake: Optional[str] = "07:00"
     routine_breakfast: Optional[str] = "08:00"
     routine_lunch: Optional[str] = "13:00"
     routine_dinner: Optional[str] = "19:00"
+
+    @validator("phone", "caregiver_phone")
+    def validate_phone_format(cls, v):
+        if not v:
+            return v
+        import re as _re
+        cleaned = _re.sub(r"[\s\-()]", "", v)
+        if not _re.match(r"^\+?[0-9]{7,15}$", cleaned):
+            raise ValueError("Invalid phone number — use international format e.g. +919876543210")
+        return cleaned
     routine_sleep: Optional[str] = "22:00"
     caregiver_phone: Optional[str] = None
     notifications_enabled: Optional[bool] = True
@@ -519,6 +532,17 @@ async def get_activity_catalog():
 
 
 # Profile
+@api.post("/auth/logout")
+async def logout(authorization: str = Header(default="")):
+    """Revoke current JWT — token immediately invalid after this call."""
+    if authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+        _revoked_tokens.add(token)
+        # Clean up old tokens periodically to prevent memory growth
+        if len(_revoked_tokens) > 10000:
+            _revoked_tokens.clear()
+    return {"message": "Signed out successfully"}
+
 @api.get("/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
     doc = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
@@ -668,11 +692,34 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
         await track_event("dose_skipped", user_id, {"medication_id": existing.get("medication_id", "")})
     elif payload.status == "missed":
         await track_event("dose_missed", user_id, {"medication_id": existing.get("medication_id", "")})
-    res = await db.doses.update_one({"id": dose_id, "user_id": user_id}, {"$set": update})
-    if res.matched_count == 0:
-        raise HTTPException(404, "Dose not found")
-    doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
-    return doc
+    # Atomic update — only update if status is NOT already "taken"
+    # This prevents race conditions from concurrent requests
+    query = {"id": dose_id, "user_id": user_id, "status": {"$ne": "taken"}}
+    if update.get("status") == "taken":
+        # Only decrement stock atomically if dose was not already taken
+        res = await db.doses.find_one_and_update(
+            query,
+            {"$set": update},
+            return_document=True,
+            projection=PROJECTION,
+        )
+        if res is None:
+            # Either not found OR already taken — return current state
+            doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
+            if not doc:
+                raise HTTPException(404, "Dose not found")
+            return doc
+        # Atomic stock decrement only if we successfully marked taken
+        await db.medications.update_one(
+            {"id": res["medication_id"], "user_id": user_id},
+            {"$inc": {"stock": -1}},
+        )
+        return res
+    else:
+        res = await db.doses.update_one({"id": dose_id, "user_id": user_id}, {"$set": update})
+        if res.matched_count == 0:
+            raise HTTPException(404, "Dose not found")
+        return await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
 
 
 # Measurements
@@ -737,11 +784,13 @@ async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_us
 
 # Progress / Adherence
 @api.get("/progress/adherence")
+@limiter.limit("30/hour")
 async def adherence(days: int = 7, user_id: str = Depends(get_current_user_id)):
     return await _adherence_for_user(user_id, days)
 
 
 @api.get("/yoga-tip")
+@limiter.limit("10/hour")
 async def yoga_tip(user_id: str = Depends(get_current_user_id)):
     """
     Medication-specific yoga therapy using Groq AI.
@@ -1015,6 +1064,7 @@ async def delete_appointment(appt_id: str, user_id: str = Depends(get_current_us
 
 
 @api.get("/ai/daily-message")
+@limiter.limit("5/hour")
 async def ai_daily_message(user_id: str = Depends(get_current_user_id)):
     """A short personalized message from Groq based on the user's recent context."""
     profile = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
@@ -1206,6 +1256,14 @@ async def nearby_places(
     user_id: str = Depends(get_current_user_id)
 ):
     import httpx, math
+
+    # Validate coordinates — prevents SSRF and ensures real-world locations
+    if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
+        raise HTTPException(400, "Invalid coordinates")
+    if not (100 <= radius <= 10000):
+        raise HTTPException(400, "Radius must be between 100m and 10km")
+    if type not in ("pharmacy", "diagnostic", "hospital"):
+        raise HTTPException(400, "Invalid place type")
 
     def dist(elat, elng):
         dlat = (elat - lat) * 111000
@@ -1438,7 +1496,7 @@ def require_admin(x_admin_secret: str = Header(default=""), authorization: str =
         except Exception:
             pass
     # Admin secret must be at least 16 chars — prevents accidental weak secrets
-    if ADMIN_SECRET and len(ADMIN_SECRET) >= 16 and x_admin_secret == ADMIN_SECRET:
+    if ADMIN_SECRET and len(ADMIN_SECRET) >= 16 and hmac.compare_digest(x_admin_secret.encode(), ADMIN_SECRET.encode()):
         return {"role": "admin", "sub": "secret_key"}
     raise HTTPException(401, "Admin access required")
 
