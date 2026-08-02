@@ -8,8 +8,8 @@ import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
-import { get, set, K, enqueue } from "@/src/lib/store";
-import { flushQueue, backgroundRefresh } from "@/src/lib/sync";
+import { get, set, K } from "@/src/lib/store";
+import { flushQueue, backgroundRefresh, recordTaken, mergeDoses, enqueueWrite } from "@/src/lib/sync";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", TD = "rgba(233,233,237,0.3)",
@@ -101,28 +101,21 @@ export default function Today() {
 
   const fetchServer = useCallback(async () => {
     try {
+      // ALWAYS flush write queue first — server must receive our taken status before we fetch
+      await flushQueue();
       const [d, p, a] = await Promise.all([api.listDoses(date), api.getProfile(), api.adherence(30)]);
       const serverDoses = d || [];
-      // Merge: always keep local "taken" status — never let server overwrite a locally marked taken dose
-      setDoses(prev => {
-        const localTaken = new Set(prev.filter(d => d.status === "taken").map(d => d.id));
-        const merged = serverDoses.map((sd: any) => {
-          if (localTaken.has(sd.id)) {
-            const local = prev.find(ld => ld.id === sd.id);
-            return local || sd; // keep local version with taken_at
-          }
-          return sd;
-        });
-        set(K.doses(date), merged);
-        return merged;
-      });
+      // Merge with persistent local taken registry — local ALWAYS wins over server "pending"
+      const merged = await mergeDoses(serverDoses, date);
+      setDoses(merged);
+      set(K.doses(date), merged);
       setProfile(p); setStreak(a?.streak || 0);
       set(K.profile, p); set(K.streak, a?.streak || 0);
       const map: Record<string, number> = {};
       for (const day of (a?.daily || [])) map[day.date] = day.pct;
       setAdherenceMap(map);
     } catch {
-      // Offline — keep showing cached data, don't clear anything
+      // Offline — keep showing cached data, never clear anything
     }
   }, [date]);
 
@@ -152,19 +145,32 @@ export default function Today() {
     if (cur === "taken") return;
     // Determine next status
     const nx = action || (cur === "pending" ? "taken" : "missed");
-    // Use local time for taken_at — not UTC
-    const takenAt = nx === "taken" ? new Date().toLocaleString("sv-SE", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }).replace(" ", "T") : undefined;
+    // Always use device local time — not UTC
+    const takenAt = nx === "taken"
+      ? new Date().toLocaleString("sv-SE", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }).replace(" ", "T")
+      : undefined;
     pending.current.add(id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // 1. Update UI immediately
     setDoses(prev => {
       const u = prev.map(d => d.id === id ? { ...d, status: nx, taken_at: takenAt } : d);
       set(K.doses(date), u);
       return u;
     });
-    enqueue("doseStatus", { id, status: nx, taken_at: takenAt });
+    // 2. Persist taken status permanently in AsyncStorage
+    //    This survives server data overwrites — even if offline for days
+    if (nx === "taken" && takenAt) {
+      recordTaken(id, date, takenAt);
+    }
+    // 3. Add to write queue for guaranteed delivery when online
+    await enqueueWrite("doseStatus", { id, status: nx, taken_at: takenAt });
+    // 4. Try to push immediately if online (non-blocking)
     api.setDoseStatus(id, nx, takenAt)
       .then(() => { pending.current.delete(id); })
-      .catch(() => { pending.current.delete(id); });
+      .catch(() => {
+        // Offline — write queue will retry when reconnected
+        pending.current.delete(id);
+      });
     resyncReminders().catch(() => {});
   }, [date]);
 
