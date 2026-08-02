@@ -108,7 +108,12 @@ async def _groq_chat(system_message: str, user_text: str, image_base64: str = No
         data = resp.json()
         return data["choices"][0]["message"]["content"]
 
-app = FastAPI(title="PillCare API")
+app = FastAPI(
+    title="PillCare API",
+    docs_url=None,      # Disable /docs in production
+    redoc_url=None,     # Disable /redoc in production
+    openapi_url=None,   # Disable /openapi.json in production
+)
 api = APIRouter(prefix="/api")
 
 # Rate limiter
@@ -2070,12 +2075,31 @@ async def health_check():
 
 app.include_router(api)
 
+@app.middleware("http")
+async def security_headers(request, call_next):
+    """Add security headers to every response."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    # Remove server identification
+    response.headers.pop("server", None)
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        "https://pillcare.in",
+        "https://www.pillcare.in",
+        # Expo dev — remove before production
+        "http://localhost:8081",
+        "http://localhost:19006",
+    ],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "x-admin-secret"],
 )
 
 
