@@ -46,7 +46,7 @@ APP_TIMEZONE = ZoneInfo("Asia/Kolkata")
 # ---------- Auth config ----------
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_DAYS = 90
+JWT_EXPIRY_DAYS = 30
 GOOGLE_WEB_CLIENT_ID = os.environ.get("GOOGLE_WEB_CLIENT_ID", "")
 GOOGLE_IOS_CLIENT_ID = os.environ.get("GOOGLE_IOS_CLIENT_ID", "")
 GOOGLE_ANDROID_CLIENT_ID = os.environ.get("GOOGLE_ANDROID_CLIENT_ID", "")
@@ -117,7 +117,19 @@ app = FastAPI(
 api = APIRouter(prefix="/api")
 
 # Rate limiter
-limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+def get_real_ip(request: Request) -> str:
+    """Get actual client IP — ignores X-Forwarded-For spoofing.
+    Cloud Run sets X-Appengine-User-Ip which cannot be spoofed by clients."""
+    # Cloud Run trusted header (set by Google infrastructure, not the client)
+    real_ip = request.headers.get("x-appengine-user-ip")
+    if real_ip:
+        return real_ip
+    # Fall back to direct connection IP
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+limiter = Limiter(key_func=get_real_ip, default_limits=["200/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -333,7 +345,10 @@ async def get_current_user_id(authorization: str = Header(None)) -> str:
     if not JWT_SECRET:
         raise HTTPException(500, "Server auth is not configured")
     try:
-        payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        # algorithms list must be explicit — prevents alg=none attack
+        payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        if payload.get("alg", "HS256") == "none":
+            raise ValueError("alg=none not allowed")
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(401, "Session expired, please sign in again")
     except pyjwt.InvalidTokenError:
@@ -1269,7 +1284,10 @@ async def nearby_places(
 # since this endpoint has no per-user auth context of its own (called by a cron job).
 @api.post("/caregiver/daily-report")
 async def caregiver_daily_report(secret: str = ""):
-    if SCHEDULER_SECRET and secret != SCHEDULER_SECRET:
+    # Always require secret — if env var not set, block ALL calls (fail secure)
+    if not SCHEDULER_SECRET:
+        raise HTTPException(503, "Scheduler not configured")
+    if secret != SCHEDULER_SECRET:
         raise HTTPException(403, "Invalid scheduler secret")
 
     all_profiles = await db.profile.find({"caregiver_phone": {"$exists": True, "$ne": None}}, PROJECTION).to_list(1000)
@@ -1411,12 +1429,16 @@ def require_admin(x_admin_secret: str = Header(default=""), authorization: str =
     if authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
-            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            # algorithms list must be explicit — prevents alg=none attack
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+            if payload.get("alg", "HS256") == "none":
+                raise ValueError("alg=none not allowed")
             if payload.get("role") == "admin":
                 return payload
         except Exception:
             pass
-    if ADMIN_SECRET and x_admin_secret == ADMIN_SECRET:
+    # Admin secret must be at least 16 chars — prevents accidental weak secrets
+    if ADMIN_SECRET and len(ADMIN_SECRET) >= 16 and x_admin_secret == ADMIN_SECRET:
         return {"role": "admin", "sub": "secret_key"}
     raise HTTPException(401, "Admin access required")
 
@@ -2074,6 +2096,14 @@ async def health_check():
     return {"status": "ok" if db_ok else "degraded", "db": "connected" if db_ok else "error", "v": "1.0.0"}
 
 app.include_router(api)
+
+@app.middleware("http")
+async def request_size_limit(request: Request, call_next):
+    """Block suspiciously large requests — prevents payload bombs."""
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > 1_000_000:  # 1MB max
+        return Response("Payload too large", status_code=413)
+    return await call_next(request)
 
 @app.middleware("http")
 async def security_headers(request, call_next):
