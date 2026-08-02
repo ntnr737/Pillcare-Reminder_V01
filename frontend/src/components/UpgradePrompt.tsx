@@ -24,7 +24,8 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
           <Text style={s.desc}>{description}</Text>
           <View style={s.planBox}>
             <Text style={s.planTitle}>Premium plan</Text>
-            <Text style={s.planPrice}>₹99 / month</Text>
+            <Text style={s.planPrice}>Coming soon</Text>
+            <Text style={{ fontSize: 12, color: TM, marginBottom: 8 }}>Premium features are launching shortly. You will be notified when available.</Text>
             <View style={s.perks}>
               {["Unlimited medications","90-day history","Full yoga library","Daily AI insights","CSV data export","20 nearby results","Unlimited caregivers"].map(p => (
                 <View key={p} style={s.perkRow}>
