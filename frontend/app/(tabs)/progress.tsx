@@ -60,7 +60,14 @@ export default function Progress() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.hdr}><Text style={s.title}>Progress</Text><TouchableOpacity style={s.iBtn}><Ionicons name="share-outline" size={15} color={TX} /></TouchableOpacity></View>
+      <View style={s.hdr}>
+          <Text style={s.title}>Progress</Text>
+          <TouchableOpacity style={[s.iBtn, {flexDirection:"row",alignItems:"center",gap:5,paddingHorizontal:10,borderRadius:10,backgroundColor:"rgba(145,132,217,0.1)"}]}
+            onPress={() => { const {api} = require("@/src/lib/api"); Linking.openURL(api.exportCsvUrl()); }}>
+            <Ionicons name="download-outline" size={14} color={AC} />
+            <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>Export</Text>
+          </TouchableOpacity>
+        </View>
       <View style={s.seg}>
         <TouchableOpacity style={[s.segO, tab === "charts" && s.segOn]} onPress={() => setTab("charts")}><Text style={[s.segT, tab === "charts" && s.segTOn]}>Charts</Text></TouchableOpacity>
         <TouchableOpacity style={[s.segO, tab === "list" && s.segOn]} onPress={() => setTab("list")}><Text style={[s.segT, tab === "list" && s.segTOn]}>List</Text></TouchableOpacity>

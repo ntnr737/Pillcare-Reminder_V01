@@ -239,10 +239,20 @@ export default function Today() {
         )}
 
         {yogaReminderTime && (
-          <TouchableOpacity style={[s.aiCard, { borderColor: "rgba(145,132,217,0.25)" }]} onPress={() => router.push("/(tabs)/treatment")}>
-            <View style={s.aiH}><Ionicons name="leaf-outline" size={10} color={A3} /><Text style={s.aiK}>YOGA REMINDER</Text></View>
-            <Text style={s.aiTx}>Daily yoga routine scheduled at {yogaReminderTime}. Tap to view your routine.</Text>
-          </TouchableOpacity>
+          <View style={[s.aiCard, { borderColor: "rgba(145,132,217,0.25)" }]}>
+            <View style={s.aiH}><Ionicons name="leaf-outline" size={10} color={A3} /><Text style={s.aiK}>YOGA REMINDER — {yogaReminderTime} daily</Text></View>
+            <Text style={s.aiTx}>Daily yoga routine is scheduled. Tap below to start or mark as done.</Text>
+            <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+              <TouchableOpacity style={{ flex:1, backgroundColor:"rgba(145,132,217,0.12)", borderRadius:8, paddingVertical:8, alignItems:"center" }}
+                onPress={() => router.push("/(tabs)/treatment")}>
+                <Text style={{ fontSize:12, color:A3, fontWeight:"700" }}>View routine</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex:1, backgroundColor:"rgba(74,222,128,0.1)", borderRadius:8, paddingVertical:8, alignItems:"center" }}
+                onPress={async () => { const { set } = await import("@/src/lib/store"); await set("yoga_done_" + date, true); setYogaReminderTime(null); }}>
+                <Text style={{ fontSize:12, color:"#4ade80", fontWeight:"700" }}>Mark done for today</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         )}
 
         {/* Dose sections */}

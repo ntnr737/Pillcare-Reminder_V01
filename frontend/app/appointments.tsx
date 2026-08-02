@@ -63,13 +63,38 @@ export default function Appointments() {
     }
     setSaving(true);
     try {
+      let saved;
       if (editing.id) {
-        await api.updateAppointment(editing.id, editing);
+        saved = await api.updateAppointment(editing.id, editing);
       } else {
-        await api.createAppointment(editing);
+        saved = await api.createAppointment(editing);
+      }
+      // Schedule appointment notification
+      if (editing.date && editing.time && editing.reminder !== "none") {
+        const [y, mo, d] = editing.date.split("-").map(Number);
+        const [h, min] = editing.time.split(":").map(Number);
+        const apptDate = new Date(y, mo - 1, d, h, min, 0);
+        const offsets: Record<string, number> = { "1_day": 86400000, "2_hours": 7200000 };
+        const offset = offsets[editing.reminder || "1_day"] || 86400000;
+        const notifTime = new Date(apptDate.getTime() - offset);
+        if (notifTime > new Date()) {
+          const { scheduleNotificationAsync, SchedulableTriggerInputTypes } = await import("expo-notifications");
+          await scheduleNotificationAsync({
+            content: {
+              title: `Appointment reminder`,
+              body: `Dr. ${editing.doctor_name}${editing.specialty ? " — " + editing.specialty : ""} at ${editing.time}`,
+              data: { appointmentId: saved?.id || "" },
+              sound: "pillcare_reminder",
+            },
+            trigger: { type: SchedulableTriggerInputTypes.DATE, date: notifTime, channelId: "medication-reminders" },
+          });
+        }
       }
       setModal(false); setEditing(BLANK); load();
-    } catch { Alert.alert("Error", "Could not save appointment."); }
+    } catch (e: any) {
+      console.error("Appointment save error:", e);
+      Alert.alert("Error", "Could not save appointment. Please check your connection and try again.");
+    }
     finally { setSaving(false); }
   };
 

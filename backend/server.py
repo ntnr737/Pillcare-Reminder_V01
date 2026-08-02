@@ -501,7 +501,12 @@ async def get_activity_catalog():
 # Profile
 @api.get("/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
-    doc = await db.profile.find_one({"id": user_id}, PROJECTION)
+    doc = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
+    # Always include email from users collection
+    if not doc.get("email"):
+        user = await db.users.find_one({"id": user_id}, PROJECTION) or {}
+        doc["email"] = user.get("email", "")
+        doc["id"] = user_id
     return doc
 
 
@@ -1180,44 +1185,79 @@ async def nearby_places(
     type: str = "pharmacy",
     user_id: str = Depends(get_current_user_id)
 ):
-    """Find nearby pharmacies, diagnostic labs, hospitals using Google Places API.
-    Frontend falls back to OpenStreetMap automatically if key not set."""
-    if not GOOGLE_PLACES_KEY:
-        return {"places": [], "source": "no_key"}
-    keyword_map = {
-        "pharmacy":   ("pharmacy",  "medical store chemist pharmacy"),
-        "diagnostic": ("hospital",  "diagnostic lab pathology blood test"),
-        "hospital":   ("hospital",  "hospital clinic nursing home"),
-    }
-    gtype, keyword = keyword_map.get(type, ("pharmacy", "medical store"))
-    url = (
-        f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-        f"?location={lat},{lng}&radius={radius}&type={gtype}"
-        f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
-    )
+    import httpx, math
+
+    def dist(elat, elng):
+        dlat = (elat - lat) * 111000
+        dlng = (elng - lng) * 111000 * math.cos(lat * math.pi / 180)
+        return int(math.sqrt(dlat**2 + dlng**2))
+
+    # Try Google Places first
+    if GOOGLE_PLACES_KEY:
+        keyword_map = {
+            "pharmacy":   ("pharmacy",  "medical store chemist pharmacy"),
+            "diagnostic": ("hospital",  "diagnostic lab pathology blood test"),
+            "hospital":   ("hospital",  "hospital clinic nursing home"),
+        }
+        gtype, keyword = keyword_map.get(type, ("pharmacy", "medical store"))
+        url = (
+            f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+            f"?location={lat},{lng}&radius={radius}&type={gtype}"
+            f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.get(url)
+            data = r.json()
+            if data.get("status") == "OK" and data.get("results"):
+                places = []
+                for p in (data.get("results") or [])[:15]:
+                    loc = p.get("geometry", {}).get("location", {})
+                    elat, elng = loc.get("lat", 0), loc.get("lng", 0)
+                    places.append({
+                        "id": p.get("place_id", ""), "name": p.get("name", ""),
+                        "address": p.get("vicinity", ""), "distance": dist(elat, elng),
+                        "rating": p.get("rating"), "lat": elat, "lng": elng,
+                        "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
+                    })
+                places.sort(key=lambda x: x["distance"])
+                return {"places": places, "source": "google"}
+        except Exception as e:
+            logger.warning(f"Google Places failed: {e}")
+
+    # Fallback to OpenStreetMap Overpass API (free, no key needed)
     try:
-        import httpx, math
-        async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(url)
+        osm_tag_map = {
+            "pharmacy":   'amenity"="pharmacy',
+            "diagnostic": 'amenity"="clinic][healthcare"="laboratory',
+            "hospital":   'amenity"="hospital',
+        }
+        tag = osm_tag_map.get(type, 'amenity"="pharmacy')
+        deg = radius / 111000
+        bbox = f"{lat-deg},{lng-deg},{lat+deg},{lng+deg}"
+        overpass_url = "https://overpass-api.de/api/interpreter"
+        query = f'[out:json][timeout:10];node["{tag}"]({bbox});out body 20;'
+        async with httpx.AsyncClient(timeout=12) as client:
+            r = await client.post(overpass_url, data={"data": query})
         data = r.json()
         places = []
-        for p in (data.get("results") or [])[:15]:
-            loc = p.get("geometry", {}).get("location", {})
-            elat, elng = loc.get("lat", 0), loc.get("lng", 0)
-            dlat = (elat - lat) * 111000
-            dlng = (elng - lng) * 111000 * math.cos(lat * math.pi / 180)
-            dist = int(math.sqrt(dlat**2 + dlng**2))
+        for el in (data.get("elements") or [])[:15]:
+            tags = el.get("tags", {})
+            elat, elng = el.get("lat", 0), el.get("lon", 0)
+            name = tags.get("name") or tags.get("name:en") or tags.get("amenity", type).title()
+            addr_parts = [tags.get("addr:housenumber", ""), tags.get("addr:street", ""), tags.get("addr:city", "")]
+            address = ", ".join(p for p in addr_parts if p) or tags.get("addr:full", "")
             places.append({
-                "id": p.get("place_id", ""), "name": p.get("name", ""),
-                "address": p.get("vicinity", ""), "distance": dist,
-                "rating": p.get("rating"), "lat": elat, "lng": elng,
-                "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
+                "id": str(el.get("id", "")), "name": name,
+                "address": address, "distance": dist(elat, elng),
+                "rating": None, "lat": elat, "lng": elng,
+                "open": None, "phone": tags.get("phone") or tags.get("contact:phone"),
             })
         places.sort(key=lambda x: x["distance"])
-        return {"places": places, "source": "google"}
+        return {"places": places, "source": "osm"}
     except Exception as e:
-        logger.warning(f"Google Places failed: {e}")
-        return {"places": [], "source": "error"}
+        logger.warning(f"OSM fallback also failed: {e}")
+        return {"places": [], "source": "error", "message": "Could not fetch nearby places. Check your connection."}
 
 # Daily caregiver report - triggered by Cloud Scheduler at 10 PM IST.
 # Runs for every registered user who has a caregiver phone number set,

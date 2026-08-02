@@ -89,9 +89,16 @@ export default function Support() {
   const [savingCg, setSavingCg] = useState(false);
   const [so, setSo] = useState(false);
   const [caregiverConnected, setCaregiverConnected] = useState(false);
+  const [connectedNumber, setConnectedNumber] = useState("");
 
   useEffect(() => {
-    api.getProfile().then(p => { if (p?.caregiver_phone) setCaregiverConnected(true); }).catch(() => {});
+    api.getProfile().then(p => {
+      if (p?.caregiver_phone) {
+        setCaregiverConnected(true);
+        setConnectedNumber(p.caregiver_phone);
+        setCaregiverPhone(p.caregiver_phone);
+      }
+    }).catch(() => {});
   }, []);
 
   const openEmergency = async () => {
@@ -116,8 +123,9 @@ export default function Support() {
     try {
       const profile = await api.getProfile();
       await api.upsertProfile({ ...profile, caregiver_phone: caregiverPhone.trim() });
-      Alert.alert("Connected!", "Your caregiver will now receive WhatsApp alerts when you miss a dose.");
+      Alert.alert("Connected!", `Caregiver number ${caregiverPhone.trim()} saved. They will receive WhatsApp alerts when you miss a dose.`);
       setCaregiverConnected(true);
+      setConnectedNumber(caregiverPhone.trim());
       setCaregiverOpen(false);
     } catch {
       Alert.alert("Error", "Could not save caregiver number. Please try again.");
@@ -181,6 +189,9 @@ export default function Support() {
               {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
               <Text style={[s.connectTx, caregiverConnected && {color:"#4ade80"}]}>{caregiverConnected ? "Connected" : "Connect"}</Text>
             </TouchableOpacity>
+            {caregiverConnected && connectedNumber ? (
+              <Text style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>Number: {connectedNumber}</Text>
+            ) : null}
           </View>
         </View>
 
