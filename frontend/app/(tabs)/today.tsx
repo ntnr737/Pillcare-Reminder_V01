@@ -8,6 +8,7 @@ import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { getFeatures } from "@/src/lib/features";
+import { track } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
@@ -142,6 +143,7 @@ export default function Today() {
   }, []);
 
   useFocusEffect(useCallback(() => {
+    track("app_open");
     flushQueue();
     backgroundRefresh(fetchServer);
     backgroundRefresh(fetchAI);
@@ -164,6 +166,7 @@ export default function Today() {
       : undefined;
     pending.current.add(id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    track(nx === "taken" ? "dose_taken" : nx === "missed" ? "dose_missed" : "dose_skipped", { date });
     // 1. Update UI immediately
     setDoses(prev => {
       const u = prev.map(d => d.id === id ? { ...d, status: nx, taken_at: takenAt } : d);

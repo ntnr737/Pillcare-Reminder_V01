@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import * as Location from "expo-location";
 import { signOut } from "@/src/lib/auth";
 import { api } from "@/src/lib/api";
+import { track } from "@/src/lib/analytics";
 import { useEffect } from "react";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
@@ -123,6 +124,7 @@ export default function Support() {
     setSavingCg(true);
     try {
       await api.updateCaregiver(caregiverPhone.trim());
+      track("caregiver_connected");
       Alert.alert("Connected!", `Caregiver number ${caregiverPhone.trim()} saved. They will receive WhatsApp alerts when you miss a dose.`);
       setCaregiverConnected(true);
       setConnectedNumber(caregiverPhone.trim());
@@ -192,6 +194,30 @@ export default function Support() {
           </View>
         </View>
 
+        {/* DATA & EXPORT */}
+        <Text style={s.secL}>YOUR DATA</Text>
+        <TouchableOpacity style={s.card} onPress={async () => {
+          const { getFeatures } = await import("@/src/lib/features");
+          const { api } = await import("@/src/lib/api");
+          const { Linking } = await import("react-native");
+          track("export_tapped");
+          if (!getFeatures().export_data) {
+            Alert.alert("Premium feature", "CSV export is available on the Premium plan. Upgrade to download your complete health history.");
+            return;
+          }
+          track("export_completed");
+          Linking.openURL(api.exportCsvUrl());
+        }}>
+          <View style={s.cRow}>
+            <View style={s.cIco}><Ionicons name="download-outline" size={17} color={A3} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cT}>Export my health data</Text>
+              <Text style={s.cS}>Download all your doses, measurements and activities as CSV</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={13} color={TM} />
+          </View>
+        </TouchableOpacity>
+
         {/* PRIVACY & LEGAL */}
         <Text style={s.secL}>PRIVACY & LEGAL</Text>
         {[
@@ -210,7 +236,7 @@ export default function Support() {
         ))}
 
         {/* FAQs */}
-        <Text style={s.secL}>FREQUENTLY ASKED</Text>
+        <Text style={s.secL} onPress={() => track("faq_opened")}>FREQUENTLY ASKED</Text>
         {faqs.map((f, i) => (
           <TouchableOpacity key={i} style={s.card} onPress={() => setOpenFaq(openFaq === i ? null : i)}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>

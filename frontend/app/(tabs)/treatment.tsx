@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
+import { track } from "@/src/lib/analytics";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
@@ -29,6 +30,7 @@ export default function Treatment() {
   const [mood, setMood] = useState<any[]>([]);
   const [yoga, setYoga] = useState<any>(null);
   const [yogaOpen, setYogaOpen] = useState(false);
+  const trackYogaView = () => track("yoga_viewed");
   const [yogaTimePicker, setYogaTimePicker] = useState(false);
   const [yogaTime, setYogaTime] = useState<Date | null>(null);
   const [addMed, setAddMed] = useState(false);

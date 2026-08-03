@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl } from "react-native";
+import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
+import { getFeatures } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed", TM = "rgba(233,233,237,0.55)",
   AC = "#9184d9", A3 = "#a7a1db", AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
@@ -15,6 +17,7 @@ export default function Progress() {
   const [adh, setAdh] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [tab, setTab] = useState<"charts" | "list">("charts");
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
@@ -65,9 +68,21 @@ export default function Progress() {
       <View style={s.hdr}>
           <Text style={s.title}>Progress</Text>
           <TouchableOpacity style={[s.iBtn, {flexDirection:"row",alignItems:"center",gap:5,paddingHorizontal:10,borderRadius:10,backgroundColor:"rgba(145,132,217,0.1)"}]}
-            onPress={() => { const {api} = require("@/src/lib/api"); Linking.openURL(api.exportCsvUrl()); }}>
+            onPress={async () => {
+              const features = getFeatures();
+              if (!features.export_data) {
+                setShowUpgrade(true);
+                return;
+              }
+              try {
+                const url = api.exportCsvUrl();
+                await Linking.openURL(url);
+              } catch {
+                Alert.alert("Export failed", "Please check your connection and try again.");
+              }
+            }}>
             <Ionicons name="download-outline" size={14} color={AC} />
-            <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>Export</Text>
+            <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>Export CSV</Text>
           </TouchableOpacity>
         </View>
       <View style={s.seg}>
@@ -204,6 +219,12 @@ export default function Progress() {
           ))}
         </>)}
       </ScrollView>
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Data export"
+        description="Export your complete dose history, measurements and activities as CSV. Available on Premium plan."
+      />
     </SafeAreaView>
   );
 }

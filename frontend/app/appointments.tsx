@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { api } from "@/src/lib/api";
+import { track } from "@/src/lib/analytics";
 import * as Notifications from "expo-notifications";
 import { useFocusEffect } from "expo-router";
 import { get, set } from "@/src/lib/store";
@@ -94,7 +95,7 @@ export default function Appointments() {
           });
         }
       }
-      setModal(false); setEditing(BLANK); load();
+      track("appointment_saved"); setModal(false); setEditing(BLANK); load();
     } catch (e: any) {
       const msg = e?.message || "Unknown error";
       console.error("Appointment save error:", msg);

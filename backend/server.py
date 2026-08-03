@@ -1967,6 +1967,16 @@ async def admin_user_detail(user_id: str, _: None = Depends(require_admin)):
     }
 
 
+@api.post("/analytics/track")
+async def track_user_event(payload: dict, user_id: str = Depends(get_current_user_id)):
+    """Frontend event tracking — every user action stored for admin dashboard."""
+    event = payload.get("event", "")
+    props = payload.get("props", {})
+    if not event or len(event) > 100:
+        return {"ok": False}
+    await track_event(event, user_id, props)
+    return {"ok": True}
+
 # ── Rich Analytics & Export ───────────────────────────────
 
 @app.get("/admin/analytics/location")
