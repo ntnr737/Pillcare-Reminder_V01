@@ -1665,18 +1665,40 @@ async def admin_retention(_: None = Depends(require_admin)):
 # SUBSCRIPTION & FEATURE FLAG SYSTEM
 # ═══════════════════════════════════════════════════════════
 
+# ── Pricing ────────────────────────────────────────────────────
+# Free:    ₹0/month  — basic tracking, 3 meds
+# Basic:   ₹30/month — most features, 5 meds, good for daily users
+# Premium: ₹99/month — everything unlimited, daily AI, scanner
+# Enterprise: custom — for clinics and hospitals
+
 PLAN_FEATURES = {
     "free": {
-        "max_medications": 3,        # Today screen — max 3 meds
-        "history_days": 7,           # Progress screen — 7 day history
-        "ai_insights": "weekly",     # Progress screen — weekly AI tip
-        "caregiver_alerts": 1,       # Support screen — 1 caregiver
-        "nearby_results": 5,         # Nearby screen — 5 results
-        "yoga_full": False,          # Treatment tab — basic yoga only
-        "export_data": False,        # History screen — CSV export locked
-        "brand_generic": False,      # Medications tab — brand/generic lookup locked
-        "scanner": False,            # Add medication — scanner locked
-        "max_appointments": 3,       # Appointments screen — 3 max
+        "max_medications": 3,
+        "history_days": 7,
+        "ai_insights": "none",
+        "caregiver_alerts": 1,
+        "nearby_results": 5,
+        "yoga_full": False,
+        "export_data": False,
+        "brand_generic": False,
+        "scanner": False,
+        "max_appointments": 2,
+        "price_inr": 0,
+        "plan_label": "Free",
+    },
+    "basic": {
+        "max_medications": 5,
+        "history_days": 30,
+        "ai_insights": "weekly",
+        "caregiver_alerts": 3,
+        "nearby_results": 10,
+        "yoga_full": True,
+        "export_data": True,
+        "brand_generic": False,
+        "scanner": False,
+        "max_appointments": 10,
+        "price_inr": 30,
+        "plan_label": "Basic",
     },
     "premium": {
         "max_medications": 999,
@@ -1689,11 +1711,13 @@ PLAN_FEATURES = {
         "brand_generic": True,
         "scanner": True,
         "max_appointments": 999,
+        "price_inr": 99,
+        "plan_label": "Premium",
     },
     "enterprise": {
         "max_medications": 999,
         "history_days": 365,
-        "ai_insights": "realtime",
+        "ai_insights": "daily",
         "caregiver_alerts": 999,
         "nearby_results": 50,
         "yoga_full": True,
@@ -1702,6 +1726,8 @@ PLAN_FEATURES = {
         "scanner": True,
         "max_appointments": 999,
         "api_access": True,
+        "price_inr": 0,
+        "plan_label": "Enterprise",
     }
 }
 
