@@ -54,5 +54,6 @@ export const api = {
   caregiverLog: () => req<any[]>("/caregiver/log"),
   exportCsvUrl: () => `${BASE}/api/export/csv`,
   getFeatures: () => req<Features>("/me/features"),
+  updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
   getSubscription: () => req<any>("/me/subscription"),
 };

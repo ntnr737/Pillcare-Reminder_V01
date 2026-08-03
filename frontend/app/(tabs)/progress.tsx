@@ -35,7 +35,9 @@ export default function Progress() {
 
   const daily = adh?.daily || [], avg = adh?.average || 0, streak = adh?.streak || 0;
   // Show last 30 days in graph
-  const graphDays = daily.slice(-30);
+  // Show last 30 days — pad with empty days if fewer available
+  const graphDays = daily.length > 0 ? daily.slice(-30) : [];
+  const hasAnyDoses = graphDays.some((d: any) => d.total > 0);
   const maxP = Math.max(...daily.map((d: any) => d.pct || 0), 1);
   const totalTaken = daily.reduce((s: number, d: any) => s + (d.taken || 0), 0);
 

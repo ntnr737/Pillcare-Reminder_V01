@@ -95,9 +95,11 @@ export default function Support() {
     api.getProfile().then(p => {
       if (p?.caregiver_phone) {
         setCaregiverConnected(true);
-        setConnectedNumber(p.caregiver_phone);
-        setCaregiverPhone(p.caregiver_phone);
+        const num = p.caregiver_phone;
+        setConnectedNumber(num);
+        setCaregiverPhone(num);
       }
+      // Also populate email if needed
     }).catch(() => {});
   }, []);
 
@@ -121,8 +123,7 @@ export default function Support() {
     if (!caregiverPhone.trim()) return;
     setSavingCg(true);
     try {
-      const profile = await api.getProfile();
-      await api.upsertProfile({ ...profile, caregiver_phone: caregiverPhone.trim() });
+      await api.updateCaregiver(caregiverPhone.trim());
       Alert.alert("Connected!", `Caregiver number ${caregiverPhone.trim()} saved. They will receive WhatsApp alerts when you miss a dose.`);
       setCaregiverConnected(true);
       setConnectedNumber(caregiverPhone.trim());

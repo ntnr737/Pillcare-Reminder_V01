@@ -204,9 +204,9 @@ class Profile(BaseModel):
 
 
 class ProfileUpsert(BaseModel):
-    nickname: str = Field(..., max_length=100)
-    gender: str = Field(..., max_length=50)
-    year_of_birth: int = Field(..., ge=1900, le=2025)
+    nickname: Optional[str] = Field(None, max_length=100)
+    gender: Optional[str] = Field(None, max_length=50)
+    year_of_birth: Optional[int] = Field(None, ge=1900, le=2025)
     location_city: Optional[str] = Field(None, max_length=100)
     location_state: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
@@ -542,6 +542,26 @@ async def logout(authorization: str = Header(default="")):
         if len(_revoked_tokens) > 10000:
             _revoked_tokens.clear()
     return {"message": "Signed out successfully"}
+
+@api.post("/profile/caregiver")
+async def update_caregiver(
+    payload: dict,
+    user_id: str = Depends(get_current_user_id)
+):
+    """Update only caregiver phone — no other profile fields required."""
+    import re as _re
+    phone = payload.get("caregiver_phone", "").strip()
+    if phone:
+        cleaned = _re.sub(r"[\s\-()]", "", phone)
+        if not _re.match(r"^\+?[0-9]{7,15}$", cleaned):
+            raise HTTPException(400, "ERR_4001: Invalid phone number format. Use international format e.g. +919876543210")
+        phone = cleaned
+    await db.profile.update_one(
+        {"id": user_id},
+        {"$set": {"caregiver_phone": phone}},
+        upsert=True
+    )
+    return {"caregiver_phone": phone, "message": "Caregiver number saved"}
 
 @api.get("/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
@@ -2141,6 +2161,10 @@ async def admin_export_users(_: None = Depends(require_admin)):
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
+def err(code: int, msg: str, detail: str = ""):
+    """Standard error response with error code for frontend debugging."""
+    return HTTPException(code, f"ERR_{code}: {msg}" + (f" — {detail}" if detail else ""))
 
 @app.get("/health")
 async def health_check():

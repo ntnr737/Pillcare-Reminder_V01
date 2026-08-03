@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { api } from "@/src/lib/api";
+import * as Notifications from "expo-notifications";
 import { useFocusEffect } from "expo-router";
 import { get, set } from "@/src/lib/store";
 
@@ -78,22 +79,26 @@ export default function Appointments() {
         const offset = offsets[editing.reminder || "1_day"] || 86400000;
         const notifTime = new Date(apptDate.getTime() - offset);
         if (notifTime > new Date()) {
-          const { scheduleNotificationAsync, SchedulableTriggerInputTypes } = await import("expo-notifications");
-          await scheduleNotificationAsync({
+          await Notifications.scheduleNotificationAsync({
             content: {
-              title: `Appointment reminder`,
+              title: "Appointment reminder",
               body: `Dr. ${editing.doctor_name}${editing.specialty ? " — " + editing.specialty : ""} at ${editing.time}`,
               data: { appointmentId: saved?.id || "" },
               sound: "pillcare_reminder",
             },
-            trigger: { type: SchedulableTriggerInputTypes.DATE, date: notifTime, channelId: "medication-reminders" },
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: notifTime,
+              channelId: "medication-reminders",
+            },
           });
         }
       }
       setModal(false); setEditing(BLANK); load();
     } catch (e: any) {
-      console.error("Appointment save error:", e);
-      Alert.alert("Error", "Could not save appointment. Please check your connection and try again.");
+      const msg = e?.message || "Unknown error";
+      console.error("Appointment save error:", msg);
+      Alert.alert("ERR_3001", `Could not save appointment. ${msg.includes("ERR_") ? msg : "Check your connection and try again."}`);
     }
     finally { setSaving(false); }
   };
@@ -144,7 +149,7 @@ export default function Appointments() {
       </View>
       <View style={s.cardActions}>
         {appt.phone ? (
-          <TouchableOpacity style={s.actionBtn} onPress={() => Linking.openURL(`tel:${(appt.phone || '').replace(/[\s\-()]/g, '')}`)}>
+          <TouchableOpacity style={s.actionBtn} onPress={() => { const ph = (appt.phone||'').replace(/[\s\-()]/g,''); if(ph) Linking.openURL(`tel:${ph}`); }}>
             <Ionicons name="call" size={13} color="#4ade80" />
             <Text style={[s.actionTx, { color: "#4ade80" }]}>Call</Text>
           </TouchableOpacity>
