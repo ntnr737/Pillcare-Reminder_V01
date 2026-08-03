@@ -588,6 +588,14 @@ async def list_medications(active: Optional[bool] = None, user_id: str = Depends
     if active is not None:
         q["active"] = active
     items = await db.medications.find(q, PROJECTION).to_list(1000)
+    # Fix negative stock — clamp to 0, never show negative to user
+    for item in items:
+        if item.get("stock", 0) < 0:
+            item["stock"] = 0
+            await db.medications.update_one(
+                {"id": item["id"], "user_id": user_id},
+                {"$set": {"stock": 0}}
+            )
     return items
 
 
@@ -662,64 +670,49 @@ async def list_doses(date_str: str, user_id: str = Depends(get_current_user_id))
 
 @api.post("/doses/{dose_id}/status")
 async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: str = Depends(get_current_user_id)):
-    # LOCK: once taken, cannot be changed
-    existing = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
-    if not existing:
-        raise HTTPException(404, "Dose not found")
-    if existing.get("status") == "taken":
-        return existing  # taken is permanent, ignore
     update = {"status": payload.status}
     if payload.status == "taken":
         taken_at = payload.taken_at or datetime.now(timezone.utc)
         update["taken_at"] = taken_at
+
+    # Single atomic operation — only succeeds if dose is NOT already taken
+    # This prevents double-decrement from duplicate requests (offline sync + direct call)
+    query = {"id": dose_id, "user_id": user_id, "status": {"$ne": "taken"}}
+    res = await db.doses.find_one_and_update(
+        query, {"$set": update}, return_document=True, projection=PROJECTION
+    )
+
+    if res is None:
+        # Dose already taken OR not found — return current state, do NOT decrement stock
+        doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
+        if not doc:
+            raise HTTPException(404, "Dose not found")
+        return doc  # Idempotent — already taken, ignore duplicate request
+
+    if payload.status == "taken":
+        # Decrement stock only once, only on first successful take
+        # Never goes below 0
         await db.medications.update_one(
-            {"id": existing["medication_id"], "user_id": user_id},
+            {"id": res["medication_id"], "user_id": user_id, "stock": {"$gt": 0}},
             {"$inc": {"stock": -1}},
         )
-        # Get medication details for analytics
-        med = await db.medications.find_one({"id": existing["medication_id"]}, PROJECTION) or {}
+        med = await db.medications.find_one({"id": res["medication_id"]}, PROJECTION) or {}
         now = datetime.now(timezone.utc)
         await track_event("dose_taken", user_id, {
             "medication_name": med.get("name", ""),
-            "medication_id": existing.get("medication_id", ""),
-            "dose_time": existing.get("scheduled_time", ""),
+            "medication_id": res.get("medication_id", ""),
+            "dose_time": res.get("scheduled_time", ""),
             "hour": now.hour,
             "day_of_week": now.weekday(),
             "date": now.strftime("%Y-%m-%d"),
-            "section": existing.get("section", ""),
+            "section": res.get("section", ""),
         })
     elif payload.status == "skipped":
-        await track_event("dose_skipped", user_id, {"medication_id": existing.get("medication_id", "")})
+        await track_event("dose_skipped", user_id, {"medication_id": res.get("medication_id", "")})
     elif payload.status == "missed":
-        await track_event("dose_missed", user_id, {"medication_id": existing.get("medication_id", "")})
-    # Atomic update — only update if status is NOT already "taken"
-    # This prevents race conditions from concurrent requests
-    query = {"id": dose_id, "user_id": user_id, "status": {"$ne": "taken"}}
-    if update.get("status") == "taken":
-        # Only decrement stock atomically if dose was not already taken
-        res = await db.doses.find_one_and_update(
-            query,
-            {"$set": update},
-            return_document=True,
-            projection=PROJECTION,
-        )
-        if res is None:
-            # Either not found OR already taken — return current state
-            doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
-            if not doc:
-                raise HTTPException(404, "Dose not found")
-            return doc
-        # Atomic stock decrement only if we successfully marked taken
-        await db.medications.update_one(
-            {"id": res["medication_id"], "user_id": user_id},
-            {"$inc": {"stock": -1}},
-        )
-        return res
-    else:
-        res = await db.doses.update_one({"id": dose_id, "user_id": user_id}, {"$set": update})
-        if res.matched_count == 0:
-            raise HTTPException(404, "Dose not found")
-        return await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
+        await track_event("dose_missed", user_id, {"medication_id": res.get("medication_id", "")})
+
+    return res
 
 
 # Measurements
@@ -1305,26 +1298,28 @@ async def nearby_places(
 
     # Fallback to OpenStreetMap Overpass API (free, no key needed)
     try:
-        osm_tag_map = {
-            "pharmacy":   'amenity"="pharmacy',
-            "diagnostic": 'amenity"="clinic][healthcare"="laboratory',
-            "hospital":   'amenity"="hospital',
+        osm_queries = {
+            "pharmacy":   '[out:json][timeout:15];(node["amenity"="pharmacy"]({bbox});way["amenity"="pharmacy"]({bbox}););out body 20;',
+            "diagnostic": '[out:json][timeout:15];(node["amenity"="clinic"]({bbox});node["healthcare"="laboratory"]({bbox});node["amenity"="hospital"]({bbox}););out body 20;',
+            "hospital":   '[out:json][timeout:15];(node["amenity"="hospital"]({bbox});node["amenity"="clinic"]({bbox});way["amenity"="hospital"]({bbox}););out body 20;',
         }
-        tag = osm_tag_map.get(type, 'amenity"="pharmacy')
         deg = radius / 111000
         bbox = f"{lat-deg},{lng-deg},{lat+deg},{lng+deg}"
+        query = osm_queries.get(type, osm_queries["pharmacy"]).replace("{bbox}", bbox)
         overpass_url = "https://overpass-api.de/api/interpreter"
-        query = f'[out:json][timeout:10];node["{tag}"]({bbox});out body 20;'
-        async with httpx.AsyncClient(timeout=12) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(overpass_url, data={"data": query})
         data = r.json()
         places = []
         for el in (data.get("elements") or [])[:15]:
             tags = el.get("tags", {})
-            elat, elng = el.get("lat", 0), el.get("lon", 0)
+            elat = el.get("lat") or (el.get("center", {}).get("lat", 0))
+            elng = el.get("lon") or (el.get("center", {}).get("lon", 0))
+            if not elat or not elng:
+                continue
             name = tags.get("name") or tags.get("name:en") or tags.get("amenity", type).title()
             addr_parts = [tags.get("addr:housenumber", ""), tags.get("addr:street", ""), tags.get("addr:city", "")]
-            address = ", ".join(p for p in addr_parts if p) or tags.get("addr:full", "")
+            address = ", ".join(p for p in addr_parts if p) or tags.get("addr:full", "") or "Nearby"
             places.append({
                 "id": str(el.get("id", "")), "name": name,
                 "address": address, "distance": dist(elat, elng),
@@ -1332,7 +1327,10 @@ async def nearby_places(
                 "open": None, "phone": tags.get("phone") or tags.get("contact:phone"),
             })
         places.sort(key=lambda x: x["distance"])
-        return {"places": places, "source": "osm"}
+        if places:
+            return {"places": places, "source": "osm"}
+        # OSM returned nothing — try wider radius
+        return {"places": [], "source": "osm_empty", "message": "No results found. Try increasing the search radius."}
     except Exception as e:
         logger.warning(f"OSM fallback also failed: {e}")
         return {"places": [], "source": "error", "message": "Could not fetch nearby places. Check your connection."}

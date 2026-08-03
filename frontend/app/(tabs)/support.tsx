@@ -183,15 +183,12 @@ export default function Support() {
             <View style={[s.cIco, { backgroundColor: "rgba(74,222,128,0.14)" }]}><Ionicons name="logo-whatsapp" size={17} color="#4ade80" /></View>
             <View style={{ flex: 1 }}>
               <Text style={s.cT}>Connect via WhatsApp</Text>
-              <Text style={s.cS}>Missed-dose alerts sent to your caregiver's WhatsApp</Text>
+              <Text style={s.cS}>{caregiverConnected && connectedNumber ? `Connected: ${connectedNumber}` : "Missed-dose alerts sent to your caregiver's WhatsApp"}</Text>
             </View>
             <TouchableOpacity style={[s.connectBtn, caregiverConnected && {backgroundColor:"rgba(74,222,128,0.1)",borderColor:"rgba(74,222,128,0.3)"}]} onPress={() => setCaregiverOpen(true)}>
               {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
               <Text style={[s.connectTx, caregiverConnected && {color:"#4ade80"}]}>{caregiverConnected ? "Connected" : "Connect"}</Text>
             </TouchableOpacity>
-            {caregiverConnected && connectedNumber ? (
-              <Text style={{ fontSize: 11, color: "#4ade80", marginTop: 4 }}>Number: {connectedNumber}</Text>
-            ) : null}
           </View>
         </View>
 

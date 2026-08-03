@@ -175,13 +175,20 @@ export default function Today() {
     if (nx === "taken" && takenAt) {
       recordTaken(id, date, takenAt);
     }
-    // 3. Add to write queue for guaranteed delivery when online
-    await enqueueWrite("doseStatus", { id, status: nx, taken_at: takenAt });
-    // 4. Try to push immediately if online (non-blocking)
+    // 3. Add to write queue first (ensures delivery if offline)
+    const queueId = await enqueueWrite("doseStatus", { id, status: nx, taken_at: takenAt });
+    // 4. Try direct API call immediately if online
     api.setDoseStatus(id, nx, takenAt)
-      .then(() => { pending.current.delete(id); })
+      .then(async () => {
+        // Success — remove from queue so it doesn't send twice
+        if (queueId) {
+          const { dequeue } = await import("@/src/lib/store");
+          await dequeue(queueId);
+        }
+        pending.current.delete(id);
+      })
       .catch(() => {
-        // Offline — write queue will retry when reconnected
+        // Offline — stays in queue, will sync when reconnected
         pending.current.delete(id);
       });
     resyncReminders().catch(() => {});

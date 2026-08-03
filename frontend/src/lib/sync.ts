@@ -89,12 +89,14 @@ async function removeFromQueue(id: string): Promise<void> {
   } catch {}
 }
 
-export async function enqueueWrite(type: string, payload: any): Promise<void> {
+export async function enqueueWrite(type: string, payload: any): Promise<string> {
+  const id = `${Date.now()}_${Math.random()}`;
   try {
     const q = await getQueue();
-    q.push({ id: `${Date.now()}_${Math.random()}`, ts: Date.now(), type, payload });
+    q.push({ id, ts: Date.now(), type, payload });
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(q));
   } catch {}
+  return id;
 }
 
 /**

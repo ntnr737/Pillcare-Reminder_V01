@@ -319,7 +319,11 @@ export default function Treatment() {
                   <Text style={[s.subT, { color: TM }]}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[s.subBtn, { flex: 1 }]}
-                  onPress={() => scheduleYogaReminder(yogaTime || (() => { const d = new Date(); d.setHours(7, 0, 0, 0); return d; })())}>
+                  onPress={async () => {
+                    setYogaTimePicker(false);
+                    const t = yogaTime || (() => { const d = new Date(); d.setHours(7,0,0,0); return d; })();
+                    await scheduleYogaReminder(t);
+                  }}>
                   <Text style={s.subT}>Set Reminder</Text>
                 </TouchableOpacity>
               </View>
