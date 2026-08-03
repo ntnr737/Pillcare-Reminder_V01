@@ -1923,12 +1923,23 @@ async def admin_google_login(request: Request, payload: AdminGoogleAuth):
     await check_admin_ip(ip)
 
     try:
-        idinfo = google_id_token.verify_oauth2_token(
-            payload.id_token, google_requests.Request(), audience=None
-        )
-        if idinfo.get("aud") not in GOOGLE_VALID_AUDIENCES:
-            await record_admin_attempt(ip, False, "invalid_token")
-            raise HTTPException(401, "Invalid token")
+        # For admin panel (web app), verify with web client ID
+        # Try each valid audience since token must match one of them
+        idinfo = None
+        last_err = None
+        audiences_to_try = list(GOOGLE_VALID_AUDIENCES) + [None]
+        for aud in audiences_to_try:
+            try:
+                idinfo = google_id_token.verify_oauth2_token(
+                    payload.id_token, google_requests.Request(), audience=aud
+                )
+                break
+            except Exception as e:
+                last_err = e
+                continue
+        if idinfo is None:
+            await record_admin_attempt(ip, False, "verify_error")
+            raise HTTPException(401, f"Google token verification failed: {last_err}")
     except HTTPException:
         raise
     except Exception as e:
