@@ -83,7 +83,6 @@ export default function Support() {
   const [emPlace, setEmPlace] = useState("");
   const [emNumber, setEmNumber] = useState("");
   const [emLabel, setEmLabel] = useState("");
-  const [privacyOpen, setPrivacyOpen] = useState(false);
   const [caregiverPhone, setCaregiverPhone] = useState("");
   const [caregiverOpen, setCaregiverOpen] = useState(false);
   const [savingCg, setSavingCg] = useState(false);
@@ -193,15 +192,22 @@ export default function Support() {
           </View>
         </View>
 
-        {/* PRIVACY */}
-        <Text style={s.secL}>PRIVACY & ENCRYPTION</Text>
-        <TouchableOpacity style={s.card} onPress={() => setPrivacyOpen(true)}>
-          <View style={s.cRow}>
-            <View style={s.cIco}><Ionicons name="shield-checkmark" size={17} color={A3} /></View>
-            <View style={{ flex: 1 }}><Text style={s.cT}>Your health data, explained</Text><Text style={s.cS}>What we collect, encryption, and what we never do</Text></View>
-            <Ionicons name="chevron-forward" size={13} color={TM} />
-          </View>
-        </TouchableOpacity>
+        {/* PRIVACY & LEGAL */}
+        <Text style={s.secL}>PRIVACY & LEGAL</Text>
+        {[
+          { label: "Privacy Policy", sub: "How we collect and protect your data", url: "https://pillcare.in/privacy.html", icon: "shield-checkmark" },
+          { label: "Terms of Service", sub: "Rules and conditions of using PillCare", url: "https://pillcare.in/terms.html", icon: "document-text-outline" },
+          { label: "Data Safety", sub: "What data is collected and why", url: "https://pillcare.in/data-safety.html", icon: "eye-outline" },
+          { label: "Delete my account", sub: "Request permanent deletion of all your data", url: "https://pillcare.in/delete-account.html", icon: "trash-outline" },
+        ].map((item) => (
+          <TouchableOpacity key={item.url} style={s.card} onPress={() => Linking.openURL(item.url)}>
+            <View style={s.cRow}>
+              <View style={s.cIco}><Ionicons name={item.icon as any} size={17} color={A3} /></View>
+              <View style={{ flex: 1 }}><Text style={s.cT}>{item.label}</Text><Text style={s.cS}>{item.sub}</Text></View>
+              <Ionicons name="open-outline" size={13} color={TM} />
+            </View>
+          </TouchableOpacity>
+        ))}
 
         {/* FAQs */}
         <Text style={s.secL}>FREQUENTLY ASKED</Text>
@@ -277,23 +283,6 @@ export default function Support() {
             <Text style={[s.subT, { color: "#000" }]}>{savingCg ? "Saving…" : "Save & Connect"}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-        </View></View>
-      </Modal>
-
-      {/* Privacy Modal */}
-      <Modal visible={privacyOpen} transparent animationType="slide" onRequestClose={() => setPrivacyOpen(false)}>
-        <View style={s.ovl}><View style={[s.sheet, { maxHeight: "85%" }]}>
-          <View style={s.handle} />
-          <Text style={s.sheetT}>Your Health Data, Explained</Text>
-          <ScrollView>
-            {PRIVACY_SECTIONS.map(p => (<View key={p.title} style={[s.card, { marginBottom: 8 }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name={p.icon as any} size={15} color={A3} /><Text style={s.cT}>{p.title}</Text>
-              </View>
-              <Text style={[s.cS, { lineHeight: 16 }]}>{p.body}</Text>
-            </View>))}
-          </ScrollView>
-          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setPrivacyOpen(false)}><Text style={{ color: TM }}>Close</Text></TouchableOpacity>
         </View></View>
       </Modal>
     </SafeAreaView>
