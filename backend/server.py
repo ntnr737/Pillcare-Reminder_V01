@@ -2301,7 +2301,27 @@ async def health_check():
         db_ok = True
     except Exception:
         db_ok = False
-    return {"status": "ok" if db_ok else "degraded", "db": "connected" if db_ok else "error", "v": "1.0.0"}
+    return {
+        "status": "ok" if db_ok else "degraded",
+        "db": "connected" if db_ok else "error",
+        "v": "1.0.0",
+        "env": {
+            "mongo": bool(os.environ.get("MONGO_URL")),
+            "jwt": bool(os.environ.get("JWT_SECRET")),
+            "admin_emails": os.environ.get("ADMIN_EMAILS", "NOT SET"),
+            "web_client": bool(os.environ.get("GOOGLE_WEB_CLIENT_ID")),
+        }
+    }
+
+@app.on_event("startup")
+async def on_startup():
+    logger.info("=== PillCare Backend v1.0 Starting ===")
+    logger.info(f"DB_NAME={os.environ.get('DB_NAME')}")
+    logger.info(f"MONGO_URL set={bool(os.environ.get('MONGO_URL'))}")
+    logger.info(f"JWT_SECRET set={bool(os.environ.get('JWT_SECRET'))}")
+    logger.info(f"ADMIN_EMAILS={os.environ.get('ADMIN_EMAILS','NOT SET')}")
+    logger.info(f"GOOGLE_WEB_CLIENT_ID set={bool(os.environ.get('GOOGLE_WEB_CLIENT_ID'))}")
+    logger.info("=== Startup complete ===")
 
 app.include_router(api)
 
