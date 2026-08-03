@@ -1,10 +1,14 @@
+/**
+ * notifications.ts
+ * - Creates Android channels with custom PillCare sounds on EVERY app launch
+ * - Registers device for Expo Push Notifications and saves token to backend
+ * - Schedules daily medication reminders
+ */
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
 
-/**
- * Foreground notification handler — always show alert + play sound.
- */
+// Show notification in foreground always
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -12,59 +16,85 @@ Notifications.setNotificationHandler({
     shouldSetBadge: true,
     shouldShowBanner: true,
     shouldShowList: true,
-    priority: Notifications.AndroidNotificationPriority.MAX,
   }),
 });
 
 /**
- * Android notification channel with custom PillCare sound.
- * The sound file must be placed at:
- * android/app/src/main/res/raw/pillcare_reminder.mp3
- *
- * If the custom sound file is not found, Android falls back to default.
- * Custom vibration pattern: two short pulses (medical alert feel).
+ * Create Android notification channels.
+ * MUST be called on every app launch before any notification is scheduled.
+ * Sound file must exist at android/app/src/main/res/raw/pillcare_reminder.wav
  */
-async function ensureChannel() {
+export async function ensureChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
+  try {
+    await Notifications.setNotificationChannelAsync("medication-reminders", {
+      name: "Medication Reminders",
+      description: "Alerts when it is time to take a medication",
+      importance: Notifications.AndroidImportance.MAX,
+      sound: "pillcare_reminder",   // maps to res/raw/pillcare_reminder.wav
+      enableVibrate: true,
+      vibrationPattern: [0, 300, 150, 300, 150, 600],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: false,
+      showBadge: true,
+    });
+    await Notifications.setNotificationChannelAsync("yoga-reminders", {
+      name: "Yoga & Wellness",
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: "pillcare_wellness",
+      enableVibrate: true,
+      vibrationPattern: [0, 200, 100, 200],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync("broadcasts", {
+      name: "Updates & Announcements",
+      importance: Notifications.AndroidImportance.DEFAULT,
+      sound: "pillcare_reminder",
+      enableVibrate: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  } catch (e) {
+    console.warn("Channel setup failed:", e);
+  }
+}
 
-  await Notifications.setNotificationChannelAsync("medication-reminders", {
-    name: "Medication Reminders",
-    description: "Alerts when it is time to take a medication",
-    importance: Notifications.AndroidImportance.MAX,
-    // Use custom sound — must match filename in android/app/src/main/res/raw/
-    sound: "pillcare_reminder",
-    enableVibrate: true,
-    // Two short pulses then a longer one — distinct pattern
-    vibrationPattern: [0, 300, 150, 300, 150, 600],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    bypassDnd: false,
-    showBadge: true,
-  });
+/**
+ * Request permission and get Expo push token.
+ * Saves token to backend so admin can send notifications to all users.
+ */
+export async function registerForPushNotifications(): Promise<string | null> {
+  if (__DEV__ && Platform.OS !== "android" && Platform.OS !== "ios") return null;
+  try {
+    await ensureChannels();
+    const { status: existing } = await Notifications.getPermissionsAsync();
+    let finalStatus = existing;
+    if (existing !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+    if (finalStatus !== "granted") return null;
 
-  // Separate channel for yoga reminders — softer
-  await Notifications.setNotificationChannelAsync("yoga-reminders", {
-    name: "Yoga & Wellness",
-    importance: Notifications.AndroidImportance.DEFAULT,
-    sound: "pillcare_wellness",
-    enableVibrate: true,
-    vibrationPattern: [0, 200, 100, 200],
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    bypassDnd: false,
-  });
+    // Get Expo push token — works with FCM under the hood
+    const token = await Notifications.getExpoPushTokenAsync({
+      projectId: "pill-care", // EAS project ID
+    });
+    const pushToken = token.data;
+
+    // Save to backend silently
+    api.savePushToken(pushToken).catch(() => {});
+    return pushToken;
+  } catch (e) {
+    console.warn("Push token registration failed:", e);
+    return null;
+  }
 }
 
 export async function requestNotificationPermission(): Promise<boolean> {
-  try {
-    await ensureChannel();
-    const { status: existing } = await Notifications.getPermissionsAsync();
-    if (existing === "granted") return true;
-    const { status } = await Notifications.requestPermissionsAsync({
-      android: { allowAlert: true, allowBadge: true, allowSound: true },
-    });
-    return status === "granted";
-  } catch {
-    return false;
-  }
+  await ensureChannels();
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  if (existing === "granted") return true;
+  const { status } = await Notifications.requestPermissionsAsync();
+  return status === "granted";
 }
 
 function parseTime(t: string): { hour: number; minute: number } | null {
@@ -75,29 +105,19 @@ function parseTime(t: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
-function doseLabel(med: any): string {
-  const dosage = med?.dosage, unit = med?.unit || "";
-  if (!dosage) return unit;
-  return `${dosage} ${unit}`.trim();
-}
-
 export async function resyncReminders(): Promise<void> {
   try {
     const granted = await requestNotificationPermission();
     if (!granted) return;
-
     const meds = await api.listMedications(true);
     await Notifications.cancelAllScheduledNotificationsAsync();
-
     let scheduled = 0;
     for (const med of meds || []) {
       const times: string[] = Array.isArray(med.times) ? med.times : [];
-      const label = doseLabel(med);
-
       for (const t of times) {
         const parsed = parseTime(t);
         if (!parsed) continue;
-
+        const label = med.dosage ? `${med.dosage} ${med.unit || ""}`.trim() : "";
         await Notifications.scheduleNotificationAsync({
           content: {
             title: `Time for ${med.name}`,
@@ -115,8 +135,8 @@ export async function resyncReminders(): Promise<void> {
         scheduled++;
       }
     }
-    console.log(`Scheduled ${scheduled} medication reminders`);
+    console.log(`Scheduled ${scheduled} reminders`);
   } catch (e) {
-    console.warn("Notification resync failed:", e);
+    console.warn("Reminder resync failed:", e);
   }
 }

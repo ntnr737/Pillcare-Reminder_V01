@@ -543,6 +543,86 @@ async def logout(authorization: str = Header(default="")):
             _revoked_tokens.clear()
     return {"message": "Signed out successfully"}
 
+@api.post("/profile/push-token")
+async def save_push_token(payload: dict, user_id: str = Depends(get_current_user_id)):
+    """Save Expo push token so admin can send notifications to all users."""
+    token = payload.get("token", "").strip()
+    if not token or not token.startswith("ExponentPushToken["):
+        raise HTTPException(400, "ERR_4002: Invalid Expo push token format")
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"push_token": token, "push_token_updated": datetime.now(timezone.utc)}},
+        upsert=False
+    )
+    return {"ok": True}
+
+@app.post("/admin/notify")
+async def admin_broadcast_notification(payload: dict, _: None = Depends(require_admin)):
+    """Send push notification to all users or specific users from admin dashboard."""
+    title = payload.get("title", "").strip()
+    body = payload.get("body", "").strip()
+    user_ids = payload.get("user_ids", [])  # empty = all users
+    
+    if not title or not body:
+        raise HTTPException(400, "Title and body are required")
+    if len(title) > 100 or len(body) > 300:
+        raise HTTPException(400, "Title max 100 chars, body max 300 chars")
+    
+    # Fetch tokens
+    query = {"push_token": {"$exists": True, "$ne": None}}
+    if user_ids:
+        query["id"] = {"$in": user_ids}
+    
+    users = await db.users.find(query, {"push_token": 1, "id": 1}).to_list(10000)
+    tokens = [u["push_token"] for u in users if u.get("push_token")]
+    
+    if not tokens:
+        return {"sent": 0, "message": "No users with push tokens found"}
+    
+    # Send via Expo Push API (free, no FCM setup needed)
+    import httpx
+    batch_size = 100  # Expo allows 100 per request
+    sent = 0
+    failed = 0
+    
+    for i in range(0, len(tokens), batch_size):
+        batch = tokens[i:i + batch_size]
+        messages = [{
+            "to": token,
+            "title": title,
+            "body": body,
+            "sound": "pillcare_reminder",
+            "channelId": "broadcasts",
+            "data": {"type": "broadcast"},
+        } for token in batch]
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    json=messages,
+                    headers={"Content-Type": "application/json"},
+                )
+                data = resp.json()
+                for item in data.get("data", []):
+                    if item.get("status") == "ok":
+                        sent += 1
+                    else:
+                        failed += 1
+        except Exception as e:
+            logger.warning(f"Push batch failed: {e}")
+            failed += len(batch)
+    
+    # Log broadcast
+    await db.analytics.insert_one({
+        "event": "admin_broadcast",
+        "ts": datetime.now(timezone.utc),
+        "props": {"title": title, "body": body, "sent": sent, "failed": failed, "total_tokens": len(tokens)},
+        "user_id": "admin",
+    })
+    
+    return {"sent": sent, "failed": failed, "total": len(tokens)}
+
 @api.post("/profile/caregiver")
 async def update_caregiver(
     payload: dict,
