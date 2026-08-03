@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Body
 from fastapi.responses import StreamingResponse
 import io
 import hmac
@@ -26,7 +26,7 @@ import jwt as pyjwt
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from pathlib import Path
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import List, Optional, Literal
 from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
@@ -34,7 +34,9 @@ from zoneinfo import ZoneInfo
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-mongo_url = os.environ["MONGO_URL"]
+mongo_url = os.environ.get("MONGO_URL", "")
+if not mongo_url:
+    raise RuntimeError("MONGO_URL environment variable not set")
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ["DB_NAME"]]
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
@@ -216,15 +218,16 @@ class ProfileUpsert(BaseModel):
     routine_lunch: Optional[str] = "13:00"
     routine_dinner: Optional[str] = "19:00"
 
-    @validator("phone", "caregiver_phone")
+    @field_validator("phone", "caregiver_phone", mode="before")
+    @classmethod
     def validate_phone_format(cls, v):
         if not v:
             return v
         import re as _re
-        cleaned = _re.sub(r"[\s\-()]", "", v)
-        if not _re.match(r"^\+?[0-9]{7,15}$", cleaned):
+        cleaned = _re.sub(r"[\s\-()]", "", str(v))
+        if cleaned and not _re.match(r"^\+?[0-9]{7,15}$", cleaned):
             raise ValueError("Invalid phone number — use international format e.g. +919876543210")
-        return cleaned
+        return v
     routine_sleep: Optional[str] = "22:00"
     caregiver_phone: Optional[str] = None
     notifications_enabled: Optional[bool] = True
@@ -557,7 +560,7 @@ async def save_push_token(payload: dict, user_id: str = Depends(get_current_user
     return {"ok": True}
 
 @app.post("/admin/notify")
-async def admin_broadcast_notification(payload: dict, _: None = Depends(require_admin)):
+async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depends(require_admin)):
     """Send push notification to all users or specific users from admin dashboard."""
     title = payload.get("title", "").strip()
     body = payload.get("body", "").strip()
@@ -625,7 +628,7 @@ async def admin_broadcast_notification(payload: dict, _: None = Depends(require_
 
 @api.post("/profile/caregiver")
 async def update_caregiver(
-    payload: dict,
+    payload: dict = Body(...),
     user_id: str = Depends(get_current_user_id)
 ):
     """Update only caregiver phone — no other profile fields required."""
@@ -2085,7 +2088,7 @@ async def admin_user_detail(user_id: str, _: None = Depends(require_admin)):
 
 
 @api.post("/analytics/track")
-async def track_user_event(payload: dict, user_id: str = Depends(get_current_user_id)):
+async def track_user_event(payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
     """Frontend event tracking — every user action stored for admin dashboard."""
     event = payload.get("event", "")
     props = payload.get("props", {})
@@ -2322,7 +2325,10 @@ async def security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     # Remove server identification
-    response.headers.pop("server", None)
+    try:
+        del response.headers["server"]
+    except (KeyError, Exception):
+        pass
     return response
 
 app.add_middleware(
