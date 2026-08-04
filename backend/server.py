@@ -419,7 +419,7 @@ async def _ensure_doses_for_date(user_id: str, target_date: str):
             )
             if not existing:
                 d = DoseLog(user_id=user_id, medication_id=m["id"], date=target_date, scheduled_time=t)
-                await db.doses.insert_one(d.dict())
+                await db.doses.insert_one(d.model_dump())
 
 
 async def _adherence_for_user(user_id: str, days: int = 7):
@@ -460,6 +460,7 @@ async def root():
 
 # Auth
 @api.post("/auth/google")
+@limiter.limit("20/minute")
 async def auth_google(payload: GoogleAuthRequest):
     if not GOOGLE_VALID_AUDIENCES:
         raise HTTPException(500, "Google sign-in is not configured on the server")
@@ -486,7 +487,7 @@ async def auth_google(payload: GoogleAuthRequest):
             name=idinfo.get("name", ""),
             picture=idinfo.get("picture"),
         )
-        await db.users.insert_one(user.dict())
+        await db.users.insert_one(user.model_dump())
         if is_first_user_ever:
             await _migrate_legacy_default_data(user_id)
 
@@ -657,7 +658,7 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
 
 @api.post("/profile")
 async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str = Depends(get_current_user_id)):
-    data = payload.dict()
+    data = payload.model_dump()
     if not data.get("location_city"):
         try:
             fwd = request.headers.get("x-forwarded-for", "")
@@ -678,8 +679,8 @@ async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str 
         await db.profile.update_one({"id": user_id}, {"$set": data})
         return {**existing, **data}
     p = Profile(id=user_id, **data)
-    await db.profile.insert_one(p.dict())
-    return _clean(p.dict())
+    await db.profile.insert_one(p.model_dump())
+    return _clean(p.model_dump())
 
 
 # Medications
@@ -713,16 +714,16 @@ async def create_medication(payload: MedicationCreate, user_id: str = Depends(ge
                 generic = ""
         except Exception as e:
             logger.warning(f"Generic resolution failed: {e}")
-    data = payload.dict()
+    data = payload.model_dump()
     data["generic_name"] = generic
     med = Medication(user_id=user_id, **data)
-    await db.medications.insert_one(med.dict())
+    await db.medications.insert_one(med.model_dump())
     await track_event("medication_added", user_id, {
         "medication_name": med.name if hasattr(med, 'name') else "",
         "frequency": med.frequency if hasattr(med, 'frequency') else "",
         "total_medications": await db.medications.count_documents({"user_id": user_id, "active": True}),
     })
-    return _clean(med.dict())
+    return _clean(med.model_dump())
 
 
 @api.get("/medications/{med_id}")
@@ -828,9 +829,9 @@ async def list_measurements(type: Optional[str] = None, limit: int = 200, user_i
 
 @api.post("/measurements")
 async def create_measurement(payload: MeasurementCreate, user_id: str = Depends(get_current_user_id)):
-    m = Measurement(user_id=user_id, **payload.dict())
-    await db.measurements.insert_one(m.dict())
-    return _clean(m.dict())
+    m = Measurement(user_id=user_id, **payload.model_dump())
+    await db.measurements.insert_one(m.model_dump())
+    return _clean(m.model_dump())
 
 
 @api.delete("/measurements/{m_id}")
@@ -851,9 +852,9 @@ async def list_activities(type: Optional[str] = None, limit: int = 200, user_id:
 
 @api.post("/activities")
 async def create_activity(payload: ActivityCreate, user_id: str = Depends(get_current_user_id)):
-    a = Activity(user_id=user_id, **payload.dict())
-    await db.activities.insert_one(a.dict())
-    return _clean(a.dict())
+    a = Activity(user_id=user_id, **payload.model_dump())
+    await db.activities.insert_one(a.model_dump())
+    return _clean(a.model_dump())
 
 
 @api.delete("/activities/{a_id}")
@@ -871,9 +872,9 @@ async def list_mood(limit: int = 100, user_id: str = Depends(get_current_user_id
 
 @api.post("/mood")
 async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_user_id)):
-    m = MoodEntry(user_id=user_id, **payload.dict())
-    await db.mood.insert_one(m.dict())
-    return _clean(m.dict())
+    m = MoodEntry(user_id=user_id, **payload.model_dump())
+    await db.mood.insert_one(m.model_dump())
+    return _clean(m.model_dump())
 
 
 # Progress / Adherence
@@ -1138,14 +1139,14 @@ async def list_appointments(user_id: str = Depends(get_current_user_id)):
 
 @api.post("/appointments")
 async def create_appointment(payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
-    appt = Appointment(user_id=user_id, **payload.dict())
-    await db.appointments.insert_one(appt.dict())
-    return _clean(appt.dict())
+    appt = Appointment(user_id=user_id, **payload.model_dump())
+    await db.appointments.insert_one(appt.model_dump())
+    return _clean(appt.model_dump())
 
 @api.patch("/appointments/{appt_id}")
 async def update_appointment(appt_id: str, payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
     res = await db.appointments.update_one(
-        {"id": appt_id, "user_id": user_id}, {"$set": payload.dict()}
+        {"id": appt_id, "user_id": user_id}, {"$set": payload.model_dump()}
     )
     if res.matched_count == 0:
         raise HTTPException(404, "Appointment not found")

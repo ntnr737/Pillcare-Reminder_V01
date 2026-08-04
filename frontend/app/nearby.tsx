@@ -108,7 +108,7 @@ export default function Nearby() {
       setPlaces(results);
       if (!results.length) setLocError("No results found nearby. Try a larger radius.");
     } catch (e) {
-      setLocError("Could not fetch nearby places. Check your connection.");
+      setLocError("Could not fetch nearby places. Make sure Location permission is allowed for PillCare in Settings.");
     } finally { setLoading(false); setRefreshing(false); }
   }, [radius, type, coords]);
 
