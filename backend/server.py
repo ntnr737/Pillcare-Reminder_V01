@@ -461,7 +461,7 @@ async def root():
 # Auth
 @api.post("/auth/google")
 @limiter.limit("20/minute")
-async def auth_google(payload: GoogleAuthRequest):
+async def auth_google(request: Request, payload: GoogleAuthRequest):
     if not GOOGLE_VALID_AUDIENCES:
         raise HTTPException(500, "Google sign-in is not configured on the server")
     try:
@@ -880,13 +880,13 @@ async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_us
 # Progress / Adherence
 @api.get("/progress/adherence")
 @limiter.limit("30/hour")
-async def adherence(days: int = 7, user_id: str = Depends(get_current_user_id)):
+async def adherence(request: Request, days: int = 7, user_id: str = Depends(get_current_user_id)):
     return await _adherence_for_user(user_id, days)
 
 
 @api.get("/yoga-tip")
 @limiter.limit("10/hour")
-async def yoga_tip(user_id: str = Depends(get_current_user_id)):
+async def yoga_tip(request: Request, user_id: str = Depends(get_current_user_id)):
     """
     Medication-specific yoga therapy using Groq AI.
     References verified from 3 sources:
@@ -1167,7 +1167,7 @@ async def delete_appointment(appt_id: str, user_id: str = Depends(get_current_us
 
 @api.get("/ai/daily-message")
 @limiter.limit("5/hour")
-async def ai_daily_message(user_id: str = Depends(get_current_user_id)):
+async def ai_daily_message(request: Request, user_id: str = Depends(get_current_user_id)):
     """A short personalized message from Groq based on the user's recent context."""
     profile = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
     today = datetime.now(timezone.utc).date().isoformat()
@@ -1448,7 +1448,7 @@ async def nearby_places(
 # Runs for every registered user who has a caregiver phone number set,
 # since this endpoint has no per-user auth context of its own (called by a cron job).
 @api.post("/caregiver/daily-report")
-async def caregiver_daily_report(secret: str = ""):
+async def caregiver_daily_report(request: Request, secret: str = ""):
     # Always require secret — if env var not set, block ALL calls (fail secure)
     if not SCHEDULER_SECRET:
         raise HTTPException(503, "Scheduler not configured")
