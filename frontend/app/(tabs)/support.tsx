@@ -181,16 +181,27 @@ export default function Support() {
         {/* CAREGIVER & FAMILY */}
         <Text style={s.secL}>CAREGIVER & FAMILY</Text>
         <View style={s.card}>
-          <View style={s.cRow}>
-            <View style={[s.cIco, { backgroundColor: "rgba(74,222,128,0.14)" }]}><Ionicons name="logo-whatsapp" size={17} color="#4ade80" /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.cT}>Connect via WhatsApp</Text>
-              <Text style={s.cS}>{caregiverConnected && connectedNumber ? `Connected: ${connectedNumber}` : "Missed-dose alerts sent to your caregiver's WhatsApp"}</Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
+            <View style={[s.cIco, { backgroundColor: "rgba(74,222,128,0.14)", marginTop: 2 }]}>
+              <Ionicons name="logo-whatsapp" size={17} color="#4ade80" />
             </View>
-            <TouchableOpacity style={[s.connectBtn, caregiverConnected && {backgroundColor:"rgba(74,222,128,0.1)",borderColor:"rgba(74,222,128,0.3)"}]} onPress={() => setCaregiverOpen(true)}>
-              {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
-              <Text style={[s.connectTx, caregiverConnected && {color:"#4ade80"}]}>{caregiverConnected ? "Connected" : "Connect"}</Text>
-            </TouchableOpacity>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.cT, { flexShrink: 1 }]} numberOfLines={1}>Connect via WhatsApp</Text>
+              <Text style={s.cS} numberOfLines={2}>
+                {caregiverConnected && connectedNumber
+                  ? `Alerts go to +${connectedNumber.replace(/^\+/, "")}`
+                  : "Missed-dose alerts sent to your caregiver's WhatsApp"}
+              </Text>
+              <TouchableOpacity
+                style={[s.connectBtn, { alignSelf: "flex-start", marginTop: 8 },
+                  caregiverConnected && { backgroundColor: "rgba(74,222,128,0.1)", borderColor: "rgba(74,222,128,0.3)" }]}
+                onPress={() => setCaregiverOpen(true)}>
+                {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
+                <Text style={[s.connectTx, caregiverConnected && { color: "#4ade80" }]}>
+                  {caregiverConnected ? "Connected" : "Connect"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
