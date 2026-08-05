@@ -1139,9 +1139,16 @@ async def list_appointments(user_id: str = Depends(get_current_user_id)):
 
 @api.post("/appointments")
 async def create_appointment(payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
-    appt = Appointment(user_id=user_id, **payload.model_dump())
-    await db.appointments.insert_one(appt.model_dump())
-    return _clean(appt.model_dump())
+    try:
+        data = payload.model_dump()
+        appt = Appointment(user_id=user_id, **data)
+        doc = appt.model_dump()
+        await db.appointments.insert_one(doc)
+        doc.pop("_id", None)
+        return doc
+    except Exception as e:
+        logger.error(f"Appointment create failed: {e}")
+        raise HTTPException(500, f"ERR_3001: Could not save appointment — {str(e)}")
 
 @api.patch("/appointments/{appt_id}")
 async def update_appointment(appt_id: str, payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
