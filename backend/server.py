@@ -36,7 +36,7 @@ mongo_url = os.environ.get("MONGO_URL", "")
 if not mongo_url:
     raise RuntimeError("MONGO_URL environment variable not set")
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+db = client[os.environ.get("DB_NAME", "pillcare")] if client else None
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_TEXT_MODEL = "openai/gpt-oss-120b"
 GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
@@ -2321,15 +2321,6 @@ async def health_check():
         }
     }
 
-@app.on_event("startup")
-async def on_startup():
-    logger.info("=== PillCare Backend v1.0 Starting ===")
-    logger.info(f"DB_NAME={os.environ.get('DB_NAME')}")
-    logger.info(f"MONGO_URL set={bool(os.environ.get('MONGO_URL'))}")
-    logger.info(f"JWT_SECRET set={bool(os.environ.get('JWT_SECRET'))}")
-    logger.info(f"ADMIN_EMAILS={os.environ.get('ADMIN_EMAILS','NOT SET')}")
-    logger.info(f"GOOGLE_WEB_CLIENT_ID set={bool(os.environ.get('GOOGLE_WEB_CLIENT_ID'))}")
-    logger.info("=== Startup complete ===")
 
 app.include_router(api)
 
