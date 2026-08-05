@@ -43,7 +43,7 @@ export default function Nearby() {
   const router = useRouter();
   const params = useLocalSearchParams<{ type?: string }>();
   const [type, setType] = useState<PlaceType>((params.type as PlaceType) || "pharmacy");
-  const [radius, setRadius] = useState(1000);
+  const [radius, setRadius] = useState(2000);
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(false);
   const [locError, setLocError] = useState("");
@@ -52,7 +52,10 @@ export default function Nearby() {
 
   const getLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") { setLocError("Location permission needed to find nearby stores."); return null; }
+    if (status !== "granted") {
+      setLocError("PERMISSION_DENIED");
+      return null;
+    }
     const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     return { lat: pos.coords.latitude, lng: pos.coords.longitude };
   };
@@ -172,12 +175,28 @@ export default function Nearby() {
         )}
 
         {locError ? (
-          <View style={[s.card, { alignItems: "center", gap: 10, padding: 24 }]}>
-            <Ionicons name="location-outline" size={32} color={TM} />
-            <Text style={[s.cT, { textAlign: "center" }]}>{locError}</Text>
-            <TouchableOpacity style={s.retryBtn} onPress={() => search()}>
-              <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Try Again</Text>
-            </TouchableOpacity>
+          <View style={[s.card, { alignItems: "center", gap: 12, padding: 28 }]}>
+            <Ionicons name={locError === "PERMISSION_DENIED" ? "location-outline" : "wifi-outline"} size={36} color={TM} />
+            <Text style={[s.cT, { textAlign: "center", lineHeight: 22 }]}>
+              {locError === "PERMISSION_DENIED"
+                ? "Location permission required"
+                : locError}
+            </Text>
+            {locError === "PERMISSION_DENIED" ? (
+              <>
+                <Text style={[s.cS, { textAlign: "center" }]}>
+                  {"Go to Settings → Apps → PillCare → Permissions → Location → Allow while using app"}
+                </Text>
+                <TouchableOpacity style={[s.retryBtn, { backgroundColor: "rgba(145,132,217,0.2)" }]}
+                  onPress={() => Linking.openSettings()}>
+                  <Text style={{ color: AC, fontWeight: "700", fontSize: 13 }}>Open Settings</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity style={s.retryBtn} onPress={() => search()}>
+                <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Try Again</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : null}
 
