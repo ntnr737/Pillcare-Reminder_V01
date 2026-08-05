@@ -22,5 +22,5 @@ jobs:
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-      - run: eas build --platform android --profile production --non-interactive
+      - run: eas build --platform android --profile preview --non-interactive
         working-directory: frontend
