@@ -188,7 +188,7 @@ export default function Nearby() {
                   {"Go to Settings → Apps → PillCare → Permissions → Location → Allow while using app"}
                 </Text>
                 <TouchableOpacity style={[s.retryBtn, { backgroundColor: "rgba(145,132,217,0.2)" }]}
-                  onPress={() => Linking.openSettings()}>
+                  onPress={() => Linking.openURL("app-settings:")}>
                   <Text style={{ color: AC, fontWeight: "700", fontSize: 13 }}>Open Settings</Text>
                 </TouchableOpacity>
               </>
