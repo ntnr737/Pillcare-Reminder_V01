@@ -558,73 +558,6 @@ async def save_push_token(payload: dict, user_id: str = Depends(get_current_user
     )
     return {"ok": True}
 
-@app.post("/admin/notify")
-async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depends(require_admin)):
-    """Send push notification to all users or specific users from admin dashboard."""
-    title = payload.get("title", "").strip()
-    body = payload.get("body", "").strip()
-    user_ids = payload.get("user_ids", [])  # empty = all users
-    
-    if not title or not body:
-        raise HTTPException(400, "Title and body are required")
-    if len(title) > 100 or len(body) > 300:
-        raise HTTPException(400, "Title max 100 chars, body max 300 chars")
-    
-    # Fetch tokens
-    query = {"push_token": {"$exists": True, "$ne": None}}
-    if user_ids:
-        query["id"] = {"$in": user_ids}
-    
-    users = await db.users.find(query, {"push_token": 1, "id": 1}).to_list(10000)
-    tokens = [u["push_token"] for u in users if u.get("push_token")]
-    
-    if not tokens:
-        return {"sent": 0, "message": "No users with push tokens found"}
-    
-    # Send via Expo Push API (free, no FCM setup needed)
-    import httpx
-    batch_size = 100  # Expo allows 100 per request
-    sent = 0
-    failed = 0
-    
-    for i in range(0, len(tokens), batch_size):
-        batch = tokens[i:i + batch_size]
-        messages = [{
-            "to": token,
-            "title": title,
-            "body": body,
-            "sound": "pillcare_reminder",
-            "channelId": "broadcasts",
-            "data": {"type": "broadcast"},
-        } for token in batch]
-        
-        try:
-            async with httpx.AsyncClient(timeout=30) as client:
-                resp = await client.post(
-                    "https://exp.host/--/api/v2/push/send",
-                    json=messages,
-                    headers={"Content-Type": "application/json"},
-                )
-                data = resp.json()
-                for item in data.get("data", []):
-                    if item.get("status") == "ok":
-                        sent += 1
-                    else:
-                        failed += 1
-        except Exception as e:
-            logger.warning(f"Push batch failed: {e}")
-            failed += len(batch)
-    
-    # Log broadcast
-    await db.analytics.insert_one({
-        "event": "admin_broadcast",
-        "ts": datetime.now(timezone.utc),
-        "props": {"title": title, "body": body, "sent": sent, "failed": failed, "total_tokens": len(tokens)},
-        "user_id": "admin",
-    })
-    
-    return {"sent": sent, "failed": failed, "total": len(tokens)}
-
 @api.post("/profile/caregiver")
 async def update_caregiver(
     payload: dict = Body(...),
@@ -1987,6 +1920,73 @@ async def admin_blocked_ips(_: None = Depends(require_admin)):
     return {
         "blocked": [{"ip": b["_id"], "attempts": b["attempts"], "last_attempt": b["last"].isoformat(), "tried_emails": b["emails"], "is_blocked": b["attempts"] >= 3} for b in blocked]
     }
+
+@app.post("/admin/notify")
+async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depends(require_admin)):
+    """Send push notification to all users or specific users from admin dashboard."""
+    title = payload.get("title", "").strip()
+    body = payload.get("body", "").strip()
+    user_ids = payload.get("user_ids", [])  # empty = all users
+    
+    if not title or not body:
+        raise HTTPException(400, "Title and body are required")
+    if len(title) > 100 or len(body) > 300:
+        raise HTTPException(400, "Title max 100 chars, body max 300 chars")
+    
+    # Fetch tokens
+    query = {"push_token": {"$exists": True, "$ne": None}}
+    if user_ids:
+        query["id"] = {"$in": user_ids}
+    
+    users = await db.users.find(query, {"push_token": 1, "id": 1}).to_list(10000)
+    tokens = [u["push_token"] for u in users if u.get("push_token")]
+    
+    if not tokens:
+        return {"sent": 0, "message": "No users with push tokens found"}
+    
+    # Send via Expo Push API (free, no FCM setup needed)
+    import httpx
+    batch_size = 100  # Expo allows 100 per request
+    sent = 0
+    failed = 0
+    
+    for i in range(0, len(tokens), batch_size):
+        batch = tokens[i:i + batch_size]
+        messages = [{
+            "to": token,
+            "title": title,
+            "body": body,
+            "sound": "pillcare_reminder",
+            "channelId": "broadcasts",
+            "data": {"type": "broadcast"},
+        } for token in batch]
+        
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    json=messages,
+                    headers={"Content-Type": "application/json"},
+                )
+                data = resp.json()
+                for item in data.get("data", []):
+                    if item.get("status") == "ok":
+                        sent += 1
+                    else:
+                        failed += 1
+        except Exception as e:
+            logger.warning(f"Push batch failed: {e}")
+            failed += len(batch)
+    
+    # Log broadcast
+    await db.analytics.insert_one({
+        "event": "admin_broadcast",
+        "ts": datetime.now(timezone.utc),
+        "props": {"title": title, "body": body, "sent": sent, "failed": failed, "total_tokens": len(tokens)},
+        "user_id": "admin",
+    })
+    
+    return {"sent": sent, "failed": failed, "total": len(tokens)}
 
 @app.delete("/admin/blocked-ips/{ip}")
 async def admin_unblock_ip(ip: str, _: None = Depends(require_admin)):
