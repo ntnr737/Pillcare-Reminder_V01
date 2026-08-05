@@ -287,9 +287,13 @@ export default function Treatment() {
             </ScrollView>
             {/* Start Routine only — X at top closes modal */}
             <TouchableOpacity style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }]}
-              onPress={() => setYogaTimePicker(true)}>
+              onPress={() => {
+                // Close yoga modal first — Android can't stack two modals
+                setYogaOpen(false);
+                setTimeout(() => setYogaTimePicker(true), 350);
+              }}>
               <Ionicons name="notifications-outline" size={16} color="#fff" />
-              <Text style={s.subT}>Start Routine — Set Daily Reminder</Text>
+              <Text style={s.subT}>Set Daily Reminder</Text>
             </TouchableOpacity>
             {yogaTime && (
               <Text style={[s.cS, { textAlign: "center", marginTop: 4 }]}>
@@ -308,7 +312,7 @@ export default function Treatment() {
               <Text style={s.sTitle}>Set Daily Yoga Time</Text>
               <Text style={[s.cS, { lineHeight: 17 }]}>{"You\'ll receive a notification every day at this time to start your yoga routine."}</Text>
               <DateTimePicker
-                value={yogaTime || (() => { const d = new Date(); d.setHours(7, 0, 0, 0); return d; })()}
+                value={yogaTime || (() => { const d = new Date(); d.setHours(8, 0, 0, 0); return d; })()}
                 mode="time"
                 display="spinner"
                 is24Hour={false}
@@ -323,7 +327,7 @@ export default function Treatment() {
                 <TouchableOpacity style={[s.subBtn, { flex: 1 }]}
                   onPress={async () => {
                     setYogaTimePicker(false);
-                    const t = yogaTime || (() => { const d = new Date(); d.setHours(7,0,0,0); return d; })();
+                    const t = yogaTime || (() => { const d = new Date(); d.setHours(8,0,0,0); return d; })();
                     await scheduleYogaReminder(t);
                   }}>
                   <Text style={s.subT}>Set Reminder</Text>
