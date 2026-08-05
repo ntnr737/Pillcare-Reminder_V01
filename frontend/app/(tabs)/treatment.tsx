@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,6 +33,19 @@ export default function Treatment() {
   const trackYogaView = () => track("yoga_viewed");
   const [yogaTimePicker, setYogaTimePicker] = useState(false);
   const [yogaTime, setYogaTime] = useState<Date | null>(null);
+  const [savedReminderTime, setSavedReminderTime] = useState<string | null>(null);
+
+  // Load previously saved yoga reminder time on mount
+  useEffect(() => {
+    get<string>("yoga_reminder_time").then(t => {
+      if (t) {
+        setSavedReminderTime(t);
+        const [h, m] = t.split(":").map(Number);
+        const d = new Date(); d.setHours(h, m, 0, 0);
+        setYogaTime(d);
+      }
+    }).catch(() => {});
+  }, []);
   const [addMed, setAddMed] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [mModal, setMModal] = useState<{ open: boolean; type: any }>({ open: false, type: null });
@@ -118,7 +131,9 @@ export default function Treatment() {
       const h = String(time.getHours()).padStart(2, "0");
       const m = String(time.getMinutes()).padStart(2, "0");
       // Persist yoga time so Today screen can show it
-      await set("yoga_reminder_time", `${h}:${m}`);
+      const timeStr = `${h}:${m}`;
+      await set("yoga_reminder_time", timeStr);
+      setSavedReminderTime(timeStr);
       setYogaTime(time);
       setYogaTimePicker(false);
       setYogaOpen(false);
@@ -285,20 +300,29 @@ export default function Treatment() {
               ))}
               <Text style={[s.cS, { fontStyle: "italic", marginTop: 10, marginBottom: 12, lineHeight: 15 }]}>{yoga?.disclaimer || ""}</Text>
             </ScrollView>
-            {/* Start Routine only — X at top closes modal */}
-            <TouchableOpacity style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }]}
-              onPress={() => {
-                // Close yoga modal first — Android can't stack two modals
-                setYogaOpen(false);
-                setTimeout(() => setYogaTimePicker(true), 350);
-              }}>
-              <Ionicons name="notifications-outline" size={16} color="#fff" />
-              <Text style={s.subT}>Set Daily Reminder</Text>
-            </TouchableOpacity>
-            {yogaTime && (
-              <Text style={[s.cS, { textAlign: "center", marginTop: 4 }]}>
-                {"✓ Reminder set for " + String(yogaTime.getHours()).padStart(2, "0") + ":" + String(yogaTime.getMinutes()).padStart(2, "0") + " daily"}
-              </Text>
+            {/* Reminder button — shows current time if set, allows editing */}
+            {savedReminderTime ? (
+              <TouchableOpacity
+                style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(74,222,128,0.15)", borderColor: "rgba(74,222,128,0.3)", borderWidth: 1 }]}
+                onPress={() => {
+                  setYogaOpen(false);
+                  setTimeout(() => setYogaTimePicker(true), 350);
+                }}>
+                <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
+                <Text style={[s.subT, { color: "#4ade80" }]}>
+                  {"Daily reminder at " + savedReminderTime + "  —  Edit"}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }]}
+                onPress={() => {
+                  setYogaOpen(false);
+                  setTimeout(() => setYogaTimePicker(true), 350);
+                }}>
+                <Ionicons name="notifications-outline" size={16} color="#fff" />
+                <Text style={s.subT}>Set Daily Reminder</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -309,7 +333,7 @@ export default function Treatment() {
         <Modal visible={yogaTimePicker} transparent animationType="fade" onRequestClose={() => setYogaTimePicker(false)}>
           <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center" }}>
             <View style={{ backgroundColor: N8, borderRadius: 20, padding: 24, width: "85%", gap: 14 }}>
-              <Text style={s.sTitle}>Set Daily Yoga Time</Text>
+              <Text style={s.sTitle}>{savedReminderTime ? "Edit Reminder Time" : "Set Daily Yoga Time"}</Text>
               <Text style={[s.cS, { lineHeight: 17 }]}>{"You\'ll receive a notification every day at this time to start your yoga routine."}</Text>
               <DateTimePicker
                 value={yogaTime || (() => { const d = new Date(); d.setHours(8, 0, 0, 0); return d; })()}
