@@ -2312,7 +2312,7 @@ async def health_check():
     return {
         "status": "ok" if db_ok else "degraded",
         "db": "connected" if db_ok else "error",
-        "v": "1.0.0",
+        "v": "1.0.1",
         "env": {
             "mongo": bool(os.environ.get("MONGO_URL")),
             "jwt": bool(os.environ.get("JWT_SECRET")),
