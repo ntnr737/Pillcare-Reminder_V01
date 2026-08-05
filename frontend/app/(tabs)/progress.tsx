@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
@@ -17,6 +17,7 @@ export default function Progress() {
   const [adh, setAdh] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [tab, setTab] = useState<"charts" | "list">("charts");
+  const router = useRouter();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -89,6 +90,23 @@ export default function Progress() {
         <TouchableOpacity style={[s.segO, tab === "charts" && s.segOn]} onPress={() => setTab("charts")}><Text style={[s.segT, tab === "charts" && s.segTOn]}>Charts</Text></TouchableOpacity>
         <TouchableOpacity style={[s.segO, tab === "list" && s.segOn]} onPress={() => setTab("list")}><Text style={[s.segT, tab === "list" && s.segTOn]}>List</Text></TouchableOpacity>
       </View>
+      {/* Quick log row */}
+      <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}>
+        {[
+          { icon: "pulse-outline", label: "Measurement", route: "/(tabs)/treatment", tab: "Measurements" },
+          { icon: "body-outline", label: "Activity", route: "/(tabs)/treatment", tab: "Activities" },
+          { icon: "heart-outline", label: "Mood", route: "/(tabs)/treatment", tab: "Mood" },
+        ].map(item => (
+          <TouchableOpacity
+            key={item.label}
+            style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.1)", borderRadius: 10, paddingVertical: 10, alignItems: "center", gap: 5, borderWidth: 1, borderColor: "rgba(145,132,217,0.15)" }}
+            onPress={() => router.push(item.route as any)}>
+            <Ionicons name={item.icon as any} size={18} color={AC} />
+            <Text style={{ fontSize: 11, color: AC, fontWeight: "700" }}>Log {item.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AC} />}>
 
         {tab === "charts" && (<>

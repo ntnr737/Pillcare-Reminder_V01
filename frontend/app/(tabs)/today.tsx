@@ -460,9 +460,8 @@ export default function Today() {
             {[
               { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); handleAddMedication(); } },
               { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
-              { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
-              { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
-              { icon: "heart-outline", title: "Log Mood", body: "Track how you are feeling today", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
+              { icon: "leaf-outline", title: "AI Yoga Recommendation", body: "View your personalised yoga routine", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
+              { icon: "storefront-outline", title: "Nearby Pharmacy", body: "Find medical stores and diagnostic labs", fn: () => { setActionSheet(false); router.push("/nearby"); } },
             ].map(o => (
               <TouchableOpacity key={o.title} onPress={o.fn}
                 style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
