@@ -89,7 +89,9 @@ export default function Nearby() {
          way[${osmTag}](around:${radius},${loc.lat},${loc.lng}););
         out center 20;`;
       const overpass = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST", body: query
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `data=${encodeURIComponent(query)}`,
       });
       if (!overpass.ok) throw new Error("Overpass failed");
       const osmData = await overpass.json();
