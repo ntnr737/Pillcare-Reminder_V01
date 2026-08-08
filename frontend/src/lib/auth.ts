@@ -35,8 +35,10 @@ export async function signInWithGoogle(): Promise<PillcareUser> {
       if (e.code === statusCodes.IN_PROGRESS) {
         throw new Error("Sign-in is already in progress.");
       }
+      // Show actual error code so we can debug
+      throw new Error(`Google error code ${e.code}: ${e.message || "unknown"}`);
     }
-    throw new Error("Google sign-in failed. Please try again.");
+    throw new Error(`Google sign-in failed: ${e?.message || "unknown"}. Try again.`);
   }
 
   if (!idToken) {
