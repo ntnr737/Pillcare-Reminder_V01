@@ -17,18 +17,35 @@ from datetime import datetime, date, timezone, timedelta
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+# Environment variables with validation
+mongo_url = os.environ.get("MONGO_URL")
+if not mongo_url:
+    raise ValueError("MONGO_URL environment variable is required")
+
+db_name = os.environ.get("DB_NAME", "pillcare")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_TEXT_MODEL = "llama-3.1-8b-instant"
 GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct"
 OPENWA_ENABLED = os.environ.get("OPENWA_ENABLED", "false").lower() == "true"
 
+# CORS configuration - restrict origins in production
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+ENV = os.environ.get("ENV", "development")
+
+client = AsyncIOMotorClient(mongo_url)
+db = client[db_name]
+
 
 async def _groq_chat(system_message: str, user_text: str, image_base64: str = None) -> str:
     """Call Groq's OpenAI-compatible chat completions endpoint."""
+    if not GROQ_API_KEY:
+        raise HTTPException(status_code=503, detail="AI service not configured")
+
     if image_base64:
+        # Validate base64 length to prevent DoS
+        if len(image_base64) > 10_000_000:  # ~7.5MB base64
+            raise HTTPException(status_code=400, detail="Image too large (max 7.5MB)")
+
         user_content = [
             {"type": "text", "text": user_text},
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}},
@@ -38,21 +55,25 @@ async def _groq_chat(system_message: str, user_text: str, image_base64: str = No
         user_content = user_text
         model = GROQ_TEXT_MODEL
 
-    async with httpx.AsyncClient(timeout=30.0) as http_client:
-        resp = await http_client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": system_message},
-                    {"role": "user", "content": user_content},
-                ],
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"]
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as http_client:
+            resp = await http_client.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_content},
+                    ],
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"]
+    except httpx.HTTPError as e:
+        logging.error(f"Groq API error: {str(e)}")
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
 
 app = FastAPI(title="PillCare API")
 api = APIRouter(prefix="/api")
@@ -647,12 +668,17 @@ async def export_csv():
 
 app.include_router(api)
 
+# CORS middleware - restrict in production
+if ALLOWED_ORIGINS == ["*"] and ENV == "production":
+    logging.warning("CORS allow_origins is set to '*' in production. This is insecure!")
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS != ["*"] else ["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,
 )
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")

@@ -1,15 +1,16 @@
 // Firebase JS SDK init. Analytics only runs on web (isSupported check).
 // Configured but not actively used for auth in this build — single local profile is used.
 import { initializeApp, getApps, FirebaseApp } from "firebase/app";
+import Constants from "expo-constants";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAe7caDRnHwMLCLzXvZEv6HGmqDY_n8HcU",
-  authDomain: "pillcare-5fcac.firebaseapp.com",
-  projectId: "pillcare-5fcac",
-  storageBucket: "pillcare-5fcac.firebasestorage.app",
-  messagingSenderId: "1082668880575",
-  appId: "1:1082668880575:web:779d808ac09945f80bec0a",
-  measurementId: "G-X8WF8SD4DF",
+  apiKey: Constants.expoConfig?.extra?.firebaseApiKey || process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: Constants.expoConfig?.extra?.firebaseAuthDomain || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: Constants.expoConfig?.extra?.firebaseProjectId || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: Constants.expoConfig?.extra?.firebaseStorageBucket || process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: Constants.expoConfig?.extra?.firebaseMessagingSenderId || process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: Constants.expoConfig?.extra?.firebaseAppId || process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
+  measurementId: Constants.expoConfig?.extra?.firebaseMeasurementId || process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 let app: FirebaseApp;
