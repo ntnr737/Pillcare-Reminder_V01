@@ -636,6 +636,10 @@ async def list_medications(active: Optional[bool] = None, user_id: str = Depends
 
 @api.post("/medications")
 async def create_medication(payload: MedicationCreate, user_id: str = Depends(get_current_user_id)):
+    features = await get_user_features(user_id)
+    existing_med_count = await db.medications.count_documents({"user_id": user_id, "active": True})
+    if existing_med_count >= features.get("max_medications", 3):
+        raise HTTPException(402, "ERR_PLAN: Medication limit reached for your plan. Upgrade at pillcare.in/pricing.")
     # Optionally resolve generic name if not provided
     generic = payload.generic_name
     if not generic and GROQ_API_KEY:
@@ -827,6 +831,9 @@ async def yoga_tip(request: Request, user_id: str = Depends(get_current_user_id)
     - Swami Ramdev (Patanjali Yogpeeth): https://www.youtube.com/@SwamiRamdevOfficial
     - Sadhguru / Isha Foundation (Padma Vibhushan, UN recognised): https://www.youtube.com/@sadhguru
     """
+    features = await get_user_features(user_id)
+    if not features.get("yoga_full"):
+        raise HTTPException(402, "ERR_PLAN: Full yoga therapy requires a paid plan. Upgrade at pillcare.in/pricing.")
     meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(20)
     med_names = [m["name"] for m in meds] if meds else []
 
@@ -1072,6 +1079,10 @@ async def list_appointments(user_id: str = Depends(get_current_user_id)):
 
 @api.post("/appointments")
 async def create_appointment(payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
+    features = await get_user_features(user_id)
+    existing_count = await db.appointments.count_documents({"user_id": user_id})
+    if existing_count >= features.get("max_appointments", 2):
+        raise HTTPException(402, "ERR_PLAN: Appointment limit reached for your plan. Upgrade at pillcare.in/pricing.")
     try:
         data = payload.model_dump()
         appt = Appointment(user_id=user_id, **data)
@@ -1221,6 +1232,9 @@ async def resolve_generic(payload: BrandRequest, user_id: str = Depends(get_curr
 # AI Medication Scanner
 @api.post("/scan-medication")
 async def scan_medication(payload: ScanRequest, user_id: str = Depends(get_current_user_id)):
+    features = await get_user_features(user_id)
+    if not features.get("scanner"):
+        raise HTTPException(402, "ERR_PLAN: Medication scanner requires a paid plan. Upgrade at pillcare.in/pricing.")
     if not GROQ_API_KEY:
         raise HTTPException(503, "Scanner unavailable")
     if not payload.image_base64:
@@ -1299,6 +1313,8 @@ async def nearby_places(
         raise HTTPException(400, "Radius must be between 100m and 10km")
     if type not in ("pharmacy", "diagnostic", "hospital"):
         raise HTTPException(400, "Invalid place type")
+    features = await get_user_features(user_id)
+    max_results = features.get("nearby_results", 5)
 
     def dist(elat, elng):
         dlat = (elat - lat) * 111000
@@ -1334,7 +1350,7 @@ async def nearby_places(
                         "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
                     })
                 places.sort(key=lambda x: x["distance"])
-                return {"places": places, "source": "google"}
+                return {"places": places[:max_results], "source": "google"}
         except Exception as e:
             logger.warning(f"Google Places failed: {e}")
 
@@ -1370,7 +1386,7 @@ async def nearby_places(
             })
         places.sort(key=lambda x: x["distance"])
         if places:
-            return {"places": places, "source": "osm"}
+            return {"places": places[:max_results], "source": "osm"}
         # OSM returned nothing — try wider radius
         return {"places": [], "source": "osm_empty", "message": "No results found. Try increasing the search radius."}
     except Exception as e:
@@ -1472,7 +1488,10 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
 
 @api.get("/export/csv")
 async def export_csv(user_id: str = Depends(get_current_user_id)):
-    buf = io.StringIO()
+    features = await get_user_features(user_id)
+    if not features.get("export_data"):
+        raise HTTPException(402, "ERR_PLAN: Data export requires a paid plan. Upgrade at pillcare.in/pricing.")
+        buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["section", "timestamp", "type", "value", "unit", "status", "note"])
     doses = await db.doses.find({"user_id": user_id}, PROJECTION).to_list(10000)
