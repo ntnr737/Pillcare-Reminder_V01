@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
@@ -13,6 +13,22 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Literal
 from datetime import datetime, date, timezone, timedelta
+
+# Import security modules (graceful fallback if not installed)
+try:
+    from auth import init_firebase_admin, get_current_user, optional_user
+    from security_headers import SecurityHeadersMiddleware
+    from rate_limiter import setup_rate_limiting, limiter
+    from db_security import SecureCollection, sanitize_user_id
+    SECURITY_ENABLED = True
+except ImportError as e:
+    logging.warning(f"Security modules not loaded: {e}. Install: pip install slowapi firebase-admin")
+    SECURITY_ENABLED = False
+    # Mock dependencies for development
+    def get_current_user():
+        return "dev-user"
+    def optional_user():
+        return None
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
@@ -34,6 +50,14 @@ ENV = os.environ.get("ENV", "development")
 
 client = AsyncIOMotorClient(mongo_url)
 db = client[db_name]
+
+# Initialize Firebase for authentication
+if SECURITY_ENABLED:
+    try:
+        init_firebase_admin()
+        logger.info("Firebase authentication initialized")
+    except Exception as e:
+        logger.warning(f"Firebase init failed: {e}. Running without auth.")
 
 
 async def _groq_chat(system_message: str, user_text: str, image_base64: str = None) -> str:
@@ -75,7 +99,20 @@ async def _groq_chat(system_message: str, user_text: str, image_base64: str = No
         logging.error(f"Groq API error: {str(e)}")
         raise HTTPException(status_code=503, detail="AI service temporarily unavailable")
 
-app = FastAPI(title="PillCare API")
+app = FastAPI(
+    title="PillCare API",
+    description="Secure medication management and health tracking API",
+    version="2.0.0",
+    docs_url="/docs" if ENV == "development" else None,  # Disable docs in production
+    redoc_url="/redoc" if ENV == "development" else None,
+)
+
+# Setup security middleware
+if SECURITY_ENABLED:
+    app.add_middleware(SecurityHeadersMiddleware)
+    setup_rate_limiting(app)
+    logger.info("Security enabled: rate limiting, headers, authentication")
+
 api = APIRouter(prefix="/api")
 
 # ---------- Catalogs (static) ----------
