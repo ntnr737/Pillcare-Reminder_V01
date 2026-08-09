@@ -126,7 +126,7 @@ export default function History() {
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
         feature="Extended history & CSV export"
-        description="Free plan shows 7-day history. Premium unlocks 90-day history and CSV export."
+        description="Free plan shows 7-day history. Pro Dharma unlocks 90-day history and CSV export."
       />
     </SafeAreaView>
   );
