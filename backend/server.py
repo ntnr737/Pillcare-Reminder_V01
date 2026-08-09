@@ -1053,7 +1053,7 @@ class AppointmentCreate(BaseModel):
     reminder: Optional[str] = "1_day"  # "1_day", "2_hours", "none"
 
 class Appointment(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid4()))
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
     doctor_name: str
     specialty: Optional[str] = None
