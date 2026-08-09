@@ -226,7 +226,7 @@ export default function Support() {
           const { Linking } = await import("react-native");
           track("export_tapped");
           if (!getFeatures().export_data) {
-            Alert.alert("Premium feature", "CSV export is available on the Premium plan. Upgrade to download your complete health history.");
+            Alert.alert("Pro Dharma feature", "CSV export is available on the Pro Dharma plan. Upgrade to download your complete health history.");
             return;
           }
           track("export_completed");
