@@ -40,7 +40,7 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
           <View style={s.iconWrap}>
             <Ionicons name="lock-closed" size={24} color={AC} />
           </View>
-          <Text style={s.title}>Premium feature</Text>
+          <Text style={s.title}>Pro Dharma feature</Text>
           <Text style={s.feature}>{feature}</Text>
           <Text style={s.desc}>{description}</Text>
 
@@ -69,7 +69,7 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
                 <Text style={s.badgeTx}>Best value</Text>
               </View>
               <View style={s.planHeader}>
-                <Text style={s.planName}>Premium</Text>
+                <Text style={s.planName}>Pro Dharma</Text>
                 <View style={s.priceRow}>
                   <Text style={[s.price, { color: AC }]}>₹99</Text>
                   <Text style={s.period}>/month</Text>
