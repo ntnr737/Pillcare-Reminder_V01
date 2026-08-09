@@ -38,6 +38,14 @@ except ImportError as e:
     logging.warning(f"Admin endpoints not available: {e}")
     ADMIN_ENABLED = False
 
+# Import advanced analytics
+try:
+    from advanced_analytics import setup_advanced_analytics
+    ANALYTICS_ENABLED = True
+except ImportError as e:
+    logging.warning(f"Advanced analytics not available: {e}")
+    ANALYTICS_ENABLED = False
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
@@ -755,6 +763,14 @@ if ADMIN_ENABLED:
         logger.info("✓ Admin endpoints registered")
     except Exception as e:
         logger.error(f"Failed to setup admin endpoints: {e}")
+
+# Setup advanced analytics
+if ANALYTICS_ENABLED:
+    try:
+        setup_advanced_analytics(app, db)
+        logger.info("✓ Advanced analytics endpoints registered")
+    except Exception as e:
+        logger.error(f"Failed to setup advanced analytics: {e}")
 
 # CORS middleware - restrict in production
 if ALLOWED_ORIGINS == ["*"] and ENV == "production":
