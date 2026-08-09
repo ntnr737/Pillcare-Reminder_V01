@@ -90,25 +90,6 @@ export default function Progress() {
         <TouchableOpacity style={[s.segO, tab === "charts" && s.segOn]} onPress={() => setTab("charts")}><Text style={[s.segT, tab === "charts" && s.segTOn]}>Charts</Text></TouchableOpacity>
         <TouchableOpacity style={[s.segO, tab === "list" && s.segOn]} onPress={() => setTab("list")}><Text style={[s.segT, tab === "list" && s.segTOn]}>List</Text></TouchableOpacity>
       </View>
-      {/* Quick log row */}
-      <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingVertical: 10 }}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.1)", borderRadius: 10, paddingVertical: 10, alignItems: "center", gap: 5, borderWidth: 1, borderColor: "rgba(145,132,217,0.15)" }}
-          onPress={() => router.push("/(tabs)/treatment" as any)}>
-          <Ionicons name="pulse-outline" size={18} color={AC} />
-          <Text style={{ fontSize: 11, color: AC, fontWeight: "700" }}>Measurement</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.1)", borderRadius: 10, paddingVertical: 10, alignItems: "center", gap: 5, borderWidth: 1, borderColor: "rgba(145,132,217,0.15)" }}
-          onPress={() => router.push("/(tabs)/treatment" as any)}>
-          <Ionicons name="body-outline" size={18} color={AC} />
-          <Text style={{ fontSize: 11, color: AC, fontWeight: "700" }}>Activity</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.1)", borderRadius: 10, paddingVertical: 10, alignItems: "center", gap: 5, borderWidth: 1, borderColor: "rgba(145,132,217,0.15)" }}
-          onPress={() => router.push("/(tabs)/treatment" as any)}>
-          <Ionicons name="heart-outline" size={18} color={AC} />
-          <Text style={{ fontSize: 11, color: AC, fontWeight: "700" }}>Mood</Text>
-        </TouchableOpacity>
-      </View>
-
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AC} />}>
 
         {tab === "charts" && (<>
