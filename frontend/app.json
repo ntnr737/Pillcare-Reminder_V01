@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "PillCare Reminder",
-    "slug": "pillcare",
+    "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -73,9 +73,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "344ab115-1d97-45c9-9b04-fc8c491df73a"
+        "projectId": "1828aee8-d92a-4017-8612-973ae0c1546d"
       }
     },
-    "owner": "pill-care"
+        "owner": "pillcare"
   }
 }
