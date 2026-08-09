@@ -180,7 +180,7 @@ export default function Support() {
 
         {/* CAREGIVER & FAMILY */}
         <Text style={s.secL}>CAREGIVER & FAMILY</Text>
-        <View style={s.card}>
+        <View style={[s.card, { position: "relative" }]}>
           <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
             <View style={[s.cIco, { backgroundColor: "rgba(74,222,128,0.14)", marginTop: 2 }]}>
               <Ionicons name="logo-whatsapp" size={17} color="#4ade80" />
@@ -193,7 +193,7 @@ export default function Support() {
                   : "Missed-dose alerts sent to your caregiver's WhatsApp"}
               </Text>
               <TouchableOpacity
-                style={[s.connectBtn, { alignSelf: "flex-start", marginTop: 8 },
+                style={[s.connectBtn, { position: "absolute", top:0, right: 0 },
                   caregiverConnected && { backgroundColor: "rgba(74,222,128,0.1)", borderColor: "rgba(74,222,128,0.3)" }]}
                 onPress={() => setCaregiverOpen(true)}>
                 {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
