@@ -1753,7 +1753,7 @@ PLAN_FEATURES = {
         "scanner": True,
         "max_appointments": 999,
         "price_inr": 99,
-        "plan_label": "Premium",
+        "plan_label": "Pro Dharma",
     },
     "enterprise": {
         "max_medications": 999,
@@ -1768,7 +1768,7 @@ PLAN_FEATURES = {
         "max_appointments": 999,
         "api_access": True,
         "price_inr": 0,
-        "plan_label": "Enterprise",
+        "plan_label": "Elite Moksha",
     }
 }
 
