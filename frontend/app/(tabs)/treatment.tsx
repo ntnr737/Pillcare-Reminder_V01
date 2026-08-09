@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -328,40 +328,18 @@ export default function Treatment() {
         </View>
       </Modal>
 
-      {/* Yoga time picker */}
       {yogaTimePicker && (
-        <Modal visible={yogaTimePicker} transparent animationType="fade" onRequestClose={() => setYogaTimePicker(false)}>
-          <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", alignItems: "center", justifyContent: "center" }}>
-            <View style={{ backgroundColor: N8, borderRadius: 20, padding: 24, width: "85%", gap: 14 }}>
-              <Text style={s.sTitle}>{savedReminderTime ? "Edit Reminder Time" : "Set Daily Yoga Time"}</Text>
-              <Text style={[s.cS, { lineHeight: 17 }]}>{"You\'ll receive a notification every day at this time to start your yoga routine."}</Text>
-              <DateTimePicker
-                value={yogaTime || (() => { const d = new Date(); d.setHours(8, 0, 0, 0); return d; })()}
-                mode="time"
-                display="spinner"
-                is24Hour={false}
-                themeVariant="dark"
-                style={{ height: 130 }}
-                onChange={(_, selected) => { if (selected) setYogaTime(selected); }}
-              />
-              <View style={{ flexDirection: "row", gap: 10 }}>
-                <TouchableOpacity style={[s.subBtn, { flex: 0.45, backgroundColor: "rgba(233,233,237,0.08)" }]} onPress={() => setYogaTimePicker(false)}>
-                  <Text style={[s.subT, { color: TM }]}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.subBtn, { flex: 1 }]}
-                  onPress={async () => {
-                    setYogaTimePicker(false);
-                    const t = yogaTime || (() => { const d = new Date(); d.setHours(8,0,0,0); return d; })();
-                    await scheduleYogaReminder(t);
-                  }}>
-                  <Text style={s.subT}>Set Reminder</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
+      <DateTimePicker
+        value={yogaTime || (() => { const d = new Date(); d.setHours(8, 0, 0, 0); return d; })()}
+        mode="time"
+        is24Hour={false}
+        display={Platform.OS === "ios" ? "spinner" : "default"}
+        onChange={(_, selected) => {
+          setYogaTimePicker(false);
+          if (selected) scheduleYogaReminder(selected);
+        }}
+        />
       )}
-
       {/* Measurement Modal */}
       <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
         <View style={s.ovl}><View style={s.sBox}><View style={s.hand} />
