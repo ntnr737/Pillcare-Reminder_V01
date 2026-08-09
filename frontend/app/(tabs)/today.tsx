@@ -483,7 +483,7 @@ export default function Today() {
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
         feature="Medication limit reached"
-        description={`Free plan supports up to ${getFeatures().max_medications} medications. Upgrade to Premium for unlimited.`}
+        description={`Free plan supports up to ${getFeatures().max_medications} medications. Upgrade to Pro Dharma for unlimited.`}
       />
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
     </SafeAreaView>
