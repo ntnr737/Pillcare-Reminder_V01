@@ -30,6 +30,14 @@ except ImportError as e:
     def optional_user():
         return None
 
+# Import admin endpoints
+try:
+    from admin_endpoints import setup_admin_endpoints
+    ADMIN_ENABLED = True
+except ImportError as e:
+    logging.warning(f"Admin endpoints not available: {e}")
+    ADMIN_ENABLED = False
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
@@ -739,6 +747,14 @@ async def export_csv():
 
 
 app.include_router(api)
+
+# Setup admin endpoints (must be after app creation)
+if ADMIN_ENABLED:
+    try:
+        setup_admin_endpoints(app, db)
+        logger.info("✓ Admin endpoints registered")
+    except Exception as e:
+        logger.error(f"Failed to setup admin endpoints: {e}")
 
 # CORS middleware - restrict in production
 if ALLOWED_ORIGINS == ["*"] and ENV == "production":
