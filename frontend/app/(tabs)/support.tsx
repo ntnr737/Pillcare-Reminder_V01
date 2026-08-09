@@ -90,6 +90,7 @@ export default function Support() {
   const [so, setSo] = useState(false);
   const [caregiverConnected, setCaregiverConnected] = useState(false);
   const [connectedNumber, setConnectedNumber] = useState("");
+  const [testingAlert, setTestingAlert] = useState(false);
 
   useEffect(() => {
     api.getProfile().then(p => {
@@ -102,6 +103,18 @@ export default function Support() {
       // Also populate email if needed
     }).catch(() => {});
   }, []);
+
+  const sendTestAlert = async () => {
+    setTestingAlert(true);
+    try {
+      const r = await api.caregiverAlert("This is a test alert from PillCare.");
+      Alert.alert("Test sent", "Delivery status: " + r.delivered_via);
+    } catch (e) {
+      Alert.alert("Error", "Could not send test alert. Please try again.");
+    } finally {
+      setTestingAlert(false);
+    }
+  };
 
   const openEmergency = async () => {
     setEmergencyOpen(true); setEmStatus("locating");
@@ -319,6 +332,11 @@ export default function Support() {
           <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={saveCaregiverPhone} disabled={savingCg || !caregiverPhone.trim()}>
             <Text style={[s.subT, { color: "#000" }]}>{savingCg ? "Saving…" : "Save & Connect"}</Text>
           </TouchableOpacity>
+          {caregiverConnected && (
+      <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
+        <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
+      </TouchableOpacity>
+      )}
           <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
         </View></View>
       </Modal>
