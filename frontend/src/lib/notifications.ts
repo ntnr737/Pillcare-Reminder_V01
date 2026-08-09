@@ -7,6 +7,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
+import Constants from "expo-constants";
 
 // Show notification in foreground always
 Notifications.setNotificationHandler({
@@ -75,9 +76,8 @@ export async function registerForPushNotifications(): Promise<string | null> {
     if (finalStatus !== "granted") return null;
 
     // Get Expo push token — works with FCM under the hood
-    const token = await Notifications.getExpoPushTokenAsync({
-      projectId: "pill-care", // EAS project ID
-    });
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId || "1828aee8-d92a-4017-8612-973ae0c1546d";
+      const token = await Notifications.getExpoPushTokenAsync({ projectId });
     const pushToken = token.data;
 
     // Save to backend silently
