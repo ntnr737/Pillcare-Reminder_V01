@@ -1942,7 +1942,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     tokens = [u["push_token"] for u in users if u.get("push_token")]
     
     if not tokens:
-        return {"sent": 0, "message": "No users with push tokens found"}
+                return {"sent": 0, "failed": 0, "total": 0, "message": "No users with push tokens found"}
     
     # Send via Expo Push API (free, no FCM setup needed)
     import httpx
