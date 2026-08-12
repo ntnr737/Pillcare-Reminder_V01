@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -387,31 +387,53 @@ export default function Today() {
 
       {/* Low stock & out of stock warnings */}
       {doses.length > 0 && (() => {
-        const lowStock = [...new Set(doses.map((d: any) => d.medication_id))]
-          .map(mid => doses.find((d: any) => d.medication_id === mid))
-          .filter(Boolean)
-          .map((d: any) => ({ name: d.medication_name || d.medication?.name || "", stock: d.medication?.stock ?? 999 }))
-          .filter(m => m.stock !== undefined && m.stock <= 3);
-        if (!lowStock.length) return null;
-        return (
-          <View style={{ marginHorizontal: 14, marginBottom: 10, gap: 6 }}>
-            {lowStock.map((m, i) => (
-              <TouchableOpacity key={i} style={{ backgroundColor: m.stock <= 0 ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.1)", borderRadius: 10, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: m.stock <= 0 ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)" }}
-                onPress={() => router.push("/nearby")}>
-                <Ionicons name={m.stock <= 0 ? "alert-circle" : "warning"} size={16} color={m.stock <= 0 ? "#f87171" : "#fbbf24"} />
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: m.stock <= 0 ? "#f87171" : "#fbbf24" }}>
-                    {m.stock <= 0 ? `${m.name} is out of stock` : `${m.name} — only ${m.stock} left`}
-                  </Text>
-                  <Text style={{ fontSize: 11, color: TM, marginTop: 1 }}>Tap to find nearest pharmacy</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={13} color={TM} />
-              </TouchableOpacity>
-            ))}
-          </View>
+      const lowStock = [...new Set(doses.map((d: any) => d.medication_id))]
+      .map(mid => doses.find((d: any) => d.medication_id === mid))
+      .filter(Boolean)
+      .map((d: any) => ({ id: d.medication_id, name: d.medication_name || d.medication?.name || "", stock: d.medication?.stock ?? 999 }))
+      .filter(m => m.stock !== undefined && m.stock <= 3);
+      if (!lowStock.length) return null;
+      const markComplete = async (medId: string) => {
+        try {
+          const pendingForMed = doses.filter((d: any) => d.medication_id === medId && d.status === "pending");
+          await Promise.all(pendingForMed.map((d: any) => api.setDoseStatus(d.id, "skipped")));
+          await api.deleteMedication(medId);
+          track("medication_marked_complete", { reason: "out_of_stock" });
+          await backgroundRefresh(fetchServer);
+        } catch {
+          Alert.alert("Could not update", "Please check your connection and try again.");
+        }
+      };
+      const onStockPress = (m: { id: string; name: string; stock: number }) => {
+        if (m.stock > 0) { router.push("/nearby"); return; }
+        Alert.alert(
+          `${m.name} is out of stock`,
+          "Do you need to reorder this medicine? If the treatment is finished, we will stop reminding you about it.",
+          [
+            { text: "Find pharmacy", onPress: () => router.push("/nearby") },
+            { text: "Treatment complete", style: "destructive", onPress: () => markComplete(m.id) },
+            { text: "Cancel", style: "cancel" },
+            ]
+          );
+      };
+      return (
+        <View style={{ marginHorizontal: 14, marginBottom: 10, gap: 6 }}>
+          {lowStock.map((m, i) => (
+          <TouchableOpacity key={i} style={{ backgroundColor: m.stock <= 0 ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.1)", borderRadius: 10, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: m.stock <= 0 ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)" }}
+            onPress={() => onStockPress(m)}>
+            <Ionicons name={m.stock <= 0 ? "alert-circle" : "warning"} size={16} color={m.stock <= 0 ? "#f87171" : "#fbbf24"} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: "700", color: m.stock <= 0 ? "#f87171" : "#fbbf24" }}>
+                {m.stock <= 0 ? `${m.name} is out of stock` : `${m.name} — only ${m.stock} left`}
+              </Text>
+              <Text style={{ fontSize: 11, color: TM, marginTop: 1 }}>{m.stock <= 0 ? "Tap for options" : "Tap to find nearest pharmacy"}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={13} color={TM} />
+          </TouchableOpacity>
+          ))}
+        </View>
         );
-      })()}
-
+    })()}
       {/* FAB */}
       <TouchableOpacity style={s.fab} onPress={() => setActionSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
 
