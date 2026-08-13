@@ -76,7 +76,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
     if (finalStatus !== "granted") return null;
 
     // Get Expo push token — works with FCM under the hood
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId || "1828aee8-d92a-4017-8612-973ae0c1546d";
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId || "64e98649-8c44-47bb-aa76-d95403ea78c3";
       const token = await Notifications.getExpoPushTokenAsync({ projectId });
     const pushToken = token.data;
 
