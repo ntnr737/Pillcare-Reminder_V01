@@ -88,13 +88,27 @@ export default function Nearby() {
         (node[${osmTag}](around:${radius},${loc.lat},${loc.lng});
          way[${osmTag}](around:${radius},${loc.lat},${loc.lng}););
         out center 20;`;
-      const overpass = await fetch("https://overpass-api.de/api/interpreter", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: `data=${encodeURIComponent(query)}`,
-      });
-      if (!overpass.ok) throw new Error("Overpass failed");
-      const osmData = await overpass.json();
+const overpassMirrors = [
+        "https://overpass-api.de/api/interpreter",
+        "https://overpass.kumi.systems/api/interpreter",
+        "https://overpass.openstreetmap.ru/api/interpreter",
+      ];
+          let osmData: any = null;
+          for (const mirrorUrl of overpassMirrors) {
+                  try {
+                            const overpass = await fetch(mirrorUrl, {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                                        body: `data=${encodeURIComponent(query)}`,
+                            });
+                            if (!overpass.ok) continue;
+                            osmData = await overpass.json();
+                            break;
+                  } catch {
+                            continue;
+                  }
+          }
+          if (!osmData) throw new Error("Overpass failed");
       const results: Place[] = (osmData.elements || []).slice(0, 15).map((el: any) => {
         const elLat = el.lat || el.center?.lat;
         const elLng = el.lon || el.center?.lon;
@@ -198,7 +212,10 @@ export default function Nearby() {
               <TouchableOpacity style={s.retryBtn} onPress={() => search()}>
                 <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Try Again</Text>
               </TouchableOpacity>
-            )}
+<TouchableOpacity style={[s.retryBtn, { marginTop: 10 }]} onPress={openGoogleMaps}>
+  <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Open in Google Maps</Text>
+</TouchableOpacity>
+              )}
           </View>
         ) : null}
 
