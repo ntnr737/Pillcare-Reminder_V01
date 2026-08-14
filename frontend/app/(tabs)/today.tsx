@@ -103,6 +103,7 @@ export default function Today() {
     setAddMed(true);
   };
   const [actionSheet, setActionSheet] = useState(false);
+  const [stockModal, setStockModal] = useState<{ id: string; name: string } | null>(null);
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
 
@@ -202,6 +203,18 @@ export default function Today() {
       });
     resyncReminders().catch(() => {});
   }, [date]);
+
+  const markComplete = async (medId: string) => {
+    try {
+      const pendingForMed = doses.filter((d: any) => d.medication_id === medId && d.status === "pending");
+      await Promise.all(pendingForMed.map((d: any) => api.setDoseStatus(d.id, "skipped")));
+      await api.deleteMedication(medId);
+      track("medication_marked_complete", { reason: "out_of_stock" });
+      await backgroundRefresh(fetchServer);
+    } catch {
+      Alert.alert("Could not update", "Please check your connection and try again.");
+    }
+  };
 
   const taken = doses.filter(d => d.status === "taken").length,
     total = doses.length,
@@ -393,28 +406,9 @@ export default function Today() {
       .map((d: any) => ({ id: d.medication_id, name: d.medication_name || d.medication?.name || "", stock: d.medication?.stock ?? 999 }))
       .filter(m => m.stock !== undefined && m.stock <= 3);
       if (!lowStock.length) return null;
-      const markComplete = async (medId: string) => {
-        try {
-          const pendingForMed = doses.filter((d: any) => d.medication_id === medId && d.status === "pending");
-          await Promise.all(pendingForMed.map((d: any) => api.setDoseStatus(d.id, "skipped")));
-          await api.deleteMedication(medId);
-          track("medication_marked_complete", { reason: "out_of_stock" });
-          await backgroundRefresh(fetchServer);
-        } catch {
-          Alert.alert("Could not update", "Please check your connection and try again.");
-        }
-      };
       const onStockPress = (m: { id: string; name: string; stock: number }) => {
         if (m.stock > 0) { router.push("/nearby"); return; }
-        Alert.alert(
-          `${m.name} is out of stock`,
-          "Do you need to reorder this medicine? If the treatment is finished, we will stop reminding you about it.",
-          [
-            { text: "Find pharmacy", onPress: () => router.push("/nearby") },
-            { text: "Treatment complete", style: "destructive", onPress: () => markComplete(m.id) },
-            { text: "Cancel", style: "cancel" },
-            ]
-          );
+setStockModal({ id: m.id, name: m.name });
       };
       return (
         <View style={{ marginHorizontal: 14, marginBottom: 10, gap: 6 }}>
@@ -497,6 +491,33 @@ export default function Today() {
                 <Ionicons name="chevron-forward" size={14} color={TM} />
               </TouchableOpacity>
             ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Out of stock modal */}
+      <Modal visible={!!stockModal} transparent animationType="slide" onRequestClose={() => setStockModal(null)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockModal(null)}>
+          <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="alert-circle" size={22} color="#f87171" />
+              <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{stockModal?.name} is out of stock</Text>
+            </View>
+            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>Do you need to reorder this medicine? If the treatment is finished, we will stop reminding you about it.</Text>
+            <TouchableOpacity onPress={() => { setStockModal(null); router.push("/nearby"); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
+              <Ionicons name="storefront-outline" size={18} color={A3} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: TX, flex: 1 }}>Find pharmacy</Text>
+              <Ionicons name="chevron-forward" size={14} color={TM} />
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={() => { const id = stockModal?.id; setStockModal(null); if (id) markComplete(id); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(248,113,113,0.2)" }}>
+            <Ionicons name="checkmark-done-outline" size={18} color="#f87171" />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#f87171", flex: 1 }}>Treatment complete</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setStockModal(null)} style={{ alignItems: "center", paddingVertical: 8 }}>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Cancel</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
