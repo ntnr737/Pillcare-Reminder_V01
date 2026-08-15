@@ -2,7 +2,7 @@ import { useCallback, useState, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
@@ -21,6 +21,8 @@ const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 
 export default function Treatment() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ openYoga?: string }>();
+  useEffect(() => { if (params?.openYoga) { setTab(0); setYogaOpen(true); } }, [params?.openYoga]);
   const [tab, setTab] = useState(0);
   const [filter, setFilter] = useState("all");
   const [meds, setMeds] = useState<any[]>([]);
