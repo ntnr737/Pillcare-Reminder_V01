@@ -1364,7 +1364,7 @@ async def nearby_places(
         deg = radius / 111000
         bbox = f"{lat-deg},{lng-deg},{lat+deg},{lng+deg}"
         query = osm_queries.get(type, osm_queries["pharmacy"]).replace("{bbox}", bbox)
-            overpass_mirrors = [
+        overpass_mirrors = [
                 "https://overpass-api.de/api/interpreter",
                 "https://overpass.kumi.systems/api/interpreter",
                 "https://overpass.openstreetmap.ru/api/interpreter",
