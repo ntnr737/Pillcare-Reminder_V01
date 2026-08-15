@@ -1350,7 +1350,24 @@ async def nearby_places(
                         "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
                     })
                 places.sort(key=lambda x: x["distance"])
-                return {"places": places[:max_results], "source": "google"}
+                top_places = places[:max_results]
+    import httpx, math, asyncio
+                    if not place_id:
+                        return None
+                    try:
+                        async with httpx.AsyncClient(timeout=5) as pc:
+                            pr = await pc.get(
+                                "https://maps.googleapis.com/maps/api/place/details/json",
+                                params={"place_id": place_id, "fields": "formatted_phone_number", "key": GOOGLE_PLACES_KEY},
+                            )
+                        pd = pr.json()
+                        return pd.get("result", {}).get("formatted_phone_number")
+                    except Exception:
+                        return None
+                phones = await asyncio.gather(*[_fetch_phone(pl["id"]) for pl in top_places])
+                for pl, ph in zip(top_places, phones):
+                    pl["phone"] = ph
+                return {"places": top_places, "source": "google"}
         except Exception as e:
             logger.warning(f"Google Places failed: {e}")
 
