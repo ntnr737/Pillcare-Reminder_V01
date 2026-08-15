@@ -8,6 +8,8 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { initAnalytics } from "@/src/lib/firebase";
 import { resyncReminders, registerForPushNotifications } from "@/src/lib/notifications";
+import { loadCachedFeatures, fetchFeatures } from "@/src/lib/features";
+import { getStoredToken } from "@/src/lib/auth";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
@@ -25,6 +27,8 @@ export default function RootLayout() {
     initAnalytics().catch(() => {});
     resyncReminders().catch(() => {});
     registerForPushNotifications().catch(() => {});
+    loadCachedFeatures().catch(() => {});
+    getStoredToken().then((token) => { if (token) fetchFeatures(token).catch(() => {}); }).catch(() => {});
   }, []);
 
   if (!loaded && !error) return null;
