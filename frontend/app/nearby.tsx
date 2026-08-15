@@ -15,6 +15,16 @@ const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
 
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "https://pillcare-backend-1082668880575.europe-west1.run.app";
 
+async function fetchWithTimeout(url: string, options: any = {}, ms = 15000): Promise<Response> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), ms);
+    try {
+          return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+          clearTimeout(id);
+    }
+}
+
 type PlaceType = "pharmacy" | "diagnostic" | "hospital";
 type Place = {
   id: string; name: string; address: string; phone?: string;
@@ -25,7 +35,7 @@ type Place = {
 const TYPE_CONFIG: Record<PlaceType, { label: string; icon: string; color: string; mapQuery: string }> = {
   pharmacy:   { label: "Medical Stores",    icon: "medkit-outline",      color: "#4ade80", mapQuery: "pharmacy+medical+store+chemist" },
   diagnostic: { label: "Diagnostic Labs",   icon: "flask-outline",       color: A3,        mapQuery: "diagnostic+lab+pathology+blood+test" },
-  hospital:   { label: "Hospitals & Clinics", icon: "hospital-outline",  color: "#f472b6", mapQuery: "hospital+clinic+nursing+home" },
+  hospital:   { label: "Hospitals & Clinics", icon: "medical-outline",  color: "#f472b6", mapQuery: "hospital+clinic+nursing+home" },
 };
 
 const RADII = [
@@ -70,10 +80,10 @@ export default function Nearby() {
       // Try backend endpoint first (Google Places)
       try {
         const token = await (await import("@/src/lib/auth")).getStoredToken();
-        const res = await fetch(
+      const res = await fetchWithTimeout(
           `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${radius}&type=${type}`,
           { headers: { Authorization: `Bearer ${token}` } }
-        );
+      , 15000);
         if (res.ok) {
           const data = await res.json();
           if (data.places?.length) { setPlaces(data.places); setLoading(false); return; }
@@ -96,11 +106,11 @@ const overpassMirrors = [
           let osmData: any = null;
           for (const mirrorUrl of overpassMirrors) {
                   try {
-                            const overpass = await fetch(mirrorUrl, {
+                            const overpass = await fetchWithTimeout(mirrorUrl, {
                                         method: "POST",
                                         headers: { "Content-Type": "application/x-www-form-urlencoded" },
                                         body: `data=${encodeURIComponent(query)}`,
-                            });
+                            }, 12000);
                             if (!overpass.ok) continue;
                             osmData = await overpass.json();
                             break;
