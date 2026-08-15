@@ -1369,8 +1369,8 @@ async def nearby_places(
                 "https://overpass.kumi.systems/api/interpreter",
                 "https://overpass.openstreetmap.ru/api/interpreter",
             ]
-            data = None
-            last_err = None
+        data = None
+        last_err = None
             for overpass_url in overpass_mirrors:
                 try:
                     async with httpx.AsyncClient(timeout=20) as client:
