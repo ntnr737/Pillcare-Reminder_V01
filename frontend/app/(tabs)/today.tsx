@@ -512,7 +512,7 @@ setStockModal({ id: m.id, name: m.name });
               <Ionicons name="chevron-forward" size={14} color={TM} />
             </TouchableOpacity>
             
-            <TouchableOpacity onPress={() => { const id = stockModal?.id; setStockModal(null); if (id) markComplete(id); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(248,113,113,0.2)" }}>
+            <TouchableOpacity onPress={() => { const id = stockModal?.id; const name = stockModal?.name; Alert.alert("Mark treatment complete?", `Remove ${name || "this medication"} from your reminders? This can't be undone.`, [{ text: "Cancel", style: "cancel" }, { text: "Remove", style: "destructive", onPress: () => { setStockModal(null); if (id) markComplete(id); } }]); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(248,113,113,0.2)" }}>
             <Ionicons name="checkmark-done-outline" size={18} color="#f87171" />
               <Text style={{ fontSize: 13, fontWeight: "600", color: "#f87171", flex: 1 }}>Treatment complete</Text>
             </TouchableOpacity>
