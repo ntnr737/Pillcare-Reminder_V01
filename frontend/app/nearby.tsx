@@ -270,13 +270,18 @@ const overpassMirrors = [
             </View>
 
             <View style={s.cardActions}>
-              {p.phone ? (
+              {p.phone ? (<>
                 <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.08)" }]}
                   onPress={e => { e.stopPropagation(); Linking.openURL(`tel:${(p.phone||"").replace(/[\s\-()]/g,"")}`); }}>
                   <Ionicons name="call" size={14} color="#4ade80" />
                   <Text style={[s.actionTx, { color: "#4ade80" }]}>Call now</Text>
                 </TouchableOpacity>
-              ) : null}
+                <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(37,211,102,0.3)", backgroundColor: "rgba(37,211,102,0.08)" }]}
+                  onPress={e => { e.stopPropagation(); const ph = (p.phone||"").replace(/[\s\-()]/g,""); Linking.openURL(`https://wa.me/${ph}?text=${encodeURIComponent("Hi, I found you on Pillcare. I would like to check availability.")}`); }}>
+                  <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
+                  <Text style={[s.actionTx, { color: "#25D366" }]}>WhatsApp</Text>
+                </TouchableOpacity>
+              </>) : null}
               <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
                 <Ionicons name="navigate" size={14} color={A3} />
                 <Text style={s.actionTx}>Directions</Text>
