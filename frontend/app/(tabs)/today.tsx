@@ -290,7 +290,7 @@ export default function Today() {
           <TouchableOpacity
             activeOpacity={0.85}
             style={[s.aiCard, { borderColor: "rgba(145,132,217,0.3)" }]}
-            onPress={() => router.push("/(tabs)/treatment")}>
+            onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
             <View style={s.aiH}>
               <Ionicons name="leaf-outline" size={10} color={A3} />
               <Text style={s.aiK}>YOGA REMINDER — {yogaReminderTime} daily</Text>
@@ -306,7 +306,7 @@ export default function Today() {
             <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
               <TouchableOpacity
                 style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.15)", borderRadius: 8, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
-                onPress={() => router.push("/(tabs)/treatment")}>
+            onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
                 <Ionicons name="play-circle-outline" size={14} color={A3} />
                 <Text style={{ fontSize: 12, color: A3, fontWeight: "700" }}>View yoga routine</Text>
               </TouchableOpacity>
