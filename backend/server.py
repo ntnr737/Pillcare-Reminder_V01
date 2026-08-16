@@ -1133,6 +1133,28 @@ async def ai_daily_message(request: Request, local_date: str = None, user_id: st
     meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(50)
     recent_mood = await db.mood.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(1)
     adh = await _adherence_for_user(user_id, 7, local_date)
+    features = await get_user_features(user_id)
+    insight_level = features.get("ai_insights", "none")
+    if insight_level == "none":
+        if total == 0:
+            msg = "Quietly waiting until you add your first medication. No pressure."
+        elif taken == total:
+            msg = f"All {total} doses taken today. Steady wins this game."
+        elif taken == 0:
+            msg = "A new day. Tap a dose when you're ready."
+        else:
+            msg = f"{taken} of {total} done — you're moving."
+        return {"message": msg, "streak": adh.get("streak", 0)}
+    if insight_level == "weekly":
+        cached = await db.ai_daily_cache.find_one({"user_id": user_id}, PROJECTION)
+        if cached and cached.get("date"):
+            try:
+                d0 = datetime.strptime(cached["date"], "%Y-%m-%d").date()
+                d1 = datetime.strptime(today, "%Y-%m-%d").date()
+                if 0 <= (d1 - d0).days < 7:
+                    return {"message": cached.get("message", ""), "streak": adh.get("streak", 0)}
+            except ValueError:
+                pass
 
     # Fallback static message if no AI key
     if not GROQ_API_KEY:
@@ -1170,6 +1192,8 @@ async def ai_daily_message(request: Request, local_date: str = None, user_id: st
         logger.warning(f"AI daily message failed: {e}")
         msg = f"{taken} of {total} doses done today." if total else "A fresh start awaits."
 
+    if insight_level == "weekly":
+        await db.ai_daily_cache.update_one({"user_id": user_id}, {"$set": {"date": today, "message": msg}}, upsert=True)
     return {"message": msg, "streak": adh.get("streak", 0)}
 
 
