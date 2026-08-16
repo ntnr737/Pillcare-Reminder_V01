@@ -9,6 +9,8 @@ import { track } from "@/src/lib/analytics";
 import * as Notifications from "expo-notifications";
 import { useFocusEffect } from "expo-router";
 import { get, set } from "@/src/lib/store";
+import { getFeatures } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -24,6 +26,7 @@ const BLANK: Appt = { doctor_name: "", specialty: "", phone: "", date: "", time:
 export default function Appointments() {
   const router = useRouter();
   const [appts, setAppts] = useState<Appt[]>([]);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [modal, setModal] = useState(false);
   const [editing, setEditing] = useState<Appt>(BLANK);
   const [saving, setSaving] = useState(false);
@@ -206,7 +209,7 @@ export default function Appointments() {
         )}
       </ScrollView>
 
-      <TouchableOpacity style={s.fab} onPress={() => { setEditing(BLANK); setModal(true); }}>
+          <TouchableOpacity style={s.fab} onPress={() => { if (appts.length >= getFeatures().max_appointments) { setShowUpgrade(true); return; } setEditing(BLANK); setModal(true); }}>
         <Ionicons name="add" size={24} color={BG} />
       </TouchableOpacity>
 
@@ -305,6 +308,7 @@ export default function Appointments() {
           </ScrollView>
         </View>
       </Modal>
+        <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Appointment limit reached" description={`Free plan supports up to ${getFeatures().max_appointments} appointments. Upgrade to Pro Dharma for unlimited.`} />
     </SafeAreaView>
   );
 }
