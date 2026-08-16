@@ -20,6 +20,7 @@ async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
   if (ct.includes("application/json")) return res.json() as Promise<T>;
   return res.text() as unknown as Promise<T>;
 }
+function localDateStr(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
 export const api = {
   getProfile: () => req<any>("/profile"),
@@ -37,14 +38,14 @@ export const api = {
   createActivity: (data: any) => req<any>("/activities", { method: "POST", body: JSON.stringify(data) }),
   listMood: () => req<any[]>("/mood"),
   createMood: (data: any) => req<any>("/mood", { method: "POST", body: JSON.stringify(data) }),
-  adherence: (days: number = 7) => req<any>(`/progress/adherence?days=${days}`),
+  adherence: (days: number = 7) => req<any>(`/progress/adherence?days=${days}&local_date=${localDateStr()}`),
   yogaTip: () => req<any>("/yoga-tip"),
   doseHistory: (days: number = 30) => req<any[]>(`/doses/history?days=${days}`),
   listAppointments: () => req<any[]>("/appointments"),
   createAppointment: (data: any) => req<any>("/appointments", { method: "POST", body: JSON.stringify(data) }),
   updateAppointment: (id: string, data: any) => req<any>(`/appointments/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteAppointment: (id: string) => req<any>(`/appointments/${id}`, { method: "DELETE" }),
-  dailyMessage: () => req<{ message: string; streak: number; yoga_tip?: string }>("/ai/daily-message"),
+  dailyMessage: () => req<{ message: string; streak: number; yoga_tip?: string }>(`/ai/daily-message?local_date=${localDateStr()}`),
   units: () => req<{ units: string[] }>("/catalog/units"),
   measurementCatalog: () => req<{ measurements: any[] }>("/catalog/measurements"),
   activityCatalog: () => req<{ activities: any[] }>("/catalog/activities"),
