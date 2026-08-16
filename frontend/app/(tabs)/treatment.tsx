@@ -9,6 +9,8 @@ import { track } from "@/src/lib/analytics";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
+import { getFeatures } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 
@@ -22,7 +24,7 @@ const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 export default function Treatment() {
   const router = useRouter();
   const params = useLocalSearchParams<{ openYoga?: string }>();
-  useEffect(() => { if (params?.openYoga) { setTab(0); setYogaOpen(true); } }, [params?.openYoga]);
+  useEffect(() => { if (params?.openYoga) { setTab(0); if (!getFeatures().yoga_full) { setShowUpgrade(true); } else { setYogaOpen(true); } } }, [params?.openYoga]);
   const [tab, setTab] = useState(0);
   const [filter, setFilter] = useState("all");
   const [meds, setMeds] = useState<any[]>([]);
@@ -32,6 +34,7 @@ export default function Treatment() {
   const [mood, setMood] = useState<any[]>([]);
   const [yoga, setYoga] = useState<any>(null);
   const [yogaOpen, setYogaOpen] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const trackYogaView = () => track("yoga_viewed");
   const [yogaTimePicker, setYogaTimePicker] = useState(false);
   const [yogaTime, setYogaTime] = useState<Date | null>(null);
@@ -168,7 +171,7 @@ export default function Treatment() {
               <Text style={s.cT}>{yoga.title || "Gentle Flow"}</Text>
               <Text style={s.cS}>{yoga.duration || "12 min"} • {yoga.level || "Beginner"}</Text>
             </View>
-            <TouchableOpacity style={s.viewBtn} onPress={() => setYogaOpen(true)}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
+          <TouchableOpacity style={s.viewBtn} onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
           </View>)}
           {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>{filter === "refill" ? "No refills needed" : "No medications"}</Text><Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : "Tap + to add one"}</Text></View>
           ) : fm.map(m => (<View key={m.id} style={s.card}>
@@ -366,6 +369,7 @@ export default function Treatment() {
       </Modal>
 
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />
+      <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Full yoga library" description="Free plan includes a daily yoga tip. Upgrade to Pro Dharma for full guided routines with video demos." />
     </SafeAreaView>
   );
 }
