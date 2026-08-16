@@ -7,6 +7,7 @@ import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
+import { isHealthConnectAvailable, hasHealthPermissions, requestHealthPermissions, readTodayVitals, openHealthConnectSettings } from "@/src/lib/healthConnect";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed", TM = "rgba(233,233,237,0.55)",
@@ -20,6 +21,9 @@ export default function Progress() {
   const router = useRouter();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [hcStatus, setHcStatus] = useState<"unknown" | "unavailable" | "not-granted" | "granted">("unknown");
+  const [hcData, setHcData] = useState<{ steps: number | null; heartRate: number | null; sleepHours: number | null }>({ steps: null, heartRate: null, sleepHours: null });
+  const [hcLoading, setHcLoading] = useState(false);
 
   useEffect(() => {
     get<any>(K.adherence).then(a => { if (a) setAdh(a); });
@@ -36,6 +40,47 @@ export default function Progress() {
 
   useFocusEffect(useCallback(() => { backgroundRefresh(loadServer); }, [loadServer]));
   const onRefresh = async () => { setRefreshing(true); await loadServer(); setRefreshing(false); };
+
+  const loadHealth = useCallback(async () => {
+    setHcLoading(true);
+    try {
+      const available = await isHealthConnectAvailable();
+      if (!available) { setHcStatus("unavailable"); return; }
+      const granted = await hasHealthPermissions();
+      if (!granted) { setHcStatus("not-granted"); return; }
+      const vitals = await readTodayVitals();
+      setHcData({ steps: vitals.steps, heartRate: vitals.heartRate, sleepHours: vitals.sleepHours });
+      setHcStatus(vitals.granted ? "granted" : "not-granted");
+    } catch {
+      setHcStatus("unavailable");
+    } finally {
+      setHcLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(useCallback(() => { loadHealth(); }, [loadHealth]));
+
+  const connectHealth = async () => {
+    setHcLoading(true);
+    try {
+      const available = await isHealthConnectAvailable();
+      if (!available) {
+        Alert.alert("Health Connect not available", "Install the Health Connect app from the Play Store to sync steps, heart rate and sleep.");
+        setHcStatus("unavailable");
+        return;
+      }
+      const granted = await requestHealthPermissions();
+      if (granted) {
+        await loadHealth();
+      } else {
+        setHcStatus("not-granted");
+      }
+    } catch {
+      setHcStatus("unavailable");
+    } finally {
+      setHcLoading(false);
+    }
+  };
 
   const daily = adh?.daily || [], avg = adh?.average || 0, streak = adh?.streak || 0;
   // Show last 30 days in graph
@@ -154,26 +199,32 @@ export default function Progress() {
               <View style={s.cI}><Ionicons name="heart-outline" size={16} color={A3} /></View>
               <View style={{ flex: 1 }}>
                 <Text style={s.cT}>Health Connect</Text>
-                <Text style={s.cS}>Sync steps, heart rate & sleep from Android</Text>
+                <Text style={s.cS}>{hcStatus === "granted" ? "Synced from Android Health Connect" : "Sync steps, heart rate & sleep from Android"}</Text>
               </View>
-              <TouchableOpacity style={s.conBtn} onPress={async () => {
-                // Try to open Health Connect permissions for this app directly
-                const { Linking } = require("react-native");
-                // Open Health Connect app permissions page for PillCare directly
-                const hcDeepLink = "healthconnect://androidx.health.ACTION_MANAGE_HEALTH_PERMISSIONS?package=com.pillcare.reminder";
-                const hcFallback = "android.settings.APP_SETTINGS";
-                try {
-                  await Linking.openURL(hcDeepLink);
-                } catch {
-                  try {
-                    await Linking.openURL("package:com.google.android.apps.healthdata");
-                  } catch {
-                    await Linking.openURL("https://play.google.com/store/apps/details?id=com.google.android.apps.healthdata");
-                  }
-                }
-              }}><Text style={s.conT}>Connect</Text></TouchableOpacity>
+              <TouchableOpacity style={s.conBtn} disabled={hcLoading} onPress={hcStatus === "granted" ? loadHealth : connectHealth}>
+                <Text style={s.conT}>{hcLoading ? "…" : hcStatus === "granted" ? "Refresh" : "Connect"}</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={[s.cS, { fontStyle: "italic" }]}>After installing Health Connect, open it → Apps → PillCare → Allow permissions</Text>
+            {hcStatus === "granted" ? (
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ color: TX, fontSize: 16, fontWeight: "700" }}>{hcData.steps ?? "–"}</Text>
+                  <Text style={{ color: TM, fontSize: 10 }}>Steps today</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ color: TX, fontSize: 16, fontWeight: "700" }}>{hcData.heartRate ?? "–"}</Text>
+                  <Text style={{ color: TM, fontSize: 10 }}>Heart rate (bpm)</Text>
+                </View>
+                <View style={{ flex: 1, alignItems: "center" }}>
+                  <Text style={{ color: TX, fontSize: 16, fontWeight: "700" }}>{hcData.sleepHours ?? "–"}</Text>
+                  <Text style={{ color: TM, fontSize: 10 }}>Sleep (hrs)</Text>
+                </View>
+              </View>
+            ) : (
+              <TouchableOpacity onPress={openHealthConnectSettings}>
+                <Text style={[s.cS, { fontStyle: "italic", marginTop: 6 }]}>{hcStatus === "unavailable" ? "Install Health Connect from the Play Store, then tap Connect" : "After installing Health Connect, open it → Apps → PillCare → Allow permissions"}</Text>
+              </TouchableOpacity>
+            )}
           </View>
           {adh && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(145,132,217,0.3)" }]}>
             <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}><Ionicons name="sparkles" size={17} color={A3} /></View>
