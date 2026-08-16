@@ -6,20 +6,23 @@ import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
-
+import { getFeatures } from "@/src/lib/features";
 export default function Caregiver() {
   const router = useRouter();
-  const [phone, setPhone] = useState("");
+  const [caregivers, setCaregivers] = useState<string[]>([]);
+  const [newPhone, setNewPhone] = useState("");
   const [profile, setProfile] = useState<any>(null);
   const [log, setLog] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const limit = getFeatures().caregiver_alerts;
 
   useEffect(() => {
     api.getProfile().then((p) => {
       setProfile(p);
-      if (p?.caregiver_phone) setPhone(p.caregiver_phone);
+      const list = p?.caregivers && p.caregivers.length ? p.caregivers : (p?.caregiver_phone ? [p.caregiver_phone] : []);
+      setCaregivers(list);
     }).catch(() => {});
     refreshLog();
   }, []);
@@ -32,24 +35,10 @@ export default function Caregiver() {
   };
 
   const save = async () => {
-    if (!profile) return;
     setSaving(true);
     try {
-      await api.upsertProfile({
-        nickname: profile.nickname,
-        gender: profile.gender,
-        year_of_birth: profile.year_of_birth,
-        location_city: profile.location_city,
-        location_state: profile.location_state,
-        phone: profile.phone,
-        routine_wake: profile.routine_wake,
-        routine_breakfast: profile.routine_breakfast,
-        routine_lunch: profile.routine_lunch,
-        routine_dinner: profile.routine_dinner,
-        routine_sleep: profile.routine_sleep,
-        caregiver_phone: phone,
-      });
-      setMsg("Caregiver saved");
+      await api.updateCaregivers(caregivers);
+    setMsg("Caregivers saved");
     } catch (e) {
       setMsg(String(e));
     } finally {
@@ -61,7 +50,8 @@ export default function Caregiver() {
     setTesting(true);
     try {
       const r = await api.caregiverAlert("This is a test alert from PillCare.");
-      setMsg(`Sent via ${r.delivered_via}${r.phone ? ` to ${r.phone}` : ""}`);
+      const sent = r.sent || [r];
+      setMsg(`Sent to ${sent.length} caregiver${sent.length === 1 ? "" : "s"}`);
       refreshLog();
     } catch (e) {
       setMsg(String(e));
@@ -80,17 +70,41 @@ export default function Caregiver() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body}>
-        <Text style={styles.sub}>Set a trusted person who gets a WhatsApp message if you skip a dose or run low on stock.</Text>
-        <Text style={styles.label}>Caregiver WhatsApp number</Text>
-        <TextInput
-          testID="caregiver-phone-input"
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="+91 98XXXXXXXX"
-          placeholderTextColor={theme.colors.textDisabled}
-          keyboardType="phone-pad"
-          style={styles.input}
-        />
+        <Text style={styles.sub}>Add trusted people who get a WhatsApp message if you skip a dose or run low on stock. Your plan allows up to {limit} caregiver{limit === 1 ? "" : "s"}.</Text>
+        {caregivers.map((c, idx) => (
+          <View key={idx} style={styles.caregiverRow}>
+            <Text style={styles.caregiverPhone}>{c}</Text>
+            <TouchableOpacity onPress={() => setCaregivers(caregivers.filter((_, i) => i !== idx))} testID={`remove-caregiver-${idx}`}>
+              <Ionicons name="close-circle" size={22} color={theme.colors.textDisabled} />
+            </TouchableOpacity>
+          </View>
+        ))}
+        {caregivers.length < limit && (
+          <View style={styles.addRow}>
+            <TextInput
+              testID="caregiver-phone-input"
+              value={newPhone}
+              onChangeText={setNewPhone}
+              placeholder="+91 98XXXXXXXX"
+              placeholderTextColor={theme.colors.textDisabled}
+              keyboardType="phone-pad"
+              style={[styles.input, { flex: 1 }]}
+            />
+            <TouchableOpacity
+              style={styles.addBtn}
+              onPress={() => {
+                const cleaned = newPhone.trim();
+                if (!cleaned) return;
+                if (caregivers.includes(cleaned)) { setNewPhone(""); return; }
+                setCaregivers([...caregivers, cleaned]);
+                setNewPhone("");
+              }}
+              testID="add-caregiver-btn"
+            >
+              <Ionicons name="add" size={22} color={theme.colors.textPrimary} />
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={{ height: 12 }} />
         <PrimaryButton label={saving ? "Saving…" : "Save"} onPress={save} loading={saving} testID="save-caregiver-btn" />
         <View style={{ height: 12 }} />
@@ -132,4 +146,8 @@ const styles = StyleSheet.create({
   input: { backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.borderSubtle, borderRadius: 12, padding: 16, color: theme.colors.textPrimary, fontSize: 18, minHeight: 56 },
   msg: { color: theme.colors.brand, marginTop: 12, textAlign: "center" },
   note: { color: theme.colors.textSecondary, marginTop: 8, lineHeight: 20 },
+  caregiverRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: theme.colors.surface, borderWidth: 1, borderColor: theme.colors.borderSubtle, borderRadius: 12, padding: 14, marginBottom: 10 },
+  caregiverPhone: { color: theme.colors.textPrimary, fontSize: 16 },
+  addRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  addBtn: { width: 56, height: 56, borderRadius: 12, backgroundColor: theme.colors.brand, alignItems: "center", justifyContent: "center" },
 });
