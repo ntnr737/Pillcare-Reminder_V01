@@ -7,15 +7,19 @@ import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { getFeatures } from "@/src/lib/features";
 
 export default function Scanner() {
   const router = useRouter();
   const [image, setImage] = useState<string | null>(null);
   const [b64, setB64] = useState<string | null>(null);
   const [result, setResult] = useState<any | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const pickFromCamera = async () => {
+    if (!getFeatures().scanner) { setShowUpgrade(true); return; }
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) return;
     const r = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.7 });
@@ -27,6 +31,7 @@ export default function Scanner() {
   };
 
   const pickFromGallery = async () => {
+    if (!getFeatures().scanner) { setShowUpgrade(true); return; }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
     const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, base64: true, quality: 0.7 });
@@ -96,6 +101,7 @@ export default function Scanner() {
           </Card>
         )}
       </ScrollView>
+        <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Medicine scanner" description="Scan a prescription photo to auto-fill medication details. Upgrade to Pro Dharma to unlock the scanner." />
     </SafeAreaView>
   );
 }
