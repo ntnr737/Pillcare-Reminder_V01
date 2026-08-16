@@ -35,7 +35,7 @@
       "jsEngine": "hermes",
       "targetSdkVersion": 34,
       "compileSdkVersion": 34,
-      "minSdkVersion": 24,
+      "minSdkVersion": 26,
       "versionCode": 1,
       "networkSecurityConfig": "./network_security_config.xml"
     },
@@ -64,6 +64,15 @@
         }
       ],
       "@react-native-google-signin/google-signin",
+      "react-native-health-connect",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
       "./health-connect-plugin",
       "./sound-plugin"
     ],
