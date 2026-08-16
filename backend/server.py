@@ -199,6 +199,7 @@ class Profile(BaseModel):
     routine_dinner: str = "19:00"
     routine_sleep: str = "22:00"
     caregiver_phone: Optional[str] = None
+    caregivers: List[str] = []
     notifications_enabled: bool = True
     onboarded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -211,6 +212,7 @@ class ProfileUpsert(BaseModel):
     location_state: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = Field(None, max_length=20)
     caregiver_phone: Optional[str] = Field(None, max_length=20)
+    caregivers: Optional[List[str]] = None
     routine_wake: Optional[str] = "07:00"
     routine_breakfast: Optional[str] = "08:00"
     routine_lunch: Optional[str] = "13:00"
@@ -582,6 +584,36 @@ async def update_caregiver(
         upsert=True
     )
     return {"caregiver_phone": phone, "message": "Caregiver number saved"}
+
+@api.post("/profile/caregivers")
+async def update_caregivers(
+    payload: dict = Body(...),
+    user_id: str = Depends(get_current_user_id)
+):
+    """Update the full list of caregiver phone numbers, enforced against the plan limit."""
+    import re as _re
+    features = await get_user_features(user_id)
+    limit = features.get("caregiver_alerts", 1)
+    raw_list = payload.get("caregivers", [])
+    if not isinstance(raw_list, list):
+        raise HTTPException(400, "ERR_4001: caregivers must be a list")
+    cleaned_list = []
+    for raw in raw_list:
+        phone = _re.sub(r"[\s\-()]", "", str(raw or "").strip())
+        if not phone:
+            continue
+        if not _re.match(r"^\+?[0-9]{7,15}$", phone):
+            raise HTTPException(400, f"ERR_4001: Invalid phone number format: {raw}. Use international format e.g. +919876543210")
+        if phone not in cleaned_list:
+            cleaned_list.append(phone)
+    if len(cleaned_list) > limit:
+        raise HTTPException(402, f"ERR_PLAN: Your plan allows up to {limit} caregiver number{'s' if limit != 1 else ''}. Upgrade at pillcare.in/pricing.")
+    await db.profile.update_one(
+        {"id": user_id},
+        {"$set": {"caregivers": cleaned_list, "caregiver_phone": cleaned_list[0] if cleaned_list else None}},
+        upsert=True
+    )
+    return {"caregivers": cleaned_list, "message": "Caregivers saved"}
 
 @api.get("/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
@@ -1306,19 +1338,22 @@ async def scan_medication(payload: ScanRequest, user_id: str = Depends(get_curre
 @api.post("/caregiver/alert")
 async def caregiver_alert(payload: CaregiverAlert, user_id: str = Depends(get_current_user_id)):
     profile = await db.profile.find_one({"id": user_id}, PROJECTION)
-    phone = (profile or {}).get("caregiver_phone")
-    delivered_via = await _send_whatsapp(phone, payload.message)
-    log_entry = {
-        "id": str(uuid.uuid4()),
-        "user_id": user_id,
-        "phone": phone,
-        "message": payload.message,
-        "medication_name": payload.medication_name,
-        "delivered_via": delivered_via,
-        "sent_at": datetime.now(timezone.utc),
-    }
-    await db.caregiver_log.insert_one(log_entry.copy())
-    return _clean(log_entry)
+    phones = (profile or {}).get("caregivers") or ([(profile or {}).get("caregiver_phone")] if (profile or {}).get("caregiver_phone") else [])
+    sent = []
+    for phone in phones:
+        delivered_via = await _send_whatsapp(phone, payload.message)
+        log_entry = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "phone": phone,
+            "message": payload.message,
+            "medication_name": payload.medication_name,
+            "delivered_via": delivered_via,
+            "sent_at": datetime.now(timezone.utc),
+        }
+        await db.caregiver_log.insert_one(log_entry.copy())
+        sent.append(_clean(log_entry))
+    return {"sent": sent}
 
 
 @api.get("/caregiver/log")
@@ -1472,13 +1507,13 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
     if secret != SCHEDULER_SECRET:
         raise HTTPException(403, "Invalid scheduler secret")
 
-    all_profiles = await db.profile.find({"caregiver_phone": {"$exists": True, "$ne": None}}, PROJECTION).to_list(1000)
+    all_profiles = await db.profile.find({"$or": [{"caregiver_phone": {"$exists": True, "$ne": None}}, {"caregivers": {"$exists": True, "$ne": []}}]}, PROJECTION).to_list(1000)
     results = []
 
     for profile in all_profiles:
         user_id = profile["id"]
-        phone = profile.get("caregiver_phone")
-        if not phone:
+        phones = profile.get("caregivers") or ([profile.get("caregiver_phone")] if profile.get("caregiver_phone") else [])
+        if not phones:
             continue
 
         today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
@@ -1538,18 +1573,19 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
 
         message = "\n".join(message_parts)
 
-        delivered_via = await _send_whatsapp(phone, message)
-        log_entry = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "phone": phone,
-            "message": message,
-            "medication_name": None,
-            "delivered_via": delivered_via,
-            "sent_at": datetime.now(timezone.utc),
-        }
-        await db.caregiver_log.insert_one(log_entry.copy())
-        results.append({"user_id": user_id, "delivered_via": delivered_via, "taken": len(taken), "total": total})
+        for phone in phones:
+            delivered_via = await _send_whatsapp(phone, message)
+            log_entry = {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "phone": phone,
+                "message": message,
+                "medication_name": None,
+                "delivered_via": delivered_via,
+                "sent_at": datetime.now(timezone.utc),
+            }
+            await db.caregiver_log.insert_one(log_entry.copy())
+            results.append({"user_id": user_id, "delivered_via": delivered_via, "taken": len(taken), "total": total})
 
     return {"ok": True, "reports_sent": len(results), "results": results}
 
