@@ -219,13 +219,15 @@ const overpassMirrors = [
                 </TouchableOpacity>
               </>
             ) : (
-              <TouchableOpacity style={s.retryBtn} onPress={() => search()}>
-                <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Try Again</Text>
-              </TouchableOpacity>
-<TouchableOpacity style={[s.retryBtn, { marginTop: 10 }]} onPress={openGoogleMaps}>
-  <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Open in Google Maps</Text>
-</TouchableOpacity>
-              )}
+              <>
+                <TouchableOpacity style={s.retryBtn} onPress={() => search()}>
+                  <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Try Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.retryBtn, { marginTop: 10 }]} onPress={openGoogleMaps}>
+                  <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Open in Google Maps</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         ) : null}
 
