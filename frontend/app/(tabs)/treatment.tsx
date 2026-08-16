@@ -61,6 +61,10 @@ export default function Treatment() {
   const [vS, setVS] = useState("");
   const [vN, setVN] = useState("");
   const [saving, setSaving] = useState(false);
+  const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const yogaDoneKey = () => { const d = new Date(); return `yoga_done_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  useEffect(() => { get<number[]>(yogaDoneKey()).then(d => { if (d) setCompletedSteps(d); }); }, []);
+  const toggleStepDone = (num: number) => { const next = completedSteps.includes(num) ? completedSteps.filter(n => n !== num) : [...completedSteps, num]; setCompletedSteps(next); set(yogaDoneKey(), next); };
 
   // Load cache instantly
   const loadCache = useCallback(async () => {
@@ -265,12 +269,12 @@ export default function Treatment() {
               <View style={s.chip}><Ionicons name="speedometer-outline" size={11} color={A3} /><Text style={s.chipT}>{yoga?.level || "Beginner"}</Text></View>
             </View>
             <Text style={[s.cS, { lineHeight: 17 }]}>{yoga?.description || ""}</Text>
-            <Text style={[s.secL, { marginTop: 4 }]}>ROUTINE</Text>
+            <Text style={[s.secL, { marginTop: 4 }]}>ROUTINE · {completedSteps.length}/{(yoga?.steps || []).length} done today</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {(yoga?.steps || []).map((step: any) => (
                 <View key={step.num} style={[s.card, { gap: 8, marginBottom: 8 }]}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <View style={[s.cI, { borderRadius: 13 }]}><Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text></View>
+<View style={[s.cI, { borderRadius: 13 }, completedSteps.includes(step.num) && { backgroundColor: "rgba(74,222,128,0.18)" }]}>{completedSteps.includes(step.num) ? <Ionicons name="checkmark" size={14} color="#4ade80" /> : <Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text>}</View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.cT}>{step.name}</Text>
                       <Text style={s.cS}>{step.duration}</Text>
@@ -284,6 +288,10 @@ export default function Treatment() {
                     <Text style={{ fontSize: 10, color: TX, flex: 1 }}>Watch on YouTube</Text>
                     <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Swami Ramdev"}</Text>
                     <Ionicons name="open-outline" size={10} color={TM} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, backgroundColor: completedSteps.includes(step.num) ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: completedSteps.includes(step.num) ? "rgba(74,222,128,0.3)" : BD }} onPress={() => toggleStepDone(step.num)}>
+                    <Ionicons name={completedSteps.includes(step.num) ? "checkmark-circle" : "ellipse-outline"} size={14} color={completedSteps.includes(step.num) ? "#4ade80" : TM} />
+                    <Text style={{ fontSize: 10, color: completedSteps.includes(step.num) ? "#4ade80" : TM, fontWeight: "600" }}>{completedSteps.includes(step.num) ? "Marked as Done" : "Mark as Done"}</Text>
                   </TouchableOpacity>
                 </View>
               ))}
