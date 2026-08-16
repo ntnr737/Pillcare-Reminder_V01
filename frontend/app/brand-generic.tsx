@@ -6,14 +6,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
+import { getFeatures } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 export default function BrandGeneric() {
   const router = useRouter();
   const [brand, setBrand] = useState("");
   const [result, setResult] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const lookup = async () => {
+    if (!getFeatures().brand_generic) { setShowUpgrade(true); return; }
     if (!brand.trim()) return;
     setLoading(true);
     setResult(null);
@@ -60,6 +64,7 @@ export default function BrandGeneric() {
           </Card>
         )}
       </ScrollView>
+      <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Brand vs generic lookup" description="Find affordable generic alternatives for brand-name medications. Upgrade to Pro Dharma to unlock this lookup." />
     </SafeAreaView>
   );
 }
