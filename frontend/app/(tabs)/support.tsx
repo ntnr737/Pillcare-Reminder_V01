@@ -153,6 +153,25 @@ export default function Support() {
       { text: "Sign out", style: "destructive", onPress: async () => { setSo(true); try { await signOut(); router.replace("/sign-in"); } catch { setSo(false); } } }
     ]);
   };
+  const handleCallDoctor = async () => {
+    try {
+      const appts = await api.listAppointments();
+      const today = new Date().toISOString().slice(0, 10);
+      const withPhone = (appts || []).filter((a: any) => a.phone);
+      const upcoming = withPhone.filter((a: any) => a.date >= today).sort((a: any, b: any) => (a.date + a.time).localeCompare(b.date + b.time));
+      const target = upcoming[0] || withPhone[0];
+      if (target) {
+        Linking.openURL(`tel:${String(target.phone).replace(/[\s\-()]/g, "")}`);
+      } else {
+        Alert.alert("No doctor number saved", "Add a doctor's phone number to an appointment to call them directly.", [
+          { text: "Cancel", style: "cancel" },
+          { text: "Add Appointment", onPress: () => router.push("/appointments") },
+        ]);
+      }
+    } catch {
+      Alert.alert("Error", "Could not load your appointments. Please try again.");
+    }
+  };
 
   const faqs = FAQS.filter(f => !search || f.q.toLowerCase().includes(search.toLowerCase()) || f.a.toLowerCase().includes(search.toLowerCase()));
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -165,7 +184,7 @@ export default function Support() {
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
         {/* Quick actions 2x2 */}
         <View style={s.grid}>
-          <TouchableOpacity style={s.qCard} onPress={() => { }}>
+          <TouchableOpacity style={s.qCard} onPress={handleCallDoctor}>
             <View style={s.qIco}><Ionicons name="call-outline" size={15} color={A3} /></View>
             <Text style={s.qLbl}>Call Doctor</Text>
           </TouchableOpacity>
