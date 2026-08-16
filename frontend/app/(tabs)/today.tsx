@@ -362,7 +362,7 @@ export default function Today() {
                             {"Taken" + (dose.taken_at ? " " + new Date(dose.taken_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) : "")}
                           </Text>
                         </View>
-                        {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : TM, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
+                      );
                       if (ms || sk) return (
                         <View style={s.bSk}>
                           <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : "Skipped"}</Text>
