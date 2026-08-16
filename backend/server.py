@@ -422,8 +422,13 @@ async def _ensure_doses_for_date(user_id: str, target_date: str):
                 await db.doses.insert_one(d.model_dump())
 
 
-async def _adherence_for_user(user_id: str, days: int = 7):
+async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = None):
     today = datetime.now(timezone.utc).date()
+    if local_date:
+        try:
+            today = datetime.strptime(local_date, "%Y-%m-%d").date()
+        except ValueError:
+            today = datetime.now(timezone.utc).date()
     start = today - timedelta(days=days - 1)
     for i in range(days):
         await _ensure_doses_for_date(user_id, (start + timedelta(days=i)).isoformat())
@@ -817,8 +822,8 @@ async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_us
 # Progress / Adherence
 @api.get("/progress/adherence")
 @limiter.limit("30/hour")
-async def adherence(request: Request, days: int = 7, user_id: str = Depends(get_current_user_id)):
-    return await _adherence_for_user(user_id, days)
+async def adherence(request: Request, days: int = 7, local_date: str = None, user_id: str = Depends(get_current_user_id)):
+    return await _adherence_for_user(user_id, days, local_date)
 
 
 @api.get("/yoga-tip")
@@ -1111,17 +1116,23 @@ async def delete_appointment(appt_id: str, user_id: str = Depends(get_current_us
 
 @api.get("/ai/daily-message")
 @limiter.limit("5/hour")
-async def ai_daily_message(request: Request, user_id: str = Depends(get_current_user_id)):
+async def ai_daily_message(request: Request, local_date: str = None, user_id: str = Depends(get_current_user_id)):
     """A short personalized message from Groq based on the user's recent context."""
     profile = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
     today = datetime.now(timezone.utc).date().isoformat()
+    if local_date:
+        try:
+            datetime.strptime(local_date, "%Y-%m-%d")
+            today = local_date
+        except ValueError:
+            pass
     await _ensure_doses_for_date(user_id, today)
     doses = await db.doses.find({"user_id": user_id, "date": today}, PROJECTION).to_list(1000)
     total = len(doses)
     taken = sum(1 for d in doses if d["status"] == "taken")
     meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(50)
     recent_mood = await db.mood.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(1)
-    adh = await _adherence_for_user(user_id, 7)
+    adh = await _adherence_for_user(user_id, 7, local_date)
 
     # Fallback static message if no AI key
     if not GROQ_API_KEY:
