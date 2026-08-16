@@ -56,6 +56,7 @@ export const api = {
   exportCsvUrl: () => `${BASE}/api/export/csv`,
   getFeatures: () => req<Features>("/me/features"),
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
+  updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
   trackEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
   savePushToken: (token: string) => req<any>("/profile/push-token", { method: "POST", body: JSON.stringify({ token }) }),
   getSubscription: () => req<any>("/me/subscription"),
