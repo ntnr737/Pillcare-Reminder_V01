@@ -48,8 +48,9 @@ export default function Scanner() {
     try {
       const res = await api.scanMedication(b64);
       setResult(res);
-    } catch (e) {
-      setResult({ error: String(e) });
+    } catch (e: any) {
+      const errMsg = e?.message || "";
+      setResult({ error: errMsg.includes("ERR_") ? errMsg : "Could not identify this medication. Please check your connection and try again." });
     } finally {
       setLoading(false);
     }
