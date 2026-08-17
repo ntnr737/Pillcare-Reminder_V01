@@ -20,6 +20,7 @@ import logging
 import csv
 import uuid
 import httpx
+import asyncio
 import jwt as pyjwt
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
@@ -444,6 +445,7 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
         taken = sum(1 for x in doses if x["status"] == "taken")
         pct = round((taken / total) * 100) if total else 0
         daily.append({"date": d, "total": total, "taken": taken, "pct": pct})
+    yoga_dates = set(await db.yoga_log.distinct("date", {"user_id": user_id, "date": {"$gte": start.isoformat()}}))
     for entry in reversed(daily):
         if entry["total"] > 0 and entry["pct"] >= 80:
             # Good adherence day — count it
@@ -452,8 +454,12 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
         elif entry["total"] == 0:
             # No doses scheduled — don't break streak (rest day)
             pass
+        elif entry["date"] in yoga_dates:
+            # Poor dose adherence, but completed the yoga routine — keep the streak alive
+            if streak_ongoing:
+                streak += 1
         else:
-            # Had doses but poor adherence — stop streak
+            # Had doses but poor adherence, and no yoga — stop streak
             streak_ongoing = False
     avg = round(sum(d["pct"] for d in daily) / len(daily)) if daily else 0
     return {"daily": daily, "streak": streak, "average": avg}
@@ -1053,6 +1059,50 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         return make_default()
 
 
+class YogaCompletion(BaseModel):
+    step_num: int
+    step_name: str
+    video_url: Optional[str] = None
+    local_date: Optional[str] = None
+
+@api.post("/yoga/complete")
+async def yoga_complete(payload: YogaCompletion, user_id: str = Depends(get_current_user_id)):
+    """Log a completed yoga routine step — feeds streak calculation and CSV export."""
+    d = payload.local_date or datetime.now(timezone.utc).date().isoformat()
+    entry = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "date": d,
+        "step_num": payload.step_num,
+        "step_name": payload.step_name,
+        "video_url": payload.video_url,
+        "completed_at": datetime.now(timezone.utc),
+    }
+    await db.yoga_log.update_one(
+        {"user_id": user_id, "date": d, "step_num": payload.step_num},
+        {"$set": entry},
+        upsert=True,
+    )
+    await track_event("yoga_step_completed", user_id, {"step_name": payload.step_name})
+    return {"ok": True}
+
+@api.post("/yoga/uncomplete")
+async def yoga_uncomplete(payload: YogaCompletion, user_id: str = Depends(get_current_user_id)):
+    """Undo a completed yoga step."""
+    d = payload.local_date or datetime.now(timezone.utc).date().isoformat()
+    await db.yoga_log.delete_one({"user_id": user_id, "date": d, "step_num": payload.step_num})
+    return {"ok": True}
+
+@api.get("/yoga/log")
+async def yoga_log_history(days: int = 30, user_id: str = Depends(get_current_user_id)):
+    """Yoga completion history for the Progress list and CSV export."""
+    today = datetime.now(timezone.utc).date()
+    start = today - timedelta(days=days - 1)
+    items = await db.yoga_log.find(
+        {"user_id": user_id, "date": {"$gte": start.isoformat()}}, PROJECTION
+    ).sort("date", -1).to_list(1000)
+    return items
+
 @api.get("/doses/history")
 async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_id)):
     """Dose history grouped by date for the Progress List tab."""
@@ -1421,7 +1471,7 @@ async def nearby_places(
                     })
                 places.sort(key=lambda x: x["distance"])
                 top_places = places[:max_results]
-    import httpx, math, asyncio
+                async def _fetch_phone(place_id):
                     if not place_id:
                         return None
                     try:
@@ -1595,7 +1645,7 @@ async def export_csv(user_id: str = Depends(get_current_user_id)):
     features = await get_user_features(user_id)
     if not features.get("export_data"):
         raise HTTPException(402, "ERR_PLAN: Data export requires a paid plan. Upgrade at pillcare.in/pricing.")
-        buf = io.StringIO()
+    buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["section", "timestamp", "type", "value", "unit", "status", "note"])
     doses = await db.doses.find({"user_id": user_id}, PROJECTION).to_list(10000)
@@ -1619,6 +1669,9 @@ async def export_csv(user_id: str = Depends(get_current_user_id)):
         w.writerow(["activity", a["recorded_at"].isoformat() if isinstance(a.get("recorded_at"), datetime) else a.get("recorded_at"), a["type"], a["value"], a["unit"], "", a.get("note", "")])
     for mo in await db.mood.find({"user_id": user_id}, PROJECTION).to_list(10000):
         w.writerow(["mood", mo["recorded_at"].isoformat() if isinstance(mo.get("recorded_at"), datetime) else mo.get("recorded_at"), "mood", mo["score"], "1-5", "", mo.get("note", "")])
+    for yl in await db.yoga_log.find({"user_id": user_id}, PROJECTION).sort("date", 1).to_list(10000):
+        ts = yl.get("completed_at")
+        w.writerow(["yoga", ts.isoformat() if isinstance(ts, datetime) else yl.get("date", ""), yl.get("step_name", ""), "done", "", "", ""])
     csv_bytes = buf.getvalue().encode("utf-8")
     return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=pillcare-history.csv"})
 
