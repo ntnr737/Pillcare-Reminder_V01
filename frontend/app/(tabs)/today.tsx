@@ -35,7 +35,17 @@ function gs(t: string) { const [h] = t.split(":").map(Number); return h < 12 ? "
  * Outside this window: future = UPCOMING (locked), past = auto MISSED.
  * This prevents morning dose being marked from evening and vice versa.
  */
-function getDoseWindow(scheduledTime: string): { canMark: boolean; isFuture: boolean; isPast: boolean; minutesUntil: number } {
+function getDoseWindow(scheduledTime: string, forDate?: string): { canMark: boolean; isFuture: boolean; isPast: boolean; minutesUntil: number } {
+  // A dose belongs to a specific calendar day (the day being viewed in the week
+  // strip). The 2h-before/4h-after window only makes sense when that day is
+  // TODAY — for any other day we short-circuit so the button state reflects
+  // reality instead of comparing a past/future day's dose against "right now".
+  if (forDate && forDate !== ds()) {
+    if (forDate < ds()) {
+      return { canMark: false, isFuture: false, isPast: true, minutesUntil: -999999 };
+    }
+    return { canMark: false, isFuture: true, isPast: false, minutesUntil: 999999 };
+  }
   const now = new Date();
   const [h, m] = scheduledTime.split(":").map(Number);
   const scheduled = new Date();
@@ -191,9 +201,7 @@ export default function Today() {
     // Determine next status
     const nx = action || (cur === "pending" ? "taken" : "missed");
     // Always use device local time — not UTC
-    const takenAt = nx === "taken"
-      ? new Date().toLocaleString("sv-SE", { timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }).replace(" ", "T")
-      : undefined;
+    const takenAt = nx === "taken" ? new Date().toISOString() : undefined;
     pending.current.add(id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     track(nx === "taken" ? "dose_taken" : nx === "missed" ? "dose_missed" : "dose_skipped", { date });
@@ -376,7 +384,7 @@ export default function Today() {
                     </View>
                     {/* Time-locked dose actions */}
                     {(() => {
-                      const win = getDoseWindow(dose.scheduled_time);
+                      const win = getDoseWindow(dose.scheduled_time, date);
                       if (tk) return (
                         // TAKEN = permanent, non-tappable
                         <View style={[s.bTk, { opacity: 1 }]}>
