@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView } from "react-native";
+import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView, Alert } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { theme } from "@/src/lib/theme";
 import { PrimaryButton } from "./PrimaryButton";
@@ -77,8 +77,9 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
       reset();
       onSaved();
       onClose();
-    } catch (e) {
+    } catch (e: any) {
       console.warn(e);
+      Alert.alert("Could not save medication", e?.message || "Please check your connection and try again.");
     } finally {
       setSaving(false);
     }
