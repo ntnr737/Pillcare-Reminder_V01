@@ -103,9 +103,32 @@ export default function Today() {
     setAddMed(true);
   };
   const [actionSheet, setActionSheet] = useState(false);
-  const [stockModal, setStockModal] = useState<{ id: string; name: string } | null>(null);
+  const [stockModal, setStockModal] = useState<{ id: string; name: string; stock: number } | null>(null);
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
+
+  // Proactively surface a low/out-of-stock prompt once per day per medication —
+  // instead of relying on the user to notice and tap the passive banner.
+  useEffect(() => {
+    if (!doses.length) return;
+    const lows = [...new Set(doses.map((d: any) => d.medication_id))]
+      .map(mid => doses.find((d: any) => d.medication_id === mid))
+      .filter(Boolean)
+      .map((d: any) => ({ id: d.medication_id, name: d.medication_name || d.medication?.name || "", stock: d.medication?.stock ?? 999 }))
+      .filter((m: any) => m.stock !== undefined && m.stock <= 3);
+    if (!lows.length) return;
+    (async () => {
+      for (const m of lows) {
+        const key = `stock_prompt_${date}_${m.id}`;
+        const already = await get<boolean>(key);
+        if (!already) {
+          await set(key, true);
+          setStockModal(m);
+          break;
+        }
+      }
+    })();
+  }, [doses, date]);
 
   // Load from local cache instantly — always shown even offline
   useEffect(() => {
@@ -408,8 +431,7 @@ export default function Today() {
       .filter(m => m.stock !== undefined && m.stock <= 3);
       if (!lowStock.length) return null;
       const onStockPress = (m: { id: string; name: string; stock: number }) => {
-        if (m.stock > 0) { router.push("/nearby"); return; }
-setStockModal({ id: m.id, name: m.name });
+        setStockModal(m);
       };
       return (
         <View style={{ marginHorizontal: 14, marginBottom: 10, gap: 6 }}>
@@ -503,21 +525,33 @@ setStockModal({ id: m.id, name: m.name });
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Ionicons name="alert-circle" size={22} color="#f87171" />
-              <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{stockModal?.name} is out of stock</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{(stockModal?.stock ?? 0) <= 0 ? `${stockModal?.name} is out of stock` : `${stockModal?.name} — only ${stockModal?.stock} left`}</Text>
             </View>
-            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>Do you need to reorder this medicine? If the treatment is finished, we will stop reminding you about it.</Text>
+            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>{(stockModal?.stock ?? 0) <= 0 ? "Do you need to reorder this medicine? If the treatment is finished, we will stop reminding you about it." : "Running low — find a nearby pharmacy before you run out, and confirm today's dose."}</Text>
+            {(() => {
+              const pendingDose = doses.find((d: any) => d.medication_id === stockModal?.id && d.status === "pending");
+              if (!pendingDose) return null;
+              return (
+                <TouchableOpacity onPress={() => { mark(pendingDose.id, "pending", "taken"); setStockModal(null); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)" }}>
+                  <Ionicons name="checkmark-circle-outline" size={18} color="#4ade80" />
+                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#4ade80", flex: 1 }}>Mark today's dose as taken</Text>
+                </TouchableOpacity>
+              );
+            })()}
             <TouchableOpacity onPress={() => { setStockModal(null); router.push("/nearby"); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
               <Ionicons name="storefront-outline" size={18} color={A3} />
               <Text style={{ fontSize: 13, fontWeight: "600", color: TX, flex: 1 }}>Find pharmacy</Text>
               <Ionicons name="chevron-forward" size={14} color={TM} />
             </TouchableOpacity>
             
-            <TouchableOpacity onPress={() => { const id = stockModal?.id; const name = stockModal?.name; Alert.alert("Mark treatment complete?", `Remove ${name || "this medication"} from your reminders? This can't be undone.`, [{ text: "Cancel", style: "cancel" }, { text: "Remove", style: "destructive", onPress: () => { setStockModal(null); if (id) markComplete(id); } }]); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(248,113,113,0.2)" }}>
-            <Ionicons name="checkmark-done-outline" size={18} color="#f87171" />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: "#f87171", flex: 1 }}>Treatment complete</Text>
-            </TouchableOpacity>
+            {(stockModal?.stock ?? 0) <= 0 && (
+              <TouchableOpacity onPress={() => { const id = stockModal?.id; const name = stockModal?.name; Alert.alert("Mark treatment complete?", `Remove ${name || "this medication"} from your reminders? This can't be undone.`, [{ text: "Cancel", style: "cancel" }, { text: "Remove", style: "destructive", onPress: () => { setStockModal(null); if (id) markComplete(id); } }]); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(248,113,113,0.2)" }}>
+                <Ionicons name="checkmark-done-outline" size={18} color="#f87171" />
+                <Text style={{ fontSize: 13, fontWeight: "600", color: "#f87171", flex: 1 }}>Treatment complete</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => setStockModal(null)} style={{ alignItems: "center", paddingVertical: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Cancel</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Remind me later</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
