@@ -64,7 +64,14 @@ export default function Treatment() {
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const yogaDoneKey = () => { const d = new Date(); return `yoga_done_${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   useEffect(() => { get<number[]>(yogaDoneKey()).then(d => { if (d) setCompletedSteps(d); }); }, []);
-  const toggleStepDone = (num: number) => { const next = completedSteps.includes(num) ? completedSteps.filter(n => n !== num) : [...completedSteps, num]; setCompletedSteps(next); set(yogaDoneKey(), next); };
+  const toggleStepDone = (step: any) => {
+    const num = step.num;
+    const isDone = completedSteps.includes(num);
+    const next = isDone ? completedSteps.filter(n => n !== num) : [...completedSteps, num];
+    setCompletedSteps(next); set(yogaDoneKey(), next);
+    if (isDone) { api.yogaUncomplete(num, step.name).catch(() => {}); }
+    else { api.yogaComplete(num, step.name, step.youtube_video || step.youtube_channel).catch(() => {}); }
+  };
 
   // Load cache instantly
   const loadCache = useCallback(async () => {
@@ -289,7 +296,7 @@ export default function Treatment() {
                     <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Swami Ramdev"}</Text>
                     <Ionicons name="open-outline" size={10} color={TM} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, backgroundColor: completedSteps.includes(step.num) ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: completedSteps.includes(step.num) ? "rgba(74,222,128,0.3)" : BD }} onPress={() => toggleStepDone(step.num)}>
+                  <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, backgroundColor: completedSteps.includes(step.num) ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: completedSteps.includes(step.num) ? "rgba(74,222,128,0.3)" : BD }} onPress={() => toggleStepDone(step)}>
                     <Ionicons name={completedSteps.includes(step.num) ? "checkmark-circle" : "ellipse-outline"} size={14} color={completedSteps.includes(step.num) ? "#4ade80" : TM} />
                     <Text style={{ fontSize: 10, color: completedSteps.includes(step.num) ? "#4ade80" : TM, fontWeight: "600" }}>{completedSteps.includes(step.num) ? "Marked as Done" : "Mark as Done"}</Text>
                   </TouchableOpacity>
