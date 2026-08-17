@@ -658,7 +658,7 @@ async def update_caregiver(
         phone = cleaned
     await db.profile.update_one(
         {"id": user_id},
-        {"$set": {"caregiver_phone": phone}},
+        {"$set": {"caregiver_phone": phone, "caregivers": [phone] if phone else []}},
         upsert=True
     )
     return {"caregiver_phone": phone, "message": "Caregiver number saved"}
