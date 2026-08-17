@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   ActivityIndicator, Linking, RefreshControl, Modal
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { track } from "@/src/lib/analytics";
@@ -51,10 +51,12 @@ function fmt(m: number) {
 
 export default function Nearby() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ type?: string }>();
   const [type, setType] = useState<PlaceType>((params.type as PlaceType) || "pharmacy");
   const [radius, setRadius] = useState(2000);
   const [places, setPlaces] = useState<Place[]>([]);
+  const [source, setSource] = useState<"google" | "osm" | null>(null);
   const [loading, setLoading] = useState(false);
   const [locError, setLocError] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
@@ -86,7 +88,7 @@ export default function Nearby() {
       , 15000);
         if (res.ok) {
           const data = await res.json();
-          if (data.places?.length) { setPlaces(data.places); setLoading(false); return; }
+          if (data.places?.length) { setPlaces(data.places); setSource(data.source === "osm" ? "osm" : "google"); setLoading(false); return; }
         }
       } catch {}
 
@@ -135,6 +137,7 @@ const overpassMirrors = [
         };
       }).sort((a: Place, b: Place) => a.distance - b.distance);
       setPlaces(results);
+      setSource("osm");
       if (!results.length) setLocError("No results found nearby. Try a larger radius.");
     } catch (e) {
       setLocError("Could not fetch nearby places. Please check your internet connection and try again.");
@@ -294,7 +297,7 @@ const overpassMirrors = [
 
         {places.length > 0 && (
           <View style={{ paddingVertical: 8, alignItems: "center", gap: 4 }}>
-            <Text style={s.cS}>Data from OpenStreetMap contributors</Text>
+            <Text style={s.cS}>{source === "osm" ? "Data from OpenStreetMap contributors" : "Data from Google"}</Text>
             <TouchableOpacity onPress={openGoogleMaps}>
               <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>See all on Google Maps →</Text>
             </TouchableOpacity>
@@ -306,7 +309,7 @@ const overpassMirrors = [
       {/* Place detail sheet — shown inside app, no redirect */}
       <Modal visible={!!selectedPlace} transparent animationType="slide" onRequestClose={() => setSelectedPlace(null)}>
         <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <View style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, gap: 16, borderWidth: 1, borderColor: BD }}>
+          <View style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: BD }}>
             {selectedPlace && (<>
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <View style={{ flex: 1, gap: 4 }}>
