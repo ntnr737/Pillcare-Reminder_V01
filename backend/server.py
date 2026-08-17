@@ -465,6 +465,78 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
     return {"daily": daily, "streak": streak, "average": avg}
 
 
+async def _predicted_days_left(user_id: str, med: dict):
+    """Estimate days until a medication runs out, based on actual taken-dose pace
+    over the last 14 days (falls back to scheduled frequency if there isn't enough
+    history yet). Returns None if it cannot be estimated."""
+    stock = med.get("stock", 0)
+    if stock <= 0:
+        return 0
+    since = (datetime.now(timezone.utc).date() - timedelta(days=14)).isoformat()
+    taken_count = await db.doses.count_documents({
+        "user_id": user_id, "medication_id": med["id"], "date": {"$gte": since}, "status": "taken",
+    })
+    try:
+        started = datetime.strptime(med["start_date"], "%Y-%m-%d").date()
+        days_observed = min(14, (datetime.now(timezone.utc).date() - started).days + 1)
+    except Exception:
+        days_observed = 14
+    if days_observed <= 0:
+        days_observed = 1
+    daily_rate = taken_count / days_observed if days_observed else 0
+    if daily_rate <= 0:
+        daily_rate = len(med.get("times", [])) or 1  # fall back to scheduled frequency
+    return round(stock / daily_rate) if daily_rate > 0 else None
+
+
+async def _reminder_nudges_for_med(user_id: str, med: dict) -> list:
+    """Detect reminder times that are consistently missed/skipped, and suggest a
+    better time based on when the user actually ends up taking that dose."""
+    since = (datetime.now(timezone.utc).date() - timedelta(days=21)).isoformat()
+    doses = await db.doses.find(
+        {"user_id": user_id, "medication_id": med["id"], "date": {"$gte": since}}, PROJECTION
+    ).to_list(500)
+    by_time: dict = {}
+    for d in doses:
+        by_time.setdefault(d["scheduled_time"], []).append(d)
+    nudges = []
+    for sched_time, entries in by_time.items():
+        if len(entries) < 5:
+            continue
+        missed = [e for e in entries if e["status"] in ("missed", "skipped")]
+        taken = [e for e in entries if e["status"] == "taken" and e.get("taken_at")]
+        miss_rate = len(missed) / len(entries)
+        if miss_rate < 0.5 or not taken:
+            continue
+        try:
+            sched_h, sched_m = [int(x) for x in sched_time.split(":")]
+            delays_min = []
+            for e in taken:
+                ta = e["taken_at"]
+                if isinstance(ta, str):
+                    ta = datetime.fromisoformat(ta.replace("Z", "+00:00"))
+                local_ta = ta.astimezone(APP_TIMEZONE)
+                sched_minutes = sched_h * 60 + sched_m
+                actual_minutes = local_ta.hour * 60 + local_ta.minute
+                diff = actual_minutes - sched_minutes
+                if -60 <= diff <= 300:  # ignore outliers (different day, etc.)
+                    delays_min.append(diff)
+            if delays_min:
+                avg_delay = sum(delays_min) / len(delays_min)
+                if avg_delay >= 45:
+                    new_minutes = (sched_h * 60 + sched_m + round(avg_delay / 15) * 15) % (24 * 60)
+                    suggested = f"{new_minutes // 60:02d}:{new_minutes % 60:02d}"
+                    nudges.append({
+                        "current_time": sched_time,
+                        "suggested_time": suggested,
+                        "miss_rate": round(miss_rate * 100),
+                        "occurrences": len(entries),
+                    })
+        except Exception:
+            pass
+    return nudges
+
+
 # ---------- Routes ----------
 @api.get("/")
 async def root():
@@ -674,6 +746,18 @@ async def list_medications(active: Optional[bool] = None, user_id: str = Depends
                 {"id": item["id"], "user_id": user_id},
                 {"$set": {"stock": 0}}
             )
+    # Smart refill prediction + reminder-time nudges (best-effort, never blocks the list)
+    for item in items:
+        try:
+            item["days_left"] = await _predicted_days_left(user_id, item)
+        except Exception as e:
+            logger.warning(f"days_left prediction failed for {item.get('id')}: {e}")
+            item["days_left"] = None
+        try:
+            item["nudges"] = await _reminder_nudges_for_med(user_id, item)
+        except Exception as e:
+            logger.warning(f"nudge detection failed for {item.get('id')}: {e}")
+            item["nudges"] = []
     return items
 
 
@@ -730,6 +814,25 @@ async def update_medication(med_id: str, payload: dict, user_id: str = Depends(g
 async def delete_medication(med_id: str, user_id: str = Depends(get_current_user_id)):
     await db.medications.update_one({"id": med_id, "user_id": user_id}, {"$set": {"active": False}})
     return {"ok": True}
+
+
+@api.post("/medications/{med_id}/apply-nudge")
+async def apply_reminder_nudge(med_id: str, payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Accept a smart reminder-time suggestion: shift one scheduled time on a medication."""
+    old_time = payload.get("current_time")
+    new_time = payload.get("suggested_time")
+    if not old_time or not new_time:
+        raise HTTPException(400, "ERR_4001: current_time and suggested_time are required")
+    med = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
+    if not med:
+        raise HTTPException(404, "Medication not found")
+    times = med.get("times", [])
+    if old_time not in times:
+        raise HTTPException(400, "ERR_4001: current_time not found on this medication")
+    new_times = sorted(new_time if t == old_time else t for t in times)
+    await db.medications.update_one({"id": med_id, "user_id": user_id}, {"$set": {"times": new_times}})
+    await track_event("reminder_nudge_applied", user_id, {"medication_id": med_id, "old_time": old_time, "new_time": new_time})
+    return {"ok": True, "times": new_times}
 
 
 # Doses
@@ -862,6 +965,51 @@ async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_us
 @limiter.limit("30/hour")
 async def adherence(request: Request, days: int = 7, local_date: str = None, user_id: str = Depends(get_current_user_id)):
     return await _adherence_for_user(user_id, days, local_date)
+
+
+@api.get("/insights/mood-adherence")
+async def mood_adherence_insight(days: int = 14, user_id: str = Depends(get_current_user_id)):
+    """Lightweight, non-AI correlation between logged mood and same-day dose adherence."""
+    since_date = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat()
+    since_dt = datetime.strptime(since_date, "%Y-%m-%d")
+    moods = await db.mood.find({"user_id": user_id, "recorded_at": {"$gte": since_dt}}, PROJECTION).to_list(500)
+    if len(moods) < 3:
+        return {"has_pattern": False}
+    mood_by_date = {}
+    for m in moods:
+        d = m["recorded_at"]
+        if isinstance(d, str):
+            d = datetime.fromisoformat(d.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=timezone.utc)
+        date_str = d.astimezone(APP_TIMEZONE).date().isoformat()
+        mood_by_date[date_str] = m["score"]  # latest mood of the day wins
+    low_days, high_days = [], []
+    for date_str, score in mood_by_date.items():
+        doses = await db.doses.find({"user_id": user_id, "date": date_str}, PROJECTION).to_list(1000)
+        total = len(doses)
+        if not total:
+            continue
+        taken = sum(1 for x in doses if x["status"] == "taken")
+        pct = (taken / total) * 100
+        if score <= 2:
+            low_days.append(pct)
+        elif score >= 4:
+            high_days.append(pct)
+    if len(low_days) < 2 or len(high_days) < 2:
+        return {"has_pattern": False}
+    avg_low = sum(low_days) / len(low_days)
+    avg_high = sum(high_days) / len(high_days)
+    gap = avg_high - avg_low
+    if gap < 15:
+        return {"has_pattern": False}
+    return {
+        "has_pattern": True,
+        "avg_adherence_low_mood": round(avg_low),
+        "avg_adherence_high_mood": round(avg_high),
+        "gap": round(gap),
+        "message": f"On low-mood days your adherence averages {round(avg_low)}%, vs {round(avg_high)}% on good days — a {round(gap)}-point gap.",
+    }
 
 
 @api.get("/yoga-tip")
@@ -1622,6 +1770,42 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
             message_parts.extend(f"- {l}" for l in pending_lines)
 
         message = "\n".join(message_parts)
+
+        # Once a week (Sunday night, same cron), append an AI-generated weekly
+        # summary — reuses the existing daily cron so no extra scheduler infra is needed.
+        if datetime.now(APP_TIMEZONE).weekday() == 6:
+            try:
+                weekly_adh = await _adherence_for_user(user_id, 7)
+                recent_moods = await db.mood.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(7)
+                week_start = (datetime.now(APP_TIMEZONE).date() - timedelta(days=6)).isoformat()
+                yoga_week = await db.yoga_log.count_documents({"user_id": user_id, "date": {"$gte": week_start}})
+                mood_avg = round(sum(m["score"] for m in recent_moods) / len(recent_moods), 1) if recent_moods else None
+                weekly_summary = None
+                if GROQ_API_KEY:
+                    context_lines = [
+                        f"Patient: {nickname}",
+                        f"7-day dose adherence: {weekly_adh.get('average', 0)}%, streak: {weekly_adh.get('streak', 0)} day(s)",
+                        f"Yoga sessions completed this week: {yoga_week}",
+                    ]
+                    if mood_avg is not None:
+                        context_lines.append(f"Average mood this week: {mood_avg}/5")
+                    try:
+                        resp = await _groq_chat(
+                            system_message=(
+                                "You write a short weekly health summary (max 40 words) for a family "
+                                "caregiver, based on medication adherence data. Plain language, no medical "
+                                "advice, no emoji. Mention adherence and one other notable trend if present."
+                            ),
+                            user_text="\n".join(context_lines),
+                        )
+                        weekly_summary = resp.strip().strip('"')
+                    except Exception as e:
+                        logger.warning(f"Weekly caregiver AI summary failed: {e}")
+                if not weekly_summary:
+                    weekly_summary = f"This week: {weekly_adh.get('average', 0)}% average adherence, {weekly_adh.get('streak', 0)}-day streak, {yoga_week} yoga session(s) completed."
+                message = message + "\n\n\U0001F4CA Weekly Summary\n" + weekly_summary
+            except Exception as e:
+                logger.warning(f"Weekly summary block failed: {e}")
 
         for phone in phones:
             delivered_via = await _send_whatsapp(phone, message)
