@@ -70,6 +70,9 @@ export const api = {
   yogaUncomplete: (step_num: number, step_name: string) =>
     req<any>("/yoga/uncomplete", { method: "POST", body: JSON.stringify({ step_num, step_name, local_date: localDateStr() }) }),
   yogaLog: (days: number = 30) => req<any[]>(`/yoga/log?days=${days}`),
+  applyReminderNudge: (medId: string, current_time: string, suggested_time: string) =>
+    req<any>(`/medications/${medId}/apply-nudge`, { method: "POST", body: JSON.stringify({ current_time, suggested_time }) }),
+  moodAdherenceInsight: (days: number = 14) => req<any>(`/insights/mood-adherence?days=${days}`),
   getFeatures: () => req<Features>("/me/features"),
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
   updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
