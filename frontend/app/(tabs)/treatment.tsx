@@ -72,6 +72,16 @@ export default function Treatment() {
     if (isDone) { api.yogaUncomplete(num, step.name).catch(() => {}); }
     else { api.yogaComplete(num, step.name, step.youtube_video || step.youtube_channel).catch(() => {}); }
   };
+  const [dismissedNudges, setDismissedNudges] = useState<Set<string>>(new Set());
+  const applyNudge = async (medId: string, n: any) => {
+    try {
+      await api.applyReminderNudge(medId, n.current_time, n.suggested_time);
+      resyncReminders().catch(() => {});
+      backgroundRefresh(loadServer);
+    } catch {
+      Alert.alert("Error", "Could not update the reminder time. Please try again.");
+    }
+  };
 
   // Load cache instantly
   const loadCache = useCallback(async () => {
@@ -193,12 +203,33 @@ export default function Treatment() {
                 {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                 <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
               </View>
-              {m.stock <= m.refill_threshold && <View style={s.rTag}><Text style={s.rTx}>Refill Soon</Text></View>}
+              {(m.stock <= m.refill_threshold || (m.days_left != null && m.days_left <= 3)) && <View style={s.rTag}><Text style={s.rTx}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>}
             </View>
             <View style={s.cFt}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.ftT}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
               <Text style={s.ftT}>{m.stock} left</Text>
             </View>
+            {(m.nudges || []).filter((n: any) => !dismissedNudges.has(`${m.id}_${n.current_time}`)).slice(0, 1).map((n: any) => (
+              <View key={n.current_time} style={{ marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: "rgba(229,178,133,0.1)", borderWidth: 1, borderColor: "rgba(229,178,133,0.3)", gap: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="bulb-outline" size={13} color="#e5b285" />
+                  <Text style={{ fontSize: 10, color: "#e5b285", fontWeight: "700" }}>SMART NUDGE</Text>
+                </View>
+                <Text style={{ fontSize: 11, color: TM, lineHeight: 15 }}>
+                  {`You miss the ${n.current_time} dose ${n.miss_rate}% of the time. Move the reminder to ${n.suggested_time}?`}
+                </Text>
+                <View style={{ flexDirection: "row", gap: 8 }}>
+                  <TouchableOpacity style={{ flex: 1, backgroundColor: "#e5b285", borderRadius: 8, paddingVertical: 7, alignItems: "center" }}
+                    onPress={() => applyNudge(m.id, n)}>
+                    <Text style={{ fontSize: 11, color: "#161826", fontWeight: "700" }}>{`Shift to ${n.suggested_time}`}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ paddingHorizontal: 12, justifyContent: "center" }}
+                    onPress={() => setDismissedNudges(prev => new Set(prev).add(`${m.id}_${n.current_time}`))}>
+                    <Text style={{ fontSize: 11, color: TM }}>Not now</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>))}
           {/* Find Medical Store — always shown at bottom of medications */}
           <TouchableOpacity style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12, borderColor: "rgba(74,222,128,0.25)", marginTop: 4 }]}
