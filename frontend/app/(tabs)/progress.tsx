@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert } from "react-native";
+import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert, Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -20,6 +20,8 @@ export default function Progress() {
   const [tab, setTab] = useState<"charts" | "list">("charts");
   const router = useRouter();
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<any>(null);
+  const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hcStatus, setHcStatus] = useState<"unknown" | "unavailable" | "not-granted" | "granted">("unknown");
   const [hcData, setHcData] = useState<{ steps: number | null; heartRate: number | null; sleepHours: number | null }>({ steps: null, heartRate: null, sleepHours: null });
@@ -120,15 +122,19 @@ export default function Progress() {
                 setShowUpgrade(true);
                 return;
               }
+              if (exporting) return;
+              setExporting(true);
               try {
-                const url = api.exportCsvUrl();
-                await Linking.openURL(url);
+                const csv = await api.exportCsv();
+                await Share.share({ title: "PillCare Health Data", message: csv });
               } catch {
                 Alert.alert("Export failed", "Please check your connection and try again.");
+              } finally {
+                setExporting(false);
               }
             }}>
             <Ionicons name="download-outline" size={14} color={AC} />
-            <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>Export CSV</Text>
+            <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>{exporting ? "Exporting…" : "Export CSV"}</Text>
           </TouchableOpacity>
         </View>
       <View style={s.seg}>
@@ -146,6 +152,12 @@ export default function Progress() {
                 <Text style={s.bigS}>{avg >= 80 ? "on track" : avg >= 50 ? "improving" : "needs work"}</Text>
               </View>
             </View>
+            {selectedDay && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+                <Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{new Date(selectedDay.date + "T12:00:00").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" })}</Text>
+                <Text style={{ fontSize: 11, color: TM }}>{selectedDay.total > 0 ? `${selectedDay.taken}/${selectedDay.total} taken (${selectedDay.pct}%)` : "No doses scheduled"}</Text>
+              </View>
+            )}
             {graphDays.length === 0 ? (
               <View style={{ alignItems: "center", paddingVertical: 24, gap: 8 }}>
                 <Ionicons name="bar-chart-outline" size={32} color={TM} />
@@ -156,12 +168,13 @@ export default function Progress() {
                 {graphDays.map((d: any, i: number) => {
                   const h = Math.max((d.pct / 100) * 80, d.total > 0 ? 4 : 2);
                   const isT = i === graphDays.length - 1;
+                  const isSel = selectedDay?.date === d.date;
                   const dayLabel = d.date ? new Date(d.date + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric" }) : "";
                   return (
-                    <View key={i} style={[s.bCol, { gap: 2 }]}>
+                    <TouchableOpacity key={i} style={[s.bCol, { gap: 2 }]} activeOpacity={0.6} onPress={() => setSelectedDay(d)}>
                       <View style={{ flex: 1, justifyContent: "flex-end" }}>
-                        {d.total > 0 && (
-                          <Text style={{ fontSize: 7, color: TM, textAlign: "center", marginBottom: 2 }}>
+                        {d.total > 0 && (isSel || isT) && (
+                          <Text style={{ fontSize: 7, color: isSel ? A3 : TM, fontWeight: isSel ? "700" : "400", textAlign: "center", marginBottom: 2 }}>
                             {d.pct > 0 ? `${d.pct}%` : ""}
                           </Text>
                         )}
@@ -170,12 +183,14 @@ export default function Progress() {
                           backgroundColor: isT ? AC : barColor(d.pct, false),
                           borderTopLeftRadius: 3,
                           borderTopRightRadius: 3,
+                          borderWidth: (isSel && !isT) ? 1.5 : 0,
+                          borderColor: A3,
                         }]} />
                       </View>
                       {(i === 0 || i === Math.floor(graphDays.length / 2) || i === graphDays.length - 1) ? (
                         <Text style={[s.bL, { fontSize: 7 }]}>{dayLabel}</Text>
                       ) : <Text style={s.bL}></Text>}
-                    </View>
+                    </TouchableOpacity>
                   );
                 })}
               </View>
