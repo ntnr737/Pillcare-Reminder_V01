@@ -26,6 +26,7 @@ export default function Progress() {
   const [hcStatus, setHcStatus] = useState<"unknown" | "unavailable" | "not-granted" | "granted">("unknown");
   const [hcData, setHcData] = useState<{ steps: number | null; heartRate: number | null; sleepHours: number | null }>({ steps: null, heartRate: null, sleepHours: null });
   const [hcLoading, setHcLoading] = useState(false);
+  const [moodInsight, setMoodInsight] = useState<any>(null);
 
   useEffect(() => {
     get<any>(K.adherence).then(a => { if (a) setAdh(a); });
@@ -61,6 +62,11 @@ export default function Progress() {
   }, []);
 
   useFocusEffect(useCallback(() => { loadHealth(); }, [loadHealth]));
+
+  const loadMoodInsight = useCallback(async () => {
+    try { const r = await api.moodAdherenceInsight(14); setMoodInsight(r); } catch {}
+  }, []);
+  useFocusEffect(useCallback(() => { loadMoodInsight(); }, [loadMoodInsight]));
 
   const connectHealth = async () => {
     setHcLoading(true);
@@ -247,6 +253,14 @@ export default function Progress() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 }}><Ionicons name="sparkles" size={10} color={A3} /><Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDATION</Text></View>
               <Text style={s.cT}>{avg < 80 ? "Review your evening doses" : "Keep up the great work!"}</Text>
               <Text style={s.cS}>{avg < 80 ? "Your adherence dips in later hours" : "You're consistently above 80%!"}</Text>
+            </View>
+          </View>)}
+          {moodInsight?.has_pattern && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(229,178,133,0.3)" }]}>
+            <View style={[s.cI, { borderRadius: 18, width: 36, height: 36, backgroundColor: "rgba(229,178,133,0.14)" }]}><Ionicons name="happy-outline" size={17} color="#e5b285" /></View>
+            <View style={{ flex: 1 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 }}><Ionicons name="analytics-outline" size={10} color="#e5b285" /><Text style={{ fontSize: 9, letterSpacing: 1, color: "#e5b285", fontWeight: "700" }}>MOOD PATTERN</Text></View>
+              <Text style={s.cT}>Mood affects your adherence</Text>
+              <Text style={s.cS}>{moodInsight.message}</Text>
             </View>
           </View>)}
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 4 }}>
