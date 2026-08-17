@@ -91,6 +91,7 @@ export default function Support() {
   const [caregiverConnected, setCaregiverConnected] = useState(false);
   const [connectedNumber, setConnectedNumber] = useState("");
   const [testingAlert, setTestingAlert] = useState(false);
+  const [justConnected, setJustConnected] = useState(false);
 
   useEffect(() => {
     api.getProfile().then(p => {
@@ -138,10 +139,9 @@ export default function Support() {
     try {
       await api.updateCaregiver(caregiverPhone.trim());
       track("caregiver_connected");
-      Alert.alert("Connected!", `Caregiver number ${caregiverPhone.trim()} saved. They will receive WhatsApp alerts when you miss a dose.`);
       setCaregiverConnected(true);
       setConnectedNumber(caregiverPhone.trim());
-      setCaregiverOpen(false);
+      setJustConnected(true);
     } catch {
       Alert.alert("Error", "Could not save caregiver number. Please try again.");
     } finally { setSavingCg(false); }
@@ -227,7 +227,7 @@ export default function Support() {
               <TouchableOpacity
                 style={[s.connectBtn, { position: "absolute", top:0, right: 0 },
                   caregiverConnected && { backgroundColor: "rgba(74,222,128,0.1)", borderColor: "rgba(74,222,128,0.3)" }]}
-                onPress={() => setCaregiverOpen(true)}>
+                onPress={() => { setJustConnected(false); setCaregiverOpen(true); }}>
                 {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
                 <Text style={[s.connectTx, caregiverConnected && { color: "#4ade80" }]}>
                   {caregiverConnected ? "Connected" : "Connect"}
@@ -242,14 +242,19 @@ export default function Support() {
         <TouchableOpacity style={s.card} onPress={async () => {
           const { getFeatures } = await import("@/src/lib/features");
           const { api } = await import("@/src/lib/api");
-          const { Linking } = await import("react-native");
+          const { Share } = await import("react-native");
           track("export_tapped");
           if (!getFeatures().export_data) {
             Alert.alert("Pro Dharma feature", "CSV export is available on the Pro Dharma plan. Upgrade to download your complete health history.");
             return;
           }
-          track("export_completed");
-          Linking.openURL(api.exportCsvUrl());
+          try {
+            const csv = await api.exportCsv();
+            await Share.share({ title: "PillCare Health Data", message: csv });
+            track("export_completed");
+          } catch {
+            Alert.alert("Export failed", "Please check your connection and try again.");
+          }
         }}>
           <View style={s.cRow}>
             <View style={s.cIco}><Ionicons name="download-outline" size={17} color={A3} /></View>
@@ -335,9 +340,24 @@ export default function Support() {
       </Modal>
 
       {/* Caregiver WhatsApp Modal */}
-      <Modal visible={caregiverOpen} transparent animationType="slide" onRequestClose={() => setCaregiverOpen(false)}>
+      <Modal visible={caregiverOpen} transparent animationType="slide" onRequestClose={() => { setCaregiverOpen(false); setJustConnected(false); }}>
         <View style={s.ovl}><View style={s.sheet}>
           <View style={s.handle} />
+          {justConnected ? (<>
+            <View style={{ alignItems: "center", gap: 8, paddingVertical: 4 }}>
+              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(74,222,128,0.15)", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="checkmark-circle" size={30} color="#4ade80" />
+              </View>
+              <Text style={[s.sheetT, { textAlign: "center" }]}>Connected!</Text>
+              <Text style={[s.cS, { textAlign: "center", lineHeight: 17 }]}>Caregiver number {connectedNumber} saved. They'll receive WhatsApp alerts when you miss a dose.</Text>
+            </View>
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
+              <Text style={[s.subT, { color: "#000" }]}>Done</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
+              <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
+            </TouchableOpacity>
+          </>) : (<>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Ionicons name="logo-whatsapp" size={20} color="#4ade80" />
             <Text style={s.sheetT}>Connect Caregiver via WhatsApp</Text>
@@ -352,11 +372,12 @@ export default function Support() {
             <Text style={[s.subT, { color: "#000" }]}>{savingCg ? "Saving…" : "Save & Connect"}</Text>
           </TouchableOpacity>
           {caregiverConnected && (
-      <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
-        <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
-      </TouchableOpacity>
-      )}
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
+              <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
+          </>)}
         </View></View>
       </Modal>
     </SafeAreaView>
