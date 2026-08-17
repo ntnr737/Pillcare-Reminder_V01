@@ -39,8 +39,9 @@ export default function Caregiver() {
     try {
       await api.updateCaregivers(caregivers);
     setMsg("Caregivers saved");
-    } catch (e) {
-      setMsg(String(e));
+    } catch (e: any) {
+      const errMsg = e?.message || "";
+      setMsg(errMsg.includes("ERR_") ? errMsg : "Could not save caregivers. Please check your connection and try again.");
     } finally {
       setSaving(false);
     }
@@ -53,8 +54,9 @@ export default function Caregiver() {
       const sent = r.sent || [r];
       setMsg(`Sent to ${sent.length} caregiver${sent.length === 1 ? "" : "s"}`);
       refreshLog();
-    } catch (e) {
-      setMsg(String(e));
+    } catch (e: any) {
+      const errMsg = e?.message || "";
+      setMsg(errMsg.includes("ERR_") ? errMsg : "Could not send test alert. Please check your connection and try again.");
     } finally {
       setTesting(false);
     }
