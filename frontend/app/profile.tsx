@@ -120,6 +120,10 @@ export default function Profile() {
             <Text style={s.label}>Caregiver WhatsApp</Text>
             <TextInput value={profile.caregiver_phone || ""} onChangeText={v => update("caregiver_phone", v)} placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM} style={s.inp} keyboardType="phone-pad" />
             <Text style={[s.label, { marginTop: 4, fontStyle: "italic" }]}>Receives missed-dose alerts via WhatsApp</Text>
+            <TouchableOpacity onPress={() => router.push("/caregiver")} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
+              <Ionicons name="people-outline" size={13} color={A3} />
+              <Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>Manage all caregivers & alert history</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
