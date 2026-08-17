@@ -74,6 +74,17 @@ export default function Appointments() {
       } else {
         saved = await api.createAppointment(editing);
       }
+      // Cancel any previously-scheduled reminder for this appointment before
+      // scheduling a fresh one, so editing the date/time/reminder doesn't
+      // leave a stale notification firing at the old time.
+      const apptIdForNotif = saved?.id || editing.id;
+      if (apptIdForNotif) {
+        try {
+          const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+          const stale = scheduled.filter(n => n.content.data?.appointmentId === apptIdForNotif);
+          await Promise.all(stale.map(n => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+        } catch {}
+      }
       // Schedule appointment notification
       if (editing.date && editing.time && editing.reminder !== "none") {
         const [y, mo, d] = editing.date.split("-").map(Number);
@@ -110,7 +121,14 @@ export default function Appointments() {
   const deleteAppt = (id: string) => {
     Alert.alert("Delete", "Remove this appointment?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: async () => { await api.deleteAppointment(id); load(); } }
+      { text: "Delete", style: "destructive", onPress: async () => {
+        try {
+          const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+          const stale = scheduled.filter(n => n.content.data?.appointmentId === id);
+          await Promise.all(stale.map(n => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+        } catch {}
+        await api.deleteAppointment(id); load();
+      } }
     ]);
   };
 
