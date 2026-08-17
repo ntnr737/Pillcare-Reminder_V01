@@ -54,6 +54,22 @@ export const api = {
   caregiverAlert: (message: string, medication_name?: string) => req<any>("/caregiver/alert", { method: "POST", body: JSON.stringify({ message, medication_name }) }),
   caregiverLog: () => req<any[]>("/caregiver/log"),
   exportCsvUrl: () => `${BASE}/api/export/csv`,
+  exportCsv: async (): Promise<string> => {
+    const token = await getStoredToken();
+    const res = await fetch(`${BASE}/api/export/csv`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Export failed (${res.status}): ${text}`);
+    }
+    return res.text();
+  },
+  yogaComplete: (step_num: number, step_name: string, video_url?: string) =>
+    req<any>("/yoga/complete", { method: "POST", body: JSON.stringify({ step_num, step_name, video_url, local_date: localDateStr() }) }),
+  yogaUncomplete: (step_num: number, step_name: string) =>
+    req<any>("/yoga/uncomplete", { method: "POST", body: JSON.stringify({ step_num, step_name, local_date: localDateStr() }) }),
+  yogaLog: (days: number = 30) => req<any[]>(`/yoga/log?days=${days}`),
   getFeatures: () => req<Features>("/me/features"),
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
   updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
