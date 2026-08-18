@@ -1606,7 +1606,7 @@ async def nearby_places(
             f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
         )
         try:
-            async with httpx.AsyncClient(timeout=8) as client:
+            async with httpx.AsyncClient(timeout=5) as client:
                 r = await client.get(url)
             data = r.json()
             if data.get("status") == "OK" and data.get("results"):
@@ -1657,21 +1657,22 @@ async def nearby_places(
                 "https://overpass.kumi.systems/api/interpreter",
                 "https://overpass.openstreetmap.ru/api/interpreter",
             ]
-        data = None
-        last_err = None
-        for overpass_url in overpass_mirrors:
-            try:
-                async with httpx.AsyncClient(timeout=20) as client:
-                    r = await client.post(overpass_url, data={"data": query})
-                    r.raise_for_status()
-                    data = r.json()
-                break
-            except Exception as mirror_err:
-                last_err = mirror_err
-                logger.warning(f"Overpass mirror {overpass_url} failed: {mirror_err}")
-                continue
+        async def _try_mirror(overpass_url: str):
+            async with httpx.AsyncClient(timeout=6) as client:
+                r = await client.post(overpass_url, data={"data": query})
+                r.raise_for_status()
+                return r.json()
+        # Race all mirrors concurrently instead of trying them one at a time —
+        # sequential 20s-per-mirror attempts could take up to a minute before
+        # even reaching the client, which is what made "nearby" feel broken.
+        mirror_results = await asyncio.gather(*[_try_mirror(u) for u in overpass_mirrors], return_exceptions=True)
+        data = next((res for res in mirror_results if not isinstance(res, Exception)), None)
+        for u, res in zip(overpass_mirrors, mirror_results):
+            if isinstance(res, Exception):
+                logger.warning(f"Overpass mirror {u} failed: {res}")
         if data is None:
-            raise last_err or Exception("All Overpass mirrors failed")
+            first_err = next((res for res in mirror_results if isinstance(res, Exception)), None)
+            raise first_err or Exception("All Overpass mirrors failed")
         places = []
         for el in (data.get("elements") or [])[:15]:
             tags = el.get("tags", {})
