@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert, Share } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -27,6 +27,8 @@ export default function Progress() {
   const [hcData, setHcData] = useState<{ steps: number | null; heartRate: number | null; sleepHours: number | null }>({ steps: null, heartRate: null, sleepHours: null });
   const [hcLoading, setHcLoading] = useState(false);
   const [moodInsight, setMoodInsight] = useState<any>(null);
+  const isMounted = useRef(true);
+  useEffect(() => () => { isMounted.current = false; }, []);
 
   useEffect(() => {
     get<any>(K.adherence).then(a => { if (a) setAdh(a); });
@@ -132,11 +134,12 @@ export default function Progress() {
               setExporting(true);
               try {
                 const csv = await api.exportCsv();
+                if (!isMounted.current) return;
                 await Share.share({ title: "PillCare Health Data", message: csv });
               } catch {
-                Alert.alert("Export failed", "Please check your connection and try again.");
+                if (isMounted.current) Alert.alert("Export failed", "Please check your connection and try again.");
               } finally {
-                setExporting(false);
+                if (isMounted.current) setExporting(false);
               }
             }}>
             <Ionicons name="download-outline" size={14} color={AC} />
