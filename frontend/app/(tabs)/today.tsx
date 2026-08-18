@@ -241,6 +241,15 @@ export default function Today() {
       await Promise.all(pendingForMed.map((d: any) => api.setDoseStatus(d.id, "skipped")));
       await api.deleteMedication(medId);
       track("medication_marked_complete", { reason: "out_of_stock" });
+      // Drop this medication's doses from state immediately instead of waiting
+      // on the background refresh round-trip — otherwise the out-of-stock
+      // banner/modal looks "stuck" for a beat (or longer, on a slow network)
+      // right after the user taps Treatment complete.
+      setDoses(prev => {
+        const u = prev.filter((d: any) => d.medication_id !== medId);
+        set(K.doses(date), u);
+        return u;
+      });
       await backgroundRefresh(fetchServer);
     } catch {
       Alert.alert("Could not update", "Please check your connection and try again.");
