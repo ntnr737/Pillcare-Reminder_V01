@@ -126,6 +126,9 @@ export async function flushQueue(): Promise<void> {
           case "profile":
             await api.upsertProfile(item.payload);
             break;
+          case "medication":
+            await api.createMedication(item.payload);
+            break;
         }
         await removeFromQueue(item.id);
       } catch {
