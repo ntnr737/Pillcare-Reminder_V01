@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, Alert, Modal } from "react-native";
+import { useState, useRef } from "react";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, Alert, Modal, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -92,6 +92,9 @@ export default function Support() {
   const [connectedNumber, setConnectedNumber] = useState("");
   const [testingAlert, setTestingAlert] = useState(false);
   const [justConnected, setJustConnected] = useState(false);
+  const [exportingData, setExportingData] = useState(false);
+  const isMounted = useRef(true);
+  useEffect(() => () => { isMounted.current = false; }, []);
 
   useEffect(() => {
     api.getProfile().then(p => {
@@ -239,7 +242,8 @@ export default function Support() {
 
         {/* DATA & EXPORT */}
         <Text style={s.secL}>YOUR DATA</Text>
-        <TouchableOpacity style={s.card} onPress={async () => {
+        <TouchableOpacity style={s.card} disabled={exportingData} onPress={async () => {
+          if (exportingData) return;
           const { getFeatures } = await import("@/src/lib/features");
           const { api } = await import("@/src/lib/api");
           const { Share } = await import("react-native");
@@ -248,18 +252,26 @@ export default function Support() {
             Alert.alert("Pro Dharma feature", "CSV export is available on the Pro Dharma plan. Upgrade to download your complete health history.");
             return;
           }
+          setExportingData(true);
           try {
             const csv = await api.exportCsv();
+            // Guard against the screen having been navigated away from while
+            // this network round-trip was in flight — otherwise the native
+            // share sheet pops up later, on top of whatever screen the user
+            // has since moved to, which looks like a random unexplained bug.
+            if (!isMounted.current) return;
             await Share.share({ title: "PillCare Health Data", message: csv });
             track("export_completed");
           } catch {
-            Alert.alert("Export failed", "Please check your connection and try again.");
+            if (isMounted.current) Alert.alert("Export failed", "Please check your connection and try again.");
+          } finally {
+            if (isMounted.current) setExportingData(false);
           }
         }}>
           <View style={s.cRow}>
-            <View style={s.cIco}><Ionicons name="download-outline" size={17} color={A3} /></View>
+            <View style={s.cIco}>{exportingData ? <ActivityIndicator size="small" color={A3} /> : <Ionicons name="download-outline" size={17} color={A3} />}</View>
             <View style={{ flex: 1 }}>
-              <Text style={s.cT}>Export my health data</Text>
+              <Text style={s.cT}>{exportingData ? "Preparing your export…" : "Export my health data"}</Text>
               <Text style={s.cS}>Download all your doses, measurements and activities as CSV</Text>
             </View>
             <Ionicons name="chevron-forward" size={13} color={TM} />
