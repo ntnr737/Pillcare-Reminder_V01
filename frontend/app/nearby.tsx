@@ -68,7 +68,16 @@ export default function Nearby() {
       setLocError("PERMISSION_DENIED");
       return null;
     }
-    const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    // GPS acquisition has no built-in timeout and can hang for minutes on a
+    // weak signal (indoors, poor mobile data) — race it against a hard cap
+    // so the screen fails fast instead of spinning forever.
+    const posPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
+    const pos = await Promise.race([posPromise, timeoutPromise]);
+    if (!pos) {
+      setLocError("Could not get your location. Please check GPS/location is enabled and try again.");
+      return null;
+    }
     return { lat: pos.coords.latitude, lng: pos.coords.longitude };
   };
 
@@ -105,21 +114,18 @@ const overpassMirrors = [
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass.openstreetmap.ru/api/interpreter",
       ];
+          // Race all mirrors concurrently instead of trying them one at a
+          // time — sequential attempts could add up to 36s here alone.
           let osmData: any = null;
-          for (const mirrorUrl of overpassMirrors) {
-                  try {
-                            const overpass = await fetchWithTimeout(mirrorUrl, {
-                                        method: "POST",
-                                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                                        body: `data=${encodeURIComponent(query)}`,
-                            }, 12000);
-                            if (!overpass.ok) continue;
-                            osmData = await overpass.json();
-                            break;
-                  } catch {
-                            continue;
-                  }
-          }
+          const mirrorResults = await Promise.allSettled(overpassMirrors.map(mirrorUrl =>
+            fetchWithTimeout(mirrorUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: `data=${encodeURIComponent(query)}`,
+            }, 6000).then(r => { if (!r.ok) throw new Error("bad status"); return r.json(); })
+          ));
+          const firstOk = mirrorResults.find(r => r.status === "fulfilled") as PromiseFulfilledResult<any> | undefined;
+          if (firstOk) osmData = firstOk.value;
           if (!osmData) throw new Error("Overpass failed");
       const results: Place[] = (osmData.elements || []).slice(0, 15).map((el: any) => {
         const elLat = el.lat || el.center?.lat;
