@@ -167,7 +167,7 @@ export default function Progress() {
                 <Text style={{ fontSize: 11, color: TM }}>{selectedDay.total > 0 ? `${selectedDay.taken}/${selectedDay.total} taken (${selectedDay.pct}%)` : "No doses scheduled"}</Text>
               </View>
             )}
-            {graphDays.length === 0 ? (
+            {graphDays.length === 0 || !hasAnyDoses ? (
               <View style={{ alignItems: "center", paddingVertical: 24, gap: 8 }}>
                 <Ionicons name="bar-chart-outline" size={32} color={TM} />
                 <Text style={{ fontSize: 13, color: TM, textAlign: "center" }}>Start marking doses as taken{"\n"}to see your progress chart here</Text>
@@ -181,7 +181,7 @@ export default function Progress() {
                   const dayLabel = d.date ? new Date(d.date + "T12:00:00").toLocaleDateString("en-IN", { day: "numeric" }) : "";
                   return (
                     <TouchableOpacity key={i} style={[s.bCol, { gap: 2 }]} activeOpacity={0.6} onPress={() => setSelectedDay(d)}>
-                      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+                      <View style={{ flex: 1, justifyContent: "flex-end", width: "100%", alignItems: "center" }}>
                         {d.total > 0 && (isSel || isT) && (
                           <Text style={{ fontSize: 7, color: isSel ? A3 : TM, fontWeight: isSel ? "700" : "400", textAlign: "center", marginBottom: 2 }}>
                             {d.pct > 0 ? `${d.pct}%` : ""}
