@@ -85,6 +85,7 @@ export async function getStoredUser(): Promise<PillcareUser | null> {
 export async function signOut(): Promise<void> {
   await storage.secureRemove(TOKEN_KEY);
   await storage.secureRemove(USER_KEY);
+  await remove(K.profile).catch(() => {});
   try {
     await GoogleSignin.signOut();
   } catch {
