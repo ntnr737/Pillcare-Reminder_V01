@@ -52,8 +52,11 @@ export async function signInWithGoogle(): Promise<PillcareUser> {
   });
 
   if (!res.ok) {
+    if (res.status === 429) {
+      throw new Error("Too many sign-in attempts. Please wait a moment and try again.");
+    }
     const text = await res.text();
-    throw new Error(`Sign-in failed: ${res.status} ${text}`);
+    throw new Error(`Sign-in failed (${res.status}): ${text}`);
   }
 
   const data = await res.json();

@@ -585,7 +585,7 @@ async def root():
 
 # Auth
 @api.post("/auth/google")
-@limiter.limit("20/minute")
+@limiter.limit("120/minute")
 async def auth_google(request: Request, payload: GoogleAuthRequest):
     if not GOOGLE_VALID_AUDIENCES:
         raise HTTPException(500, "Google sign-in is not configured on the server")
