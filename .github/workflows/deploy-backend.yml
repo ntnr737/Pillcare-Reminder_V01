@@ -1,9 +1,6 @@
 name: Deploy Backend to Cloud Run
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'backend/**'
+  workflow_dispatch:
 jobs:
   deploy:
     runs-on: ubuntu-latest
