@@ -52,10 +52,13 @@ export default function Onboarding() {
   const fetchGPS = async () => {
     setLocLoading(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") { setLocLoading(false); return; }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const geo = await Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+      const { status } = await Location.requestForegroundPermissionsAsync().catch(() => ({ status: "denied" }));
+      if (status !== "granted") return;
+      const enabled = await Location.hasServicesEnabledAsync().catch(() => false);
+      if (!enabled) return;
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }).catch(() => null);
+      if (!pos) return;
+      const geo = await Location.reverseGeocodeAsync({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }).catch(() => []);
       if (geo.length > 0) { setCity(geo[0].city || geo[0].subregion || ""); setCityState(geo[0].region || ""); }
     } catch {}
     finally { setLocLoading(false); }

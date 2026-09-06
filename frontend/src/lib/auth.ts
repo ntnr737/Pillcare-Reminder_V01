@@ -62,6 +62,9 @@ export async function signInWithGoogle(): Promise<PillcareUser> {
   const data = await res.json();
   await storage.secureSet(TOKEN_KEY, data.token);
   await storage.secureSet(USER_KEY, JSON.stringify(data.user));
+  if (data.user) {
+    await set(K.profile, { nickname: data.user.nickname || data.user.name || "User", ...data.user }).catch(() => {});
+  }
   return data.user as PillcareUser;
 }
 

@@ -222,7 +222,7 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
         title: "🧘 Time for your Yoga Therapy Routine",
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
-        sound: "pillcare_wellness",
+        sound: "default",
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
