@@ -2065,40 +2065,121 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
     return {"ok": True, "reports_sent": len(results), "results": results}
 
 
+@api.get("/export/excel")
 @api.get("/export/csv")
-async def export_csv(user_id: str = Depends(get_current_user_id)):
+async def export_excel_report(user_id: str = Depends(get_current_user_id)):
+    """Exports full user health history & medication report in formatted Microsoft Excel (.xlsx) format."""
     features = await get_user_features(user_id)
     if not features.get("export_data"):
         raise HTTPException(402, "ERR_PLAN: Data export requires a paid plan. Upgrade at pillcare.in/pricing.")
-    buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["section", "timestamp", "type", "value", "unit", "status", "note"])
-    doses = await db.doses.find({"user_id": user_id}, PROJECTION).to_list(10000)
-    med_ids = list({d["medication_id"] for d in doses})
-    meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
-    med_map = {m["id"]: m for m in meds}
-    for d in doses:
-        m = med_map.get(d["medication_id"], {})
-        w.writerow([
-            "dose",
-            f"{d['date']}T{d['scheduled_time']}",
-            m.get("name", ""),
-            m.get("dosage", ""),
-            m.get("unit", ""),
-            d.get("status", ""),
-            "",
-        ])
-    for m in await db.measurements.find({"user_id": user_id}, PROJECTION).to_list(10000):
-        w.writerow(["measurement", m["recorded_at"].isoformat() if isinstance(m.get("recorded_at"), datetime) else m.get("recorded_at"), m["type"], m["value"], m["unit"], "", m.get("note", "")])
-    for a in await db.activities.find({"user_id": user_id}, PROJECTION).to_list(10000):
-        w.writerow(["activity", a["recorded_at"].isoformat() if isinstance(a.get("recorded_at"), datetime) else a.get("recorded_at"), a["type"], a["value"], a["unit"], "", a.get("note", "")])
-    for mo in await db.mood.find({"user_id": user_id}, PROJECTION).to_list(10000):
-        w.writerow(["mood", mo["recorded_at"].isoformat() if isinstance(mo.get("recorded_at"), datetime) else mo.get("recorded_at"), "mood", mo["score"], "1-5", "", mo.get("note", "")])
-    for yl in await db.yoga_log.find({"user_id": user_id}, PROJECTION).sort("date", 1).to_list(10000):
-        ts = yl.get("completed_at")
-        w.writerow(["yoga", ts.isoformat() if isinstance(ts, datetime) else yl.get("date", ""), yl.get("step_name", ""), "done", "", "", ""])
-    csv_bytes = buf.getvalue().encode("utf-8")
-    return Response(content=csv_bytes, media_type="text/csv", headers={"Content-Disposition": "attachment; filename=pillcare-history.csv"})
+    
+    if not EXCEL_OK:
+        buf = io.StringIO()
+        w = csv.writer(buf)
+        w.writerow(["section", "timestamp", "type", "value", "unit", "status", "note"])
+        doses = await db.doses.find({"user_id": user_id}, PROJECTION).to_list(10000)
+        med_ids = list({d["medication_id"] for d in doses})
+        meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
+        med_map = {m["id"]: m for m in meds}
+        for d in doses:
+            m = med_map.get(d["medication_id"], {})
+            w.writerow(["dose", f"{d['date']}T{d['scheduled_time']}", m.get("name", ""), m.get("dosage", ""), m.get("unit", ""), d.get("status", ""), ""])
+        return Response(content=buf.getvalue().encode("utf-8"), media_type="text/csv", headers={"Content-Disposition": "attachment; filename=pillcare_report.csv"})
+
+    wb = openpyxl.Workbook()
+    header_fill = PatternFill("solid", fgColor="4A55A2")
+    header_font = Font(bold=True, color="FFFFFF")
+    align_center = Alignment(horizontal="center", vertical="center")
+
+    def style_sheet(ws, headers):
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col, value=h)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = align_center
+
+    # Sheet 1: Summary Profile
+    ws_sum = wb.active
+    ws_sum.title = "Overview & Profile"
+    profile = await db.profile.find_one({"user_id": user_id}, PROJECTION) or {}
+    meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(1000)
+    taken_cnt = await db.doses.count_documents({"user_id": user_id, "status": "taken"})
+    missed_cnt = await db.doses.count_documents({"user_id": user_id, "status": "missed"})
+    adh_pct = round(taken_cnt / (taken_cnt + missed_cnt) * 100, 1) if (taken_cnt + missed_cnt) > 0 else "N/A"
+
+    style_sheet(ws_sum, ["Metric / Field", "Details"])
+    sum_data = [
+        ["Patient Name", profile.get("nickname") or profile.get("name") or "User"],
+        ["Report Generated On", datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")],
+        ["Active Medications Count", len(meds)],
+        ["Total Doses Recorded", taken_cnt + missed_cnt],
+        ["Doses Taken", taken_cnt],
+        ["Doses Missed", missed_cnt],
+        ["Overall Adherence %", f"{adh_pct}%" if isinstance(adh_pct, float) else "N/A"],
+        ["Emergency Contact / Caregiver", profile.get("caregiver_phone") or "Not configured"],
+    ]
+    for r_idx, (k, v) in enumerate(sum_data, 2):
+        ws_sum.cell(row=r_idx, column=1, value=k)
+        ws_sum.cell(row=r_idx, column=2, value=str(v))
+
+    # Sheet 2: Medications
+    ws_meds = wb.create_sheet("Medications")
+    style_sheet(ws_meds, ["Medication Name", "Generic Name", "Dosage", "Unit", "Scheduled Times", "Stock Remaining", "Refill Threshold", "Status"])
+    all_meds = await db.medications.find({"user_id": user_id}, PROJECTION).to_list(1000)
+    for r_idx, m in enumerate(all_meds, 2):
+        ws_meds.cell(row=r_idx, column=1, value=m.get("name", ""))
+        ws_meds.cell(row=r_idx, column=2, value=m.get("generic_name", ""))
+        ws_meds.cell(row=r_idx, column=3, value=m.get("dosage", ""))
+        ws_meds.cell(row=r_idx, column=4, value=m.get("unit", ""))
+        ws_meds.cell(row=r_idx, column=5, value=", ".join(m.get("times", [])))
+        ws_meds.cell(row=r_idx, column=6, value=m.get("stock", 0))
+        ws_meds.cell(row=r_idx, column=7, value=m.get("refill_threshold", 5))
+        ws_meds.cell(row=r_idx, column=8, value="Active" if m.get("active", True) else "Archived")
+
+    # Sheet 3: Dose Logs
+    ws_doses = wb.create_sheet("Dose Log History")
+    style_sheet(ws_doses, ["Date", "Scheduled Time", "Medication Name", "Dosage", "Status", "Action Time"])
+    doses = await db.doses.find({"user_id": user_id}, PROJECTION).sort([("date", -1), ("scheduled_time", 1)]).to_list(10000)
+    med_map = {m["id"]: m for m in all_meds}
+    for r_idx, d in enumerate(doses, 2):
+        m = med_map.get(d.get("medication_id"), {})
+        ws_doses.cell(row=r_idx, column=1, value=d.get("date", ""))
+        ws_doses.cell(row=r_idx, column=2, value=d.get("scheduled_time", ""))
+        ws_doses.cell(row=r_idx, column=3, value=m.get("name", "Unknown Medicine"))
+        ws_doses.cell(row=r_idx, column=4, value=f"{m.get('dosage', '')} {m.get('unit', '')}".strip())
+        ws_doses.cell(row=r_idx, column=5, value=str(d.get("status", "pending")).capitalize())
+        action_ts = d.get("action_time")
+        ws_doses.cell(row=r_idx, column=6, value=action_ts.strftime("%Y-%m-%d %H:%M") if isinstance(action_ts, datetime) else "")
+
+    # Sheet 4: Measurements & Vitals
+    ws_vitals = wb.create_sheet("Vitals & Measurements")
+    style_sheet(ws_vitals, ["Recorded Date/Time", "Measurement Type", "Value", "Secondary Value", "Unit", "Note"])
+    vitals = await db.measurements.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(5000)
+    for r_idx, v in enumerate(vitals, 2):
+        rec = v.get("recorded_at")
+        ws_vitals.cell(row=r_idx, column=1, value=rec.strftime("%Y-%m-%d %H:%M") if isinstance(rec, datetime) else str(rec or ""))
+        ws_vitals.cell(row=r_idx, column=2, value=str(v.get("type", "")).replace("_", " ").title())
+        ws_vitals.cell(row=r_idx, column=3, value=v.get("value", ""))
+        ws_vitals.cell(row=r_idx, column=4, value=v.get("value_secondary", ""))
+        ws_vitals.cell(row=r_idx, column=5, value=v.get("unit", ""))
+        ws_vitals.cell(row=r_idx, column=6, value=v.get("note", ""))
+
+    # Auto-adjust column widths across all sheets
+    for sheet in wb.worksheets:
+        for col in sheet.columns:
+            max_len = max(len(str(cell.value or "")) for cell in col)
+            col_letter = openpyxl.utils.get_column_letter(col[0].column)
+            sheet.column_dimensions[col_letter].width = max(max_len + 3, 14)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    excel_bytes = buf.getvalue()
+    filename = f"pillcare_health_report_{datetime.now(timezone.utc).strftime('%Y%m%d')}.xlsx"
+    return Response(
+        content=excel_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 

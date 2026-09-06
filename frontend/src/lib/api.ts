@@ -89,4 +89,6 @@ export const api = {
   upgradePlan: (plan: string = "premium", days: number = 30) => req<any>("/me/upgrade", { method: "POST", body: JSON.stringify({ plan, days }) }),
   createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
   verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
+  exportExcel: () => req<any>("/export/excel"),
+  exportCsv: () => req<any>("/export/csv"),
 };
