@@ -201,6 +201,7 @@ export default function Treatment() {
               <Text style={s.cS}>{yoga.duration || "12 min"} • {yoga.level || "Beginner"}</Text>
             </View>
           <TouchableOpacity style={s.viewBtn} onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
+          </View>)}
           {/* Drug & Food Interaction & Do's and Don'ts Card */}
           {drugFoodGuide && drugFoodGuide.has_medications && (
             <TouchableOpacity
