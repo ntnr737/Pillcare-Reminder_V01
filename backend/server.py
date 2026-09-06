@@ -130,13 +130,13 @@ api = APIRouter(prefix="/api")
 
 # Rate limiter
 def get_real_ip(request: Request) -> str:
-    """Get actual client IP — ignores X-Forwarded-For spoofing.
-    Cloud Run sets X-Appengine-User-Ip which cannot be spoofed by clients."""
-    # Cloud Run trusted header (set by Google infrastructure, not the client)
+    """Get actual client IP — supports Cloud Run & reverse proxies."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
     real_ip = request.headers.get("x-appengine-user-ip")
     if real_ip:
         return real_ip
-    # Fall back to direct connection IP
     if request.client:
         return request.client.host
     return "unknown"
@@ -585,7 +585,7 @@ async def root():
 
 # Auth
 @api.post("/auth/google")
-@limiter.limit("120/minute")
+@limiter.exempt
 async def auth_google(request: Request, payload: GoogleAuthRequest):
     if not GOOGLE_VALID_AUDIENCES:
         raise HTTPException(500, "Google sign-in is not configured on the server")
@@ -3077,7 +3077,8 @@ def err(code: int, msg: str, detail: str = ""):
     return HTTPException(code, f"ERR_{code}: {msg}" + (f" — {detail}" if detail else ""))
 
 @app.get("/health")
-async def health_check():
+@limiter.exempt
+async def health_check(request: Request):
     try:
         await db.command("ping")
         db_ok = True
