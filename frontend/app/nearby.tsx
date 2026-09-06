@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Linking, RefreshControl, Modal
+  ActivityIndicator, Linking, RefreshControl, Modal, Alert
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { track } from "@/src/lib/analytics";
+import { get, K } from "@/src/lib/store";
 import * as Location from "expo-location";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
@@ -62,15 +63,41 @@ export default function Nearby() {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  const sendWhatsAppPrescription = async (p: Place) => {
+    try {
+      const meds = (await get<any[]>(K.medications)) || [];
+      const activeMeds = meds.filter((m: any) => m.active !== false);
+      let medText = "";
+      if (activeMeds.length > 0) {
+        medText = activeMeds.map((m: any) => `• ${m.name} ${m.dosage ? m.dosage + " " + (m.unit || "") : ""}`).join("\n");
+      } else {
+        medText = "• Prescription medicines list";
+      }
+
+      const msg = `Hi ${p.name}, I found your store on PillCare. I would like to order / check availability for:\n\n${medText}\n\nPlease confirm availability & total price. Thank you!`;
+      const encodedMsg = encodeURIComponent(msg);
+      const cleanPhone = (p.phone || "").replace(/[\s\-()]/g, "");
+
+      if (cleanPhone && cleanPhone.length >= 8) {
+        Linking.openURL(`https://wa.me/${cleanPhone}?text=${encodedMsg}`);
+      } else {
+        Linking.openURL(`whatsapp://send?text=${encodedMsg}`).catch(() => {
+          Linking.openURL(`https://api.whatsapp.com/send?text=${encodedMsg}`).catch(() => {
+            Alert.alert("WhatsApp not available", "Could not open WhatsApp on this device.");
+          });
+        });
+      }
+    } catch {
+      Alert.alert("Error", "Could not prepare WhatsApp message. Please try again.");
+    }
+  };
+
   const getLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {
       setLocError("PERMISSION_DENIED");
       return null;
     }
-    // GPS acquisition has no built-in timeout and can hang for minutes on a
-    // weak signal (indoors, poor mobile data) — race it against a hard cap
-    // so the screen fails fast instead of spinning forever.
     const posPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
     const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
     const pos = await Promise.race([posPromise, timeoutPromise]);
@@ -91,53 +118,57 @@ export default function Nearby() {
       // Try backend endpoint first (Google Places)
       try {
         const token = await (await import("@/src/lib/auth")).getStoredToken();
-      const res = await fetchWithTimeout(
+        const res = await fetchWithTimeout(
           `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${radius}&type=${type}`,
           { headers: { Authorization: `Bearer ${token}` } }
-      , 15000);
+        , 15000);
         if (res.ok) {
           const data = await res.json();
           if (data.places?.length) { setPlaces(data.places); setSource(data.source === "osm" ? "osm" : "google"); setLoading(false); return; }
         }
       } catch {}
 
-      // Fallback: Overpass API (OpenStreetMap) — completely free, no key
-      const osmTag = type === "pharmacy" ? '"amenity"~"pharmacy|chemist"'
-        : type === "diagnostic" ? '"healthcare"~"laboratory|diagnostics"'
-        : '"amenity"~"hospital|clinic|doctors"';
-      const query = `[out:json][timeout:20];
-        (node[${osmTag}](around:${radius},${loc.lat},${loc.lng});
-         way[${osmTag}](around:${radius},${loc.lat},${loc.lng}););
-        out center 20;`;
-const overpassMirrors = [
+      // Fallback: Overpass API (OpenStreetMap) — valid Overpass QL syntax
+      let query = "";
+      if (type === "pharmacy") {
+        query = `[out:json][timeout:15];(node["amenity"="pharmacy"](around:${radius},${loc.lat},${loc.lng});node["shop"="chemist"](around:${radius},${loc.lat},${loc.lng});way["amenity"="pharmacy"](around:${radius},${loc.lat},${loc.lng}););out center 20;`;
+      } else if (type === "diagnostic") {
+        query = `[out:json][timeout:15];(node["healthcare"="laboratory"](around:${radius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${radius},${loc.lat},${loc.lng});node["amenity"="hospital"](around:${radius},${loc.lat},${loc.lng}););out center 20;`;
+      } else {
+        query = `[out:json][timeout:15];(node["amenity"="hospital"](around:${radius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${radius},${loc.lat},${loc.lng});way["amenity"="hospital"](around:${radius},${loc.lat},${loc.lng}););out center 20;`;
+      }
+
+      const overpassMirrors = [
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass.openstreetmap.ru/api/interpreter",
       ];
-          // Race all mirrors concurrently instead of trying them one at a
-          // time — sequential attempts could add up to 36s here alone.
-          let osmData: any = null;
-          const mirrorResults = await Promise.allSettled(overpassMirrors.map(mirrorUrl =>
-            fetchWithTimeout(mirrorUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/x-www-form-urlencoded" },
-              body: `data=${encodeURIComponent(query)}`,
-            }, 6000).then(r => { if (!r.ok) throw new Error("bad status"); return r.json(); })
-          ));
-          const firstOk = mirrorResults.find(r => r.status === "fulfilled") as PromiseFulfilledResult<any> | undefined;
-          if (firstOk) osmData = firstOk.value;
-          if (!osmData) throw new Error("Overpass failed");
+      let osmData: any = null;
+      const mirrorResults = await Promise.allSettled(overpassMirrors.map(mirrorUrl =>
+        fetchWithTimeout(mirrorUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: `data=${encodeURIComponent(query)}`,
+        }, 8000).then(r => { if (!r.ok) throw new Error("bad status"); return r.json(); })
+      ));
+      const firstOk = mirrorResults.find(r => r.status === "fulfilled") as PromiseFulfilledResult<any> | undefined;
+      if (firstOk) osmData = firstOk.value;
+      if (!osmData) throw new Error("Overpass failed");
+
       const results: Place[] = (osmData.elements || []).slice(0, 15).map((el: any) => {
         const elLat = el.lat || el.center?.lat;
         const elLng = el.lon || el.center?.lon;
         const dlat = (elLat - loc.lat) * 111000;
         const dlng = (elLng - loc.lng) * 111000 * Math.cos(loc.lat * Math.PI / 180);
         const dist = Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
+        const tags = el.tags || {};
+        const storeName = tags.name || tags["name:en"] || tags.brand || tags.operator || tags.official_name || (type === "pharmacy" ? "Medical Store / Pharmacy" : type === "diagnostic" ? "Diagnostic Lab" : "Hospital / Clinic");
+        const phone = tags.phone || tags["contact:phone"] || tags["contact:mobile"] || tags.mobile || null;
         return {
           id: String(el.id),
-          name: el.tags?.name || el.tags?.["name:en"] || "Medical Store",
-          address: [el.tags?.["addr:street"], el.tags?.["addr:city"]].filter(Boolean).join(", ") || "Address not available",
-          phone: el.tags?.phone || el.tags?.["contact:phone"],
+          name: storeName,
+          address: [tags["addr:street"], tags["addr:suburb"], tags["addr:city"]].filter(Boolean).join(", ") || tags["addr:full"] || "Location near you",
+          phone: phone,
           distance: dist, lat: elLat, lng: elLng,
           open: undefined, rating: undefined,
         };
@@ -281,18 +312,18 @@ const overpassMirrors = [
             </View>
 
             <View style={s.cardActions}>
-              {p.phone ? (<>
+              {p.phone ? (
                 <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.08)" }]}
                   onPress={e => { e.stopPropagation(); Linking.openURL(`tel:${(p.phone||"").replace(/[\s\-()]/g,"")}`); }}>
                   <Ionicons name="call" size={14} color="#4ade80" />
                   <Text style={[s.actionTx, { color: "#4ade80" }]}>Call now</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(37,211,102,0.3)", backgroundColor: "rgba(37,211,102,0.08)" }]}
-                  onPress={e => { e.stopPropagation(); const ph = (p.phone||"").replace(/[\s\-()]/g,""); Linking.openURL(`https://wa.me/${ph}?text=${encodeURIComponent("Hi, I found you on Pillcare. I would like to check availability.")}`); }}>
-                  <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
-                  <Text style={[s.actionTx, { color: "#25D366" }]}>WhatsApp</Text>
-                </TouchableOpacity>
-              </>) : null}
+              ) : null}
+              <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
+                onPress={e => { e.stopPropagation(); sendWhatsAppPrescription(p); }}>
+                <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
+                <Text style={[s.actionTx, { color: "#25D366", fontWeight: "700" }]}>WhatsApp Order</Text>
+              </TouchableOpacity>
               <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
                 <Ionicons name="navigate" size={14} color={A3} />
                 <Text style={s.actionTx}>Directions</Text>
@@ -349,18 +380,20 @@ const overpassMirrors = [
                 </TouchableOpacity>
               </View>
 
-              {/* Action buttons — all inside the app */}
+              {/* Action buttons — WhatsApp Prescription Order & Phone Call */}
+              <TouchableOpacity style={[s.actionBtn, { paddingVertical: 14, justifyContent: "center", borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
+                onPress={() => sendWhatsAppPrescription(selectedPlace)}>
+                <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
+                <Text style={[s.actionTx, { color: "#25D366", fontSize: 15, fontWeight: "700" }]}>Send Prescription via WhatsApp</Text>
+              </TouchableOpacity>
+
               {selectedPlace.phone ? (
                 <TouchableOpacity style={[s.actionBtn, { paddingVertical: 14, justifyContent: "center", borderColor: "rgba(74,222,128,0.4)", backgroundColor: "rgba(74,222,128,0.1)" }]}
                   onPress={() => Linking.openURL(`tel:${(selectedPlace.phone||"").replace(/[\s\-()]/g,"")}`)}> 
                   <Ionicons name="call" size={18} color="#4ade80" />
                   <Text style={[s.actionTx, { color: "#4ade80", fontSize: 15 }]}>Call {selectedPlace.phone}</Text>
                 </TouchableOpacity>
-              ) : (
-                <View style={[s.card, { padding: 12, alignItems: "center" }]}>
-                  <Text style={{ fontSize: 13, color: TM }}>No phone number available for this location</Text>
-                </View>
-              )}
+              ) : null}
 
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center" }]}

@@ -4,7 +4,8 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { theme } from "@/src/lib/theme";
 import { PrimaryButton } from "./PrimaryButton";
 import { api } from "@/src/lib/api";
-import { enqueueWrite } from "@/src/lib/sync";
+import { get, set, K } from "@/src/lib/store";
+import { enqueueWrite, flushQueue } from "@/src/lib/sync";
 
 type Props = {
   visible: boolean;
@@ -61,48 +62,53 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   };
 
   const save = async () => {
-  if (!name.trim()) return;
-  setSaving(true);
-  const payload = {
-    name: name.trim(),
-    dosage: parseFloat(dosage) || 0,
-    unit,
-    frequency_per_day: parseInt(freq) || 1,
-    times,
-    start_date: fmt(startDate),
-    stock: parseInt(stock) || 0,
-    refill_threshold: parseInt(refill) || 0,
-    notes: notes.trim() || undefined,
-  };
-  try {
-    await api.createMedication(payload);
-    reset();
-    onSaved();
-    onClose();
-  } catch (e: any) {
-    console.warn(e);
-    const msg = e?.message || "";
-    if (!msg.startsWith("API ")) {
-      // fetch() itself threw -- the request never reached the server
-      // (offline / weak connection). Save locally and sync automatically
-      // once we're back online, matching the local-first pattern already
-      // used for dose status updates in src/lib/sync.ts.
-      try {
-        await enqueueWrite("medication", payload);
-        reset();
-        onSaved();
-        onClose();
-        Alert.alert("Saved on your device", "No connection right now — this medication will sync automatically once you're back online.");
-      } catch {
-        Alert.alert("Could not save medication", "Please check your connection and try again.");
-      }
-    } else {
-      Alert.alert("Could not save medication", msg);
+    if (!name.trim()) return;
+    setSaving(true);
+    const payload = {
+      name: name.trim(),
+      dosage: parseFloat(dosage) || 0,
+      unit,
+      frequency_per_day: parseInt(freq) || 1,
+      times,
+      start_date: fmt(startDate),
+      stock: parseInt(stock) || 0,
+      refill_threshold: parseInt(refill) || 0,
+      notes: notes.trim() || undefined,
+    };
+    try {
+      // Local-first: Save to AsyncStorage cache immediately so UI updates instantly (<50ms)
+      const localMed = {
+        id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        user_id: "local",
+        ...payload,
+        active: true,
+        created_at: new Date().toISOString(),
+      };
+      const existing = (await get<any[]>(K.medications)) || [];
+      const updated = [localMed, ...existing];
+      await set(K.medications, updated);
+
+      // Enqueue background write
+      await enqueueWrite("medication", payload);
+
+      // Instantly reset form, trigger UI refresh & close sheet
+      reset();
+      onSaved();
+      onClose();
+
+      // Trigger background sync to server
+      flushQueue().then(() => {
+        api.listMedications(true).then((m) => {
+          if (m && Array.isArray(m)) set(K.medications, m);
+        }).catch(() => {});
+      }).catch(() => {});
+    } catch (e: any) {
+      console.warn("Save error:", e);
+      Alert.alert("Could not save medication", "An unexpected error occurred while saving locally.");
+    } finally {
+      setSaving(false);
     }
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="overFullScreen" transparent onRequestClose={onClose}>

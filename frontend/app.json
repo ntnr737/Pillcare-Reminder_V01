@@ -60,7 +60,12 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#000000"
+          "color": "#9184d9",
+          "sounds": [
+            "./assets/sounds/pillcare_reminder.wav",
+            "./assets/sounds/pillcare_urgent.wav",
+            "./assets/sounds/pillcare_wellness.wav"
+          ]
         }
       ],
       "@react-native-google-signin/google-signin",

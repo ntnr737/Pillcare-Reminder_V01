@@ -39,6 +39,12 @@ export default function Treatment() {
   const [yogaTimePicker, setYogaTimePicker] = useState(false);
   const [yogaTime, setYogaTime] = useState<Date | null>(null);
   const [savedReminderTime, setSavedReminderTime] = useState<string | null>(null);
+  const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
+  const [foodGuideOpen, setFoodGuideOpen] = useState(false);
+
+  useEffect(() => {
+    api.getDrugFoodGuide().then(g => { if (g) setDrugFoodGuide(g); }).catch(() => {});
+  }, [meds]);
 
   // Load previously saved yoga reminder time on mount
   useEffect(() => {
@@ -93,15 +99,17 @@ export default function Treatment() {
 
   const loadServer = useCallback(async () => {
     try {
-      const [m, mes, act, mo, mc, ac, y] = await Promise.all([
+      const [m, mes, act, mo, mc, ac] = await Promise.all([
         api.listMedications(true), api.listMeasurements(), api.listActivities(),
-        api.listMood(), api.measurementCatalog(), api.activityCatalog(), api.yogaTip()
+        api.listMood(), api.measurementCatalog(), api.activityCatalog()
       ]);
       setMeds(m); setMeasurements(mes); setActivities(act); setMood(mo);
-      setCatalog({ m: mc.measurements, a: ac.activities }); setYoga(y);
-      set(K.medications, m); set(K.measurements, mes); set(K.mood, mo); set(K.yogaTip, y);
+      setCatalog({ m: mc.measurements, a: ac.activities });
+      set(K.medications, m); set(K.measurements, mes); set(K.mood, mo);
       resyncReminders().catch(() => {});
     } catch {}
+    // Fetch AI yoga tip in non-blocking background promise
+    api.yogaTip().then(y => { if (y) { setYoga(y); set(K.yogaTip, y); } }).catch(() => {});
   }, []);
 
   useFocusEffect(useCallback(() => {
@@ -142,16 +150,16 @@ export default function Treatment() {
       }
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: "Time for your Yoga Routine",
+          title: "🧘 Time for your Yoga Routine",
           body: yoga?.title ? `Today: ${yoga.title}` : "Open PillCare to start your daily yoga practice",
           data: { isYogaReminder: true },
-          sound: "default",
+          sound: "pillcare_wellness",
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour: time.getHours(),
           minute: time.getMinutes(),
-          channelId: "medication-reminders",
+          channelId: "yoga-reminders",
         },
       });
       const h = String(time.getHours()).padStart(2, "0");
@@ -193,7 +201,91 @@ export default function Treatment() {
               <Text style={s.cS}>{yoga.duration || "12 min"} • {yoga.level || "Beginner"}</Text>
             </View>
           <TouchableOpacity style={s.viewBtn} onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
-          </View>)}
+          {/* Drug & Food Interaction & Do's and Don'ts Card */}
+          {drugFoodGuide && drugFoodGuide.has_medications && (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[s.card, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.05)" }]}
+              onPress={() => setFoodGuideOpen(true)}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View style={[s.cI, { borderRadius: 18, width: 36, height: 36, backgroundColor: "rgba(74,222,128,0.15)" }]}>
+                  <Ionicons name="restaurant-outline" size={17} color="#4ade80" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                    <Ionicons name="shield-checkmark-outline" size={10} color="#4ade80" />
+                    <Text style={{ fontSize: 9, letterSpacing: 1, color: "#4ade80", fontWeight: "700" }}>DRUG & FOOD CLINICAL GUIDE</Text>
+                  </View>
+                  <Text style={s.cT}>Food & Medicine Do's & Don'ts</Text>
+                  <Text style={s.cS}>{drugFoodGuide.scanned_medications} medicines scanned • Food timing & advice</Text>
+                </View>
+                <View style={[s.viewBtn, { backgroundColor: "rgba(74,222,128,0.2)" }]}>
+                  <Text style={[s.viewBtnT, { color: "#4ade80" }]}>View</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          )}
+
+          {/* Drug-Food Modal Guide */}
+          <Modal visible={foodGuideOpen} transparent animationType="slide" onRequestClose={() => setFoodGuideOpen(false)}>
+            <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }}>
+              <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: "#fff" }}>Drug-Food Do's & Don'ts Guide</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => setFoodGuideOpen(false)}>
+                    <Ionicons name="close" size={22} color={TX} />
+                  </TouchableOpacity>
+                </View>
+
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+                  {/* DO's List */}
+                  <View style={{ backgroundColor: "rgba(74,222,128,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", gap: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#4ade80" }}>RECOMMENDED DO'S</Text>
+                    </View>
+                    {(drugFoodGuide?.dos || []).map((doItem: string, idx: number) => (
+                      <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                        <Text style={{ color: "#4ade80", fontWeight: "700" }}>•</Text>
+                        <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{doItem}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* DON'TS List */}
+                  <View style={{ backgroundColor: "rgba(239,68,68,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", gap: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="close-circle" size={16} color="#ef4444" />
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#ef4444" }}>CRITICAL DON'TS</Text>
+                    </View>
+                    {(drugFoodGuide?.donts || []).map((dontItem: string, idx: number) => (
+                      <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                        <Text style={{ color: "#ef4444", fontWeight: "700" }}>•</Text>
+                        <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{dontItem}</Text>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Per-Medication Guides */}
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: A3, marginTop: 4 }}>Medication-Specific Guidance:</Text>
+                  {(drugFoodGuide?.guides || []).map((g: any, idx: number) => (
+                    <View key={idx} style={{ backgroundColor: "#252837", padding: 12, borderRadius: 10, gap: 6 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{g.medication} <Text style={{ fontSize: 11, color: A3, fontWeight: "500" }}>({g.category})</Text></Text>
+                      {g.dos?.map((d: string, i: number) => (
+                        <Text key={i} style={{ fontSize: 11, color: "#4ade80" }}>✓ {d}</Text>
+                      ))}
+                      {g.donts?.map((d: string, i: number) => (
+                        <Text key={i} style={{ fontSize: 11, color: "#ef4444" }}>✗ {d}</Text>
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
+              </View>
+            </View>
+          </Modal>
           {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>{filter === "refill" ? "No refills needed" : "No medications"}</Text><Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : "Tap + to add one"}</Text></View>
           ) : fm.map(m => (<View key={m.id} style={s.card}>
             <View style={s.cRow}>

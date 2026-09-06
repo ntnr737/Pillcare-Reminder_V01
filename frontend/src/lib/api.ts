@@ -3,22 +3,29 @@ import type { Features } from "./features";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
-async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
+async function req<T>(path: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<T> {
   const token = await getStoredToken();
-  const res = await fetch(`${BASE}/api${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...opts,
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${BASE}/api${path}`, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: controller.signal,
+      ...opts,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API ${res.status}: ${text}`);
+    }
+    const ct = res.headers.get("content-type") || "";
+    if (ct.includes("application/json")) return res.json() as Promise<T>;
+    return res.text() as unknown as Promise<T>;
+  } finally {
+    clearTimeout(timer);
   }
-  const ct = res.headers.get("content-type") || "";
-  if (ct.includes("application/json")) return res.json() as Promise<T>;
-  return res.text() as unknown as Promise<T>;
 }
 function localDateStr(): string { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 
@@ -40,6 +47,7 @@ export const api = {
   createMood: (data: any) => req<any>("/mood", { method: "POST", body: JSON.stringify(data) }),
   adherence: (days: number = 7) => req<any>(`/progress/adherence?days=${days}&local_date=${localDateStr()}`),
   yogaTip: () => req<any>("/yoga-tip"),
+  getDrugFoodGuide: () => req<any>("/treatment/drug-food-guide"),
   doseHistory: (days: number = 30) => req<any[]>(`/doses/history?days=${days}`),
   listAppointments: () => req<any[]>("/appointments"),
   createAppointment: (data: any) => req<any>("/appointments", { method: "POST", body: JSON.stringify(data) }),
@@ -49,8 +57,8 @@ export const api = {
   units: () => req<{ units: string[] }>("/catalog/units"),
   measurementCatalog: () => req<{ measurements: any[] }>("/catalog/measurements"),
   activityCatalog: () => req<{ activities: any[] }>("/catalog/activities"),
-  resolveGeneric: (brand: string) => req<{ brand: string; generic: string }>("/resolve-generic", { method: "POST", body: JSON.stringify({ brand }) }),
-  scanMedication: (image_base64: string) => req<any>("/scan-medication", { method: "POST", body: JSON.stringify({ image_base64 }) }),
+  resolveGeneric: (brand: string) => req<{ brand: string; generic: string }>("/resolve-generic", { method: "POST", body: JSON.stringify({ brand }) }, 15000),
+  scanMedication: (image_base64: string) => req<any>("/scan-medication", { method: "POST", body: JSON.stringify({ image_base64 }) }, 15000),
   caregiverAlert: (message: string, medication_name?: string) => req<any>("/caregiver/alert", { method: "POST", body: JSON.stringify({ message, medication_name }) }),
   caregiverLog: () => req<any[]>("/caregiver/log"),
   exportCsvUrl: () => `${BASE}/api/export/csv`,
@@ -77,6 +85,8 @@ export const api = {
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
   updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
   trackEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
-  savePushToken: (token: string) => req<any>("/profile/push-token", { method: "POST", body: JSON.stringify({ token }) }),
   getSubscription: () => req<any>("/me/subscription"),
+  upgradePlan: (plan: string = "premium", days: number = 30) => req<any>("/me/upgrade", { method: "POST", body: JSON.stringify({ plan, days }) }),
+  createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
+  verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
 };

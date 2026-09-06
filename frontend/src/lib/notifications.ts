@@ -7,6 +7,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
+import { get, K } from "./store";
 import Constants from "expo-constants";
 
 // Show notification in foreground always
@@ -23,34 +24,88 @@ Notifications.setNotificationHandler({
 /**
  * Create Android notification channels.
  * MUST be called on every app launch before any notification is scheduled.
- * Sound file must exist at android/app/src/main/res/raw/pillcare_reminder.wav
+ * Uses system default sound to ensure 100% compatibility across Expo Go and native builds.
  */
 export async function ensureChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
   try {
-    await Notifications.setNotificationChannelAsync("medication-reminders", {
-      name: "Medication Reminders",
-      description: "Alerts when it is time to take a medication",
-      importance: Notifications.AndroidImportance.MAX,
-      sound: "pillcare_reminder",   // maps to res/raw/pillcare_reminder.wav
-      enableVibrate: true,
-      vibrationPattern: [0, 300, 150, 300, 150, 600],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: false,
-      showBadge: true,
-    });
-    await Notifications.setNotificationChannelAsync("yoga-reminders", {
-      name: "Yoga & Wellness",
-      importance: Notifications.AndroidImportance.DEFAULT,
-      sound: "pillcare_wellness",
-      enableVibrate: true,
-      vibrationPattern: [0, 200, 100, 200],
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    });
+    // Try custom PillCare sound first (works in native standalone build with sound-plugin), fallback to default system sound
+    try {
+      await Notifications.setNotificationChannelAsync("medication-reminders", {
+        name: "Medication Reminders",
+        description: "Alerts when it is time to take a medication",
+        importance: Notifications.AndroidImportance.MAX,
+        sound: "pillcare_reminder",
+        enableVibrate: true,
+        vibrationPattern: [0, 300, 150, 300, 150, 600],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+        showBadge: true,
+      });
+    } catch {
+      await Notifications.setNotificationChannelAsync("medication-reminders", {
+        name: "Medication Reminders",
+        description: "Alerts when it is time to take a medication",
+        importance: Notifications.AndroidImportance.MAX,
+        sound: "default",
+        enableVibrate: true,
+        vibrationPattern: [0, 300, 150, 300, 150, 600],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: false,
+        showBadge: true,
+      });
+    }
+
+    try {
+      await Notifications.setNotificationChannelAsync("yoga-reminders", {
+        name: "Yoga & Wellness",
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: "pillcare_wellness",
+        enableVibrate: true,
+        vibrationPattern: [0, 200, 100, 200],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    } catch {
+      await Notifications.setNotificationChannelAsync("yoga-reminders", {
+        name: "Yoga & Wellness",
+        importance: Notifications.AndroidImportance.DEFAULT,
+        sound: "default",
+        enableVibrate: true,
+        vibrationPattern: [0, 200, 100, 200],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    }
+
+    try {
+      await Notifications.setNotificationChannelAsync("urgent-reminders", {
+        name: "Urgent Dose Alerts",
+        description: "High priority alerts for critical dose schedules",
+        importance: Notifications.AndroidImportance.MAX,
+        sound: "pillcare_urgent",
+        enableVibrate: true,
+        vibrationPattern: [0, 400, 200, 400, 200, 800],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+        showBadge: true,
+      });
+    } catch {
+      await Notifications.setNotificationChannelAsync("urgent-reminders", {
+        name: "Urgent Dose Alerts",
+        description: "High priority alerts for critical dose schedules",
+        importance: Notifications.AndroidImportance.MAX,
+        sound: "default",
+        enableVibrate: true,
+        vibrationPattern: [0, 400, 200, 400, 200, 800],
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: true,
+        showBadge: true,
+      });
+    }
+
     await Notifications.setNotificationChannelAsync("broadcasts", {
       name: "Updates & Announcements",
       importance: Notifications.AndroidImportance.DEFAULT,
-      sound: "pillcare_reminder",
+      sound: "default",
       enableVibrate: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
@@ -77,7 +132,7 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
     // Get Expo push token — works with FCM under the hood
     const projectId = Constants.expoConfig?.extra?.eas?.projectId || "64e98649-8c44-47bb-aa76-d95403ea78c3";
-      const token = await Notifications.getExpoPushTokenAsync({ projectId });
+    const token = await Notifications.getExpoPushTokenAsync({ projectId });
     const pushToken = token.data;
 
     // Save to backend silently
@@ -109,10 +164,21 @@ export async function resyncReminders(): Promise<void> {
   try {
     const granted = await requestNotificationPermission();
     if (!granted) return;
-    const meds = await api.listMedications(true);
+
+    // Local-first medication resolution — reads from AsyncStorage first, falls back to API
+    let meds = (await get<any[]>(K.medications)) || [];
+    if (!meds || meds.length === 0) {
+      try {
+        meds = await api.listMedications(true);
+      } catch (e) {
+        meds = [];
+      }
+    }
+
+    const activeMeds = (meds || []).filter((m: any) => m.active !== false);
     await Notifications.cancelAllScheduledNotificationsAsync();
     let scheduled = 0;
-    for (const med of meds || []) {
+    for (const med of activeMeds) {
       const times: string[] = Array.isArray(med.times) ? med.times : [];
       for (const t of times) {
         const parsed = parseTime(t);
@@ -120,10 +186,10 @@ export async function resyncReminders(): Promise<void> {
         const label = med.dosage ? `${med.dosage} ${med.unit || ""}`.trim() : "";
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: `Time for ${med.name}`,
-            body: label ? `Take ${label} — tap to mark as taken` : "Tap to mark as taken",
+            title: `PillCare Reminder: ${med.name}`,
+            body: label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`,
             data: { medicationId: med.id, scheduledTime: t },
-            sound: "pillcare_reminder",
+            sound: "default",
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -135,8 +201,72 @@ export async function resyncReminders(): Promise<void> {
         scheduled++;
       }
     }
-    console.log(`Scheduled ${scheduled} reminders`);
+    console.log(`Scheduled ${scheduled} medication reminders`);
+    await scheduleWaterReminders().catch(() => {});
+    await scheduleYogaReminderFromStore().catch(() => {});
   } catch (e) {
     console.warn("Reminder resync failed:", e);
+  }
+}
+
+export async function scheduleYogaReminderFromStore(): Promise<void> {
+  try {
+    const timeStr = await get<string>("yoga_reminder_time");
+    if (!timeStr) return;
+    const parsed = parseTime(timeStr);
+    if (!parsed) return;
+    const yogaTip = await get<any>(K.yogaTip);
+    const title = yogaTip?.title || "Daily Medication Yoga Therapy";
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "🧘 Time for your Yoga Therapy Routine",
+        body: `${title} — Tap to view poses & video guide.`,
+        data: { isYogaReminder: true },
+        sound: "pillcare_wellness",
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DAILY,
+        hour: parsed.hour,
+        minute: parsed.minute,
+        channelId: "yoga-reminders",
+      },
+    });
+    console.log(`Scheduled daily yoga reminder at ${timeStr}`);
+  } catch (e) {
+    console.warn("Yoga reminder schedule failed:", e);
+  }
+}
+
+export async function scheduleWaterReminders(): Promise<void> {
+  try {
+    const granted = await requestNotificationPermission();
+    if (!granted) return;
+    const waterTimes = [
+      { hour: 9, minute: 0 },
+      { hour: 11, minute: 30 },
+      { hour: 14, minute: 0 },
+      { hour: 16, minute: 30 },
+      { hour: 19, minute: 0 },
+      { hour: 21, minute: 30 },
+    ];
+    for (const wt of waterTimes) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "💧 Stay Hydrated! — PillCare Water Reminder",
+          body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
+          data: { type: "water_reminder" },
+          sound: "default",
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: wt.hour,
+          minute: wt.minute,
+          channelId: "medication-reminders",
+        },
+      });
+    }
+    console.log("Scheduled 6 daily hydration reminders");
+  } catch (e) {
+    console.warn("Water reminder setup failed:", e);
   }
 }

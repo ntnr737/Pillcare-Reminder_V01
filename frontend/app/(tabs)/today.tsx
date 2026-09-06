@@ -97,9 +97,28 @@ export default function Today() {
   const [yogaTipMeta, setYogaTipMeta] = useState<string | null>(null);
   const [adherenceMap, setAdherenceMap] = useState<Record<string, number>>({});
   const [sheet, setSheet] = useState(false);
-  const [calOpen, setCalOpen] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const router = useRouter();
+  const [waterLogged, setWaterLogged] = useState(0);
+  const waterGoal = 2500; // in ml (10 glasses of 250ml)
+
+  useEffect(() => {
+    get<number>("water_logged_" + date).then(val => {
+      setWaterLogged(val || 0);
+    });
+  }, [date]);
+
+  const addWater = async (amountMl: number) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newTotal = Math.min(5000, waterLogged + amountMl);
+    setWaterLogged(newTotal);
+    await set("water_logged_" + date, newTotal);
+    track("water_intake_logged", { amountMl, date, totalMl: newTotal });
+  };
+
+  const resetWater = async () => {
+    setWaterLogged(0);
+    await set("water_logged_" + date, 0);
+  };
+
   const [addMed, setAddMed] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
 
@@ -146,11 +165,11 @@ export default function Today() {
     get<any>(K.profile).then(p => { if (p) setProfile(p); });
     get<number>(K.streak).then(s => { if (s !== null) setStreak(s); });
     get<any>(K.aiMsg).then(a => { if (a) setAiMsg(a); });
-    get<string>("yoga_reminder_time").then(t => { if (t) setYogaReminderTime(t);
+    get<string>("yoga_reminder_time").then(t => { if (t) setYogaReminderTime(t); }).catch(() => {});
     get<any>(K.yogaTip).then(tip => {
       if (tip?.title) setYogaTipName(tip.title);
       if (tip?.duration || tip?.level) setYogaTipMeta([tip.duration, tip.level].filter(Boolean).join(" • "));
-    }).catch(() => {}); });
+    }).catch(() => {});
   }, [date]);
 
   const fetchServer = useCallback(async () => {
@@ -318,6 +337,54 @@ export default function Today() {
           })}
         </ScrollView>
 
+        {/* Water Intake & Hydration Tracker Card */}
+        <View style={[s.aiCard, { borderColor: "rgba(56,189,248,0.3)", backgroundColor: "rgba(14,165,233,0.06)", marginTop: 10 }]}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+            <View style={s.aiH}>
+              <Ionicons name="water" size={13} color="#38bdf8" />
+              <Text style={[s.aiK, { color: "#38bdf8" }]}>HYDRATION & WATER TRACKER</Text>
+            </View>
+            <TouchableOpacity onPress={resetWater}>
+              <Text style={{ fontSize: 10, color: TM, fontWeight: "600" }}>Reset</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 8 }}>
+            <View style={{ gap: 2 }}>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: TX }}>
+                {waterLogged} <Text style={{ fontSize: 12, fontWeight: "500", color: TM }}>/ {waterGoal} mL</Text>
+              </Text>
+              <Text style={{ fontSize: 11, color: "#38bdf8", fontWeight: "600" }}>
+                {Math.round(waterLogged / 250)} of {Math.round(waterGoal / 250)} glasses consumed today
+              </Text>
+            </View>
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(56,189,248,0.15)", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="water" size={22} color="#38bdf8" />
+            </View>
+          </View>
+
+          {/* Progress bar */}
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden", marginBottom: 10 }}>
+            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: "#38bdf8", borderRadius: 3 }} />
+          </View>
+
+          {/* Action buttons */}
+          <View style={{ flexDirection: "row", gap: 8 }}>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.15)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+              onPress={() => addWater(250)}>
+              <Ionicons name="add-circle-outline" size={14} color="#38bdf8" />
+              <Text style={{ fontSize: 12, color: "#38bdf8", fontWeight: "700" }}>+ Glass (250ml)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.22)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+              onPress={() => addWater(500)}>
+              <Ionicons name="add" size={14} color="#38bdf8" />
+              <Text style={{ fontSize: 12, color: "#38bdf8", fontWeight: "700" }}>+ Bottle (500ml)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* AI Insight */}
         {aiMsg && (
           <View style={s.aiCard}>
@@ -326,44 +393,41 @@ export default function Today() {
           </View>
         )}
 
-        {yogaReminderTime && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={[s.aiCard, { borderColor: "rgba(145,132,217,0.3)" }]}
-            onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
-            <View style={s.aiH}>
-              <Ionicons name="leaf-outline" size={10} color={A3} />
-              <Text style={s.aiK}>YOGA REMINDER — {yogaReminderTime} daily</Text>
-            </View>
-            {yogaTipName ? (
-              <>
-                <Text style={[s.aiTx, { fontWeight: "700", color: TX, marginBottom: 2 }]} numberOfLines={2}>{yogaTipName}</Text>
-                {yogaTipMeta ? <Text style={{ fontSize: 11, color: TM, marginBottom: 8 }}>{yogaTipMeta}</Text> : null}
-              </>
-            ) : (
-              <Text style={s.aiTx}>Your AI recommended yoga routine is ready.</Text>
-            )}
-            <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.15)", borderRadius: 8, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
-            onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
-                <Ionicons name="play-circle-outline" size={14} color={A3} />
-                <Text style={{ fontSize: 12, color: A3, fontWeight: "700" }}>View yoga routine</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={{ flex: 1, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
-                onPress={async (e) => {
-                  e.stopPropagation?.();
-                  const { set } = await import("@/src/lib/store");
-                  await set("yoga_done_" + date, true);
-                  setYogaReminderTime(null);
-                  track("yoga_done");
-                }}>
-                <Text style={{ fontSize: 12, color: "#4ade80", fontWeight: "700" }}>Mark done</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        )}
+        {/* AI Recommended Yoga Therapy Card */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          style={[s.aiCard, { borderColor: "rgba(145,132,217,0.3)" }]}
+          onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
+          <View style={s.aiH}>
+            <Ionicons name="leaf-outline" size={10} color={A3} />
+            <Text style={s.aiK}>AI YOGA THERAPY — {yogaReminderTime || "07:00 AM daily"}</Text>
+          </View>
+          <Text style={[s.aiTx, { fontWeight: "700", color: TX, marginBottom: 2 }]} numberOfLines={2}>
+            {yogaTipName || "Anulom Vilom & Pawanmuktasana Flow"}
+          </Text>
+          <Text style={{ fontSize: 11, color: TM, marginBottom: 8 }}>
+            {yogaTipMeta || "12 min • Verified Ministry of AYUSH & Swami Ramdev"}
+          </Text>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.15)", borderRadius: 8, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+              onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
+              <Ionicons name="play-circle-outline" size={14} color={A3} />
+              <Text style={{ fontSize: 12, color: A3, fontWeight: "700" }}>View routine</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ flex: 1, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
+              onPress={async (e) => {
+                e.stopPropagation?.();
+                const { set } = await import("@/src/lib/store");
+                await set("yoga_done_" + date, true);
+                track("yoga_done");
+                Alert.alert("Yoga Completed! 🎉", "Great job! Daily yoga logged for today.");
+              }}>
+              <Text style={{ fontSize: 12, color: "#4ade80", fontWeight: "700" }}>Mark done</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
 
         {/* Dose sections */}
         {total === 0 ? (

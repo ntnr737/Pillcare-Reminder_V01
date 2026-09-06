@@ -36,6 +36,7 @@ export default function RootLayout() {
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
+        resyncReminders().catch(() => {});
         getStoredToken().then((token) => { if (token) fetchFeatures(token).catch(() => {}); }).catch(() => {});
       }
     });
