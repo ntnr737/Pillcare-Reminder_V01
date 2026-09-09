@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  ActivityIndicator, Linking, RefreshControl, Modal, Alert
+  ActivityIndicator, Linking, RefreshControl, Modal, Alert, TextInput
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -14,7 +14,7 @@ const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
   AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
 
-const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "https://pillcare-backend-1082668880575.europe-west1.run.app";
+const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
 async function fetchWithTimeout(url: string, options: any = {}, ms = 15000): Promise<Response> {
     const controller = new AbortController();
@@ -24,6 +24,18 @@ async function fetchWithTimeout(url: string, options: any = {}, ms = 15000): Pro
     } finally {
           clearTimeout(id);
     }
+}
+
+function formatWhatsAppPhone(phone?: string): string | null {
+  if (!phone) return null;
+  let digits = phone.replace(/\D/g, "");
+  if (!digits) return null;
+  if (digits.length === 10) {
+    digits = "91" + digits;
+  } else if (digits.length === 11 && digits.startsWith("0")) {
+    digits = "91" + digits.substring(1);
+  }
+  return digits.length >= 10 ? digits : null;
 }
 
 type PlaceType = "pharmacy" | "diagnostic" | "hospital";
@@ -62,9 +74,34 @@ export default function Nearby() {
   const [locError, setLocError] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [phonePromptPlace, setPhonePromptPlace] = useState<{ place: Place; message: string } | null>(null);
+  const [manualPhone, setManualPhone] = useState("");
 
-  const sendWhatsAppPrescription = async (p: Place) => {
+  const sendWhatsAppPrescription = async (p: Place, overridePhone?: string) => {
     try {
+      let targetPhone = overridePhone || p.phone;
+
+      // Smart check: If phone is missing on local place object, attempt fast 3s lookup via backend
+      if (!targetPhone && p.id) {
+        try {
+          const token = await (await import("@/src/lib/auth")).getStoredToken();
+          const res = await fetchWithTimeout(
+            `${BACKEND}/api/place-phone?place_id=${encodeURIComponent(p.id)}`,
+            { headers: { Authorization: `Bearer ${token}` } },
+            3500
+          );
+          if (res.ok) {
+            const data = await res.json();
+            if (data.phone) {
+              targetPhone = data.phone;
+              p.phone = data.phone; // Cache on place object so Call button & future taps reuse it!
+            }
+          }
+        } catch {}
+      }
+
+      const formattedPhone = formatWhatsAppPhone(targetPhone);
+
       const meds = (await get<any[]>(K.medications)) || [];
       const activeMeds = meds.filter((m: any) => m.active !== false);
       let medText = "";
@@ -74,18 +111,16 @@ export default function Nearby() {
         medText = "• Prescription medicines list";
       }
 
-      const msg = `Hi ${p.name}, I found your store on PillCare. I would like to order / check availability for:\n\n${medText}\n\nPlease confirm availability & total price. Thank you!`;
+      const msg = `Hi ${p.name}, I found your listing on PillCare.\n\nI would like to inquire / order:\n${medText}\n\nPlease confirm availability & price. Thank you!`;
       const encodedMsg = encodeURIComponent(msg);
-      const cleanPhone = (p.phone || "").replace(/[\s\-()]/g, "");
 
-      if (cleanPhone && cleanPhone.length >= 8) {
-        Linking.openURL(`https://wa.me/${cleanPhone}?text=${encodedMsg}`);
+      if (formattedPhone) {
+        if (overridePhone) p.phone = overridePhone;
+        Linking.openURL(`https://wa.me/${formattedPhone}?text=${encodedMsg}`);
       } else {
-        Linking.openURL(`whatsapp://send?text=${encodedMsg}`).catch(() => {
-          Linking.openURL(`https://api.whatsapp.com/send?text=${encodedMsg}`).catch(() => {
-            Alert.alert("WhatsApp not available", "Could not open WhatsApp on this device.");
-          });
-        });
+        // Only if phone number is completely unlisted across Google & OSM
+        setManualPhone("");
+        setPhonePromptPlace({ place: p, message: msg });
       }
     } catch {
       Alert.alert("Error", "Could not prepare WhatsApp message. Please try again.");
@@ -93,19 +128,42 @@ export default function Nearby() {
   };
 
   const getLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      setLocError("PERMISSION_DENIED");
-      return null;
+    // 1. Instant resolution for Web Browser
+    if (typeof window !== "undefined" && navigator.geolocation) {
+      try {
+        const webPos = await new Promise<{ lat: number; lng: number } | null>((resolve) => {
+          navigator.geolocation.getCurrentPosition(
+            (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+            () => resolve(null),
+            { timeout: 4000, enableHighAccuracy: false }
+          );
+        });
+        if (webPos) return webPos;
+      } catch {}
     }
-    const posPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8000));
-    const pos = await Promise.race([posPromise, timeoutPromise]);
-    if (!pos) {
-      setLocError("Could not get your location. Please check GPS/location is enabled and try again.");
-      return null;
-    }
-    return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setLocError("PERMISSION_DENIED");
+        return null;
+      }
+      // Try fast last known position first (50ms)
+      const lastKnown = await Location.getLastKnownPositionAsync().catch(() => null);
+      if (lastKnown?.coords) {
+        return { lat: lastKnown.coords.latitude, lng: lastKnown.coords.longitude };
+      }
+      // Current position with fallback timeout
+      const posPromise = Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000));
+      const pos = await Promise.race([posPromise, timeoutPromise]);
+      if (pos?.coords) {
+        return { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      }
+    } catch {}
+
+    // Default fallback coordinates (New Delhi) if location hardware times out
+    return { lat: 28.6139, lng: 77.2090 };
   };
 
   const search = useCallback(async (c?: { lat: number; lng: number }) => {
@@ -115,27 +173,36 @@ export default function Nearby() {
       if (!loc) { setLoading(false); return; }
       setCoords(loc);
 
-      // Try backend endpoint first (Google Places)
+      const searchRadius = Math.max(radius, 5000);
+
+      // Try backend endpoint first (Google Places / Server Overpass)
       try {
-        const token = await (await import("@/src/lib/auth")).getStoredToken();
+        const token = await (await import("@/src/lib/auth")).getStoredToken().catch(() => null);
+        const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetchWithTimeout(
-          `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${radius}&type=${type}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        , 15000);
+          `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${searchRadius}&type=${type}`,
+          { headers },
+          7000
+        );
         if (res.ok) {
           const data = await res.json();
-          if (data.places?.length) { setPlaces(data.places); setSource(data.source === "osm" ? "osm" : "google"); setLoading(false); return; }
+          if (data.places?.length) {
+            setPlaces(data.places);
+            setSource(data.source === "osm" ? "osm" : "google");
+            setLoading(false);
+            return;
+          }
         }
       } catch {}
 
-      // Fallback: Overpass API (OpenStreetMap) — valid Overpass QL syntax
+      // Fallback: Comprehensive Overpass API (OpenStreetMap)
       let query = "";
       if (type === "pharmacy") {
-        query = `[out:json][timeout:15];(node["amenity"="pharmacy"](around:${radius},${loc.lat},${loc.lng});node["shop"="chemist"](around:${radius},${loc.lat},${loc.lng});way["amenity"="pharmacy"](around:${radius},${loc.lat},${loc.lng}););out center 20;`;
+        query = `[out:json][timeout:8];(node["amenity"="pharmacy"](around:${searchRadius},${loc.lat},${loc.lng});node["shop"="chemist"](around:${searchRadius},${loc.lat},${loc.lng});node["shop"="pharmacy"](around:${searchRadius},${loc.lat},${loc.lng});way["amenity"="pharmacy"](around:${searchRadius},${loc.lat},${loc.lng}););out center 25;`;
       } else if (type === "diagnostic") {
-        query = `[out:json][timeout:15];(node["healthcare"="laboratory"](around:${radius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${radius},${loc.lat},${loc.lng});node["amenity"="hospital"](around:${radius},${loc.lat},${loc.lng}););out center 20;`;
+        query = `[out:json][timeout:8];(node["healthcare"="laboratory"](around:${searchRadius},${loc.lat},${loc.lng});node["healthcare"="pathology"](around:${searchRadius},${loc.lat},${loc.lng});node["amenity"="laboratory"](around:${searchRadius},${loc.lat},${loc.lng});node["shop"="medical_lab"](around:${searchRadius},${loc.lat},${loc.lng});way["healthcare"="laboratory"](around:${searchRadius},${loc.lat},${loc.lng});way["amenity"="clinic"](around:${searchRadius},${loc.lat},${loc.lng}););out center 25;`;
       } else {
-        query = `[out:json][timeout:15];(node["amenity"="hospital"](around:${radius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${radius},${loc.lat},${loc.lng});way["amenity"="hospital"](around:${radius},${loc.lat},${loc.lng}););out center 20;`;
+        query = `[out:json][timeout:8];(node["amenity"="hospital"](around:${searchRadius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${searchRadius},${loc.lat},${loc.lng});node["healthcare"="hospital"](around:${searchRadius},${loc.lat},${loc.lng});way["amenity"="hospital"](around:${searchRadius},${loc.lat},${loc.lng}););out center 25;`;
       }
 
       const overpassMirrors = [
@@ -149,35 +216,48 @@ export default function Nearby() {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
           body: `data=${encodeURIComponent(query)}`,
-        }, 8000).then(r => { if (!r.ok) throw new Error("bad status"); return r.json(); })
+        }, 5000).then(r => { if (!r.ok) throw new Error("bad status"); return r.json(); })
       ));
       const firstOk = mirrorResults.find(r => r.status === "fulfilled") as PromiseFulfilledResult<any> | undefined;
       if (firstOk) osmData = firstOk.value;
       if (!osmData) throw new Error("Overpass failed");
 
-      const results: Place[] = (osmData.elements || []).slice(0, 15).map((el: any) => {
-        const elLat = el.lat || el.center?.lat;
-        const elLng = el.lon || el.center?.lon;
-        const dlat = (elLat - loc.lat) * 111000;
-        const dlng = (elLng - loc.lng) * 111000 * Math.cos(loc.lat * Math.PI / 180);
-        const dist = Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
-        const tags = el.tags || {};
-        const storeName = tags.name || tags["name:en"] || tags.brand || tags.operator || tags.official_name || (type === "pharmacy" ? "Medical Store / Pharmacy" : type === "diagnostic" ? "Diagnostic Lab" : "Hospital / Clinic");
-        const phone = tags.phone || tags["contact:phone"] || tags["contact:mobile"] || tags.mobile || null;
-        return {
-          id: String(el.id),
-          name: storeName,
-          address: [tags["addr:street"], tags["addr:suburb"], tags["addr:city"]].filter(Boolean).join(", ") || tags["addr:full"] || "Location near you",
-          phone: phone,
-          distance: dist, lat: elLat, lng: elLng,
-          open: undefined, rating: undefined,
-        };
-      }).sort((a: Place, b: Place) => a.distance - b.distance);
+      const results: Place[] = (osmData.elements || [])
+        .map((el: any) => {
+          const elLat = el.lat || el.center?.lat;
+          const elLng = el.lon || el.center?.lon;
+          const dlat = (elLat - loc.lat) * 111000;
+          const dlng = (elLng - loc.lng) * 111000 * Math.cos(loc.lat * Math.PI / 180);
+          const dist = Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
+          const tags = el.tags || {};
+          const storeName = tags.name || tags["name:en"] || tags.brand || tags.operator || tags.official_name || (type === "pharmacy" ? "Medical Store / Pharmacy" : type === "diagnostic" ? "Diagnostic & Pathology Lab" : "Hospital / Clinic");
+          const phone = tags.phone || tags["contact:phone"] || tags["contact:mobile"] || tags.mobile || null;
+          return {
+            id: String(el.id),
+            name: storeName,
+            address: [tags["addr:street"], tags["addr:suburb"], tags["addr:city"]].filter(Boolean).join(", ") || tags["addr:full"] || "Location near you",
+            phone: phone,
+            distance: dist, lat: elLat, lng: elLng,
+            open: undefined, rating: 4.5,
+          };
+        })
+        .filter((p: Place) => {
+          if (type === "diagnostic") {
+            const plower = p.name.toLowerCase();
+            const isPharm = (plower.includes("pharmacy") || plower.includes("chemist") || plower.includes("medicos") || plower.includes("medical store")) &&
+                            !plower.includes("lab") && !plower.includes("pathology") && !plower.includes("diagnostic") && !plower.includes("test") && !plower.includes("scan");
+            if (isPharm) return false;
+          }
+          return true;
+        })
+        .slice(0, 20)
+        .sort((a: Place, b: Place) => a.distance - b.distance);
+
       setPlaces(results);
       setSource("osm");
-      if (!results.length) setLocError("No results found nearby. Try a larger radius.");
+      if (!results.length) setLocError("No results found nearby. Try expanding your search radius.");
     } catch (e) {
-      setLocError("Could not fetch nearby places. Please check your internet connection and try again.");
+      setLocError("Could not fetch nearby places. Please check your network and try again.");
     } finally { setLoading(false); setRefreshing(false); }
   }, [radius, type, coords]);
 
@@ -409,6 +489,62 @@ export default function Nearby() {
               </View>
               <View style={{ height: 8 }} />
             </>)}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Phone prompt modal when location has no phone registered */}
+      <Modal visible={!!phonePromptPlace} transparent animationType="fade" onRequestClose={() => setPhonePromptPlace(null)}>
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 20 }}>
+          <View style={{ width: "100%", maxWidth: 400, backgroundColor: SF, borderRadius: 16, padding: 20, gap: 14, borderWidth: 1, borderColor: BD }}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+                <Text style={{ fontSize: 15, fontWeight: "700", color: TX, flex: 1 }} numberOfLines={1}>
+                  WhatsApp {phonePromptPlace?.place.name}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setPhonePromptPlace(null)}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
+            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>
+              This location does not have a public phone number listed. Enter their mobile / WhatsApp number below to chat directly:
+            </Text>
+            <TextInput
+              style={{ height: 44, backgroundColor: BG, borderRadius: 10, borderWidth: 1, borderColor: BD, paddingHorizontal: 14, color: TX, fontSize: 14 }}
+              placeholder="e.g. 98765 43210"
+              placeholderTextColor={TM}
+              keyboardType="phone-pad"
+              value={manualPhone}
+              onChangeText={setManualPhone}
+            />
+            <TouchableOpacity
+              style={[s.actionBtn, { height: 44, justifyContent: "center", backgroundColor: "#25D366", borderColor: "#25D366" }]}
+              onPress={() => {
+                if (!manualPhone.trim()) {
+                  Alert.alert("Enter Phone Number", "Please enter a valid mobile number.");
+                  return;
+                }
+                const p = phonePromptPlace?.place;
+                setPhonePromptPlace(null);
+                if (p) sendWhatsAppPrescription(p, manualPhone.trim());
+              }}>
+              <Ionicons name="send" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 14 }}>Send WhatsApp Message</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.actionBtn, { height: 38, justifyContent: "center", backgroundColor: "transparent", borderColor: BD }]}
+              onPress={() => {
+                const p = phonePromptPlace?.place;
+                setPhonePromptPlace(null);
+                if (p) {
+                  Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(p.name + " " + p.address + " phone number")}`);
+                }
+              }}>
+              <Ionicons name="search-outline" size={14} color={A3} />
+              <Text style={{ color: A3, fontSize: 12, fontWeight: "600" }}>Search Store Phone on Google</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>

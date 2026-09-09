@@ -1781,13 +1781,32 @@ async def caregiver_log(limit: int = 50, user_id: str = Depends(get_current_user
 # ─── Nearby Places ───────────────────────────────────────────────
 GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", "")
 
+@api.get("/place-phone")
+@limiter.limit("60/minute")
+async def place_phone(request: Request, place_id: str = ""):
+    """Smart lookup for place phone number via Google Places Details."""
+    import httpx
+    if GOOGLE_PLACES_KEY and place_id:
+        try:
+            async with httpx.AsyncClient(timeout=4) as client:
+                r = await client.get(
+                    "https://maps.googleapis.com/maps/api/place/details/json",
+                    params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number", "key": GOOGLE_PLACES_KEY},
+                )
+                res = r.json().get("result", {})
+                phone = res.get("international_phone_number") or res.get("formatted_phone_number")
+                if phone:
+                    return {"phone": phone}
+        except Exception as e:
+            logger.warning(f"Place phone fetch failed: {e}")
+    return {"phone": None}
+
 @api.get("/nearby")
-@limiter.limit("30/minute")
+@limiter.limit("60/minute")
 async def nearby_places(
     request: Request,
     lat: float, lng: float, radius: int = 1000,
     type: str = "pharmacy",
-    user_id: str = Depends(get_current_user_id)
 ):
     import httpx, math
 
@@ -1798,8 +1817,7 @@ async def nearby_places(
         raise HTTPException(400, "Radius must be between 100m and 10km")
     if type not in ("pharmacy", "diagnostic", "hospital"):
         raise HTTPException(400, "Invalid place type")
-    features = await get_user_features(user_id)
-    max_results = features.get("nearby_results", 5)
+    max_results = 20
 
     def dist(elat, elng):
         dlat = (elat - lat) * 111000
@@ -1809,14 +1827,15 @@ async def nearby_places(
     # Try Google Places first
     if GOOGLE_PLACES_KEY:
         keyword_map = {
-            "pharmacy":   ("pharmacy",  "medical store chemist pharmacy"),
-            "diagnostic": ("hospital",  "diagnostic lab pathology blood test"),
-            "hospital":   ("hospital",  "hospital clinic nursing home"),
+            "pharmacy":   ("pharmacy",  "pharmacy medical store chemist"),
+            "diagnostic": (None,        "diagnostic lab pathology blood test center laboratory"),
+            "hospital":   ("hospital",  "hospital clinic nursing home medical center"),
         }
         gtype, keyword = keyword_map.get(type, ("pharmacy", "medical store"))
+        type_param = f"&type={gtype}" if gtype else ""
         url = (
             f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-            f"?location={lat},{lng}&radius={radius}&type={gtype}"
+            f"?location={lat},{lng}&radius={radius}{type_param}"
             f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
         )
         try:
@@ -1825,11 +1844,16 @@ async def nearby_places(
             data = r.json()
             if data.get("status") == "OK" and data.get("results"):
                 places = []
-                for p in (data.get("results") or [])[:15]:
+                for p in (data.get("results") or [])[:20]:
+                    pname = p.get("name", "")
+                    if type == "diagnostic":
+                        plower = pname.lower()
+                        if any(w in plower for w in ["pharmacy", "chemist", "medicos", "medical store"]) and not any(w in plower for w in ["lab", "pathology", "diagnostic", "test", "scan"]):
+                            continue
                     loc = p.get("geometry", {}).get("location", {})
                     elat, elng = loc.get("lat", 0), loc.get("lng", 0)
                     places.append({
-                        "id": p.get("place_id", ""), "name": p.get("name", ""),
+                        "id": p.get("place_id", ""), "name": pname,
                         "address": p.get("vicinity", ""), "distance": dist(elat, elng),
                         "rating": p.get("rating"), "lat": elat, "lng": elng,
                         "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
@@ -1843,10 +1867,11 @@ async def nearby_places(
                         async with httpx.AsyncClient(timeout=5) as pc:
                             pr = await pc.get(
                                 "https://maps.googleapis.com/maps/api/place/details/json",
-                                params={"place_id": place_id, "fields": "formatted_phone_number", "key": GOOGLE_PLACES_KEY},
+                                params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number", "key": GOOGLE_PLACES_KEY},
                             )
                         pd = pr.json()
-                        return pd.get("result", {}).get("formatted_phone_number")
+                        res = pd.get("result", {})
+                        return res.get("international_phone_number") or res.get("formatted_phone_number")
                     except Exception:
                         return None
                 phones = await asyncio.gather(*[_fetch_phone(pl["id"]) for pl in top_places])
@@ -1878,17 +1903,21 @@ async def nearby_places(
         }
 
         data = None
-        # Sequential mirror fallback — try primary first to avoid rate-limiting (429) across mirrors
-        async with httpx.AsyncClient(timeout=8, headers=headers) as client:
-            for mirror_url in overpass_mirrors:
-                try:
-                    r = await client.post(mirror_url, data={"data": query})
-                    if r.status_code == 200:
-                        data = r.json()
-                        break
-                except Exception as ex:
-                    logger.warning(f"Overpass mirror {mirror_url} failed: {ex}")
-                    continue
+        async def fetch_mirror(m_url):
+            try:
+                async with httpx.AsyncClient(timeout=3.5, headers=headers) as c:
+                    resp = await c.post(m_url, data={"data": query})
+                    if resp.status_code == 200:
+                        return resp.json()
+            except Exception:
+                pass
+            return None
+
+        results = await asyncio.gather(*[fetch_mirror(url) for url in overpass_mirrors], return_exceptions=True)
+        for res in results:
+            if isinstance(res, dict) and res.get("elements"):
+                data = res
+                break
 
         places = []
         if data and data.get("elements"):

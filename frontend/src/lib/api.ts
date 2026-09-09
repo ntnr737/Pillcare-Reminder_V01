@@ -84,11 +84,11 @@ export const api = {
   getFeatures: () => req<Features>("/me/features"),
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
   updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
+  savePushToken: (push_token: string) => req<any>("/profile/push-token", { method: "POST", body: JSON.stringify({ push_token }) }),
   trackEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
   getSubscription: () => req<any>("/me/subscription"),
   upgradePlan: (plan: string = "premium", days: number = 30) => req<any>("/me/upgrade", { method: "POST", body: JSON.stringify({ plan, days }) }),
   createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
   verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
   exportExcel: () => req<any>("/export/excel"),
-  exportCsv: () => req<any>("/export/csv"),
 };

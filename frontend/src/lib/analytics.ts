@@ -33,6 +33,8 @@ export type EventName =
   | "sign_in"
   | "sign_out"
   | "health_connect_tapped"
+  | "water_intake_logged"
+  | "medication_marked_complete"
   | "faq_opened"
   | "support_tapped";
 

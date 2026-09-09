@@ -18,9 +18,16 @@ export default function RootLayout() {
   const [loaded, error] = useIconFonts();
 
   useEffect(() => {
+    let timer = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 1500);
+
     if (loaded || error) {
-      SplashScreen.hideAsync();
+      clearTimeout(timer);
+      SplashScreen.hideAsync().catch(() => {});
     }
+
+    return () => clearTimeout(timer);
   }, [loaded, error]);
 
   useEffect(() => {
@@ -42,8 +49,6 @@ export default function RootLayout() {
     });
     return () => sub.remove();
   }, []);
-
-  if (!loaded && !error) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#121413" }}>

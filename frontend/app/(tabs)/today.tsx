@@ -87,11 +87,14 @@ function Ring({ pct }: { pct: number }) {
 }
 
 export default function Today() {
+  const router = useRouter();
   const [date, setDate] = useState(ds());
   const [doses, setDoses] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [aiMsg, setAiMsg] = useState<string | null>(null);
   const [streak, setStreak] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const [calOpen, setCalOpen] = useState(false);
   const [yogaReminderTime, setYogaReminderTime] = useState<string | null>(null);
   const [yogaTipName, setYogaTipName] = useState<string | null>(null);
   const [yogaTipMeta, setYogaTipMeta] = useState<string | null>(null);

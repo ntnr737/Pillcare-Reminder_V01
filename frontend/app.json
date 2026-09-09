@@ -33,11 +33,7 @@
         "android.permission.POST_NOTIFICATIONS"
       ],
       "jsEngine": "hermes",
-      "targetSdkVersion": 34,
-      "compileSdkVersion": 34,
-      "minSdkVersion": 26,
-      "versionCode": 1,
-      "networkSecurityConfig": "./network_security_config.xml"
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",
@@ -74,12 +70,20 @@
         "expo-build-properties",
         {
           "android": {
-            "minSdkVersion": 26
+            "compileSdkVersion": 34,
+            "targetSdkVersion": 34,
+            "minSdkVersion": 26,
+            "networkSecurityConfig": "./network_security_config.xml"
           }
         }
       ],
       "./health-connect-plugin",
-      "./sound-plugin"
+      "./sound-plugin",
+      "expo-font",
+      "expo-image",
+      "expo-secure-store",
+      "expo-status-bar",
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true
@@ -87,9 +91,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId":"5fdbf2ce-b12f-44ea-9ea7-83616dbfadc4"
+        "projectId": "5fdbf2ce-b12f-44ea-9ea7-83616dbfadc4"
       }
     },
-        "owner": "pillcare-reminder"
+    "owner": "pillcare-reminder"
   }
 }

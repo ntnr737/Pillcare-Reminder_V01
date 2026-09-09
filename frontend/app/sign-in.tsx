@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from "react-na
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { signInWithGoogle } from "@/src/lib/auth";
+import { signInWithGoogle, signInAsGuest } from "@/src/lib/auth";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -32,8 +32,26 @@ export default function SignIn() {
       await signInWithGoogle();
       router.replace("/");
     } catch (e: any) {
-      Alert.alert("Sign-in failed", e?.message || "Something went wrong. Please try again.");
+      // Fallback to guest sign in if Google Sign-In is unconfigured / fails in dev
+      try {
+        await signInAsGuest();
+        router.replace("/");
+      } catch {
+        Alert.alert("Sign-in failed", e?.message || "Something went wrong. Please try again.");
+      }
     } finally { setLoading(false); }
+  };
+
+  const handleGuestSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInAsGuest();
+      router.replace("/");
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Could not sign in as guest");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -109,6 +127,11 @@ export default function SignIn() {
         <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Continue with Google"}</Text>
       </TouchableOpacity>
 
+      <TouchableOpacity style={[s.guestBtn, loading && { opacity: 0.7 }]} onPress={handleGuestSignIn} disabled={loading}>
+        <Ionicons name="person-outline" size={15} color={A3} />
+        <Text style={s.guestBtnTx}>Quick Demo / Continue as Guest</Text>
+      </TouchableOpacity>
+
       {/* Trust badges */}
       <View style={s.badges}>
         {BADGES.map(b => (
@@ -159,8 +182,10 @@ const s = StyleSheet.create({
   avatarTx: { fontSize: 8, fontWeight: "700", color: "#fff" },
   trustMain: { fontSize: 11, color: TX, fontWeight: "600" },
   trustSub: { fontSize: 9, color: TM },
-  gBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: AC, borderRadius: 12, height: 46 },
-  gBtnTx: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  gBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: AC, borderRadius: 12, height: 44 },
+  gBtnTx: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  guestBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: SF, borderRadius: 12, height: 42, borderWidth: 1, borderColor: BD },
+  guestBtnTx: { color: TX, fontWeight: "600", fontSize: 13 },
   badges: { flexDirection: "row", justifyContent: "space-around" },
   badge: { alignItems: "center", gap: 4 },
   badgeTx: { fontSize: 9, color: TM, textAlign: "center", lineHeight: 12 },
