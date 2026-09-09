@@ -244,23 +244,27 @@ export default function Support() {
         <Text style={s.secL}>YOUR DATA</Text>
         <TouchableOpacity style={s.card} disabled={exportingData} onPress={async () => {
           if (exportingData) return;
-          const { getFeatures } = await import("@/src/lib/features");
           const { api } = await import("@/src/lib/api");
-          const { Share } = await import("react-native");
+          const { Share, Platform } = await import("react-native");
           track("export_tapped");
-          if (!getFeatures().export_data) {
-            Alert.alert("Pro Dharma feature", "CSV export is available on the Pro Dharma plan. Upgrade to download your complete health history.");
-            return;
-          }
           setExportingData(true);
           try {
             const csv = await api.exportCsv();
-            // Guard against the screen having been navigated away from while
-            // this network round-trip was in flight — otherwise the native
-            // share sheet pops up later, on top of whatever screen the user
-            // has since moved to, which looks like a random unexplained bug.
             if (!isMounted.current) return;
-            await Share.share({ title: "PillCare Health Data", message: csv });
+
+            if (Platform.OS === "web" && typeof window !== "undefined" && typeof document !== "undefined") {
+              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement("a");
+              link.setAttribute("href", url);
+              link.setAttribute("download", `PillCare_Health_Data_${new Date().toISOString().slice(0, 10)}.csv`);
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+            } else {
+              await Share.share({ title: "PillCare Health Data CSV", message: csv });
+            }
             track("export_completed");
           } catch {
             if (isMounted.current) Alert.alert("Export failed", "Please check your connection and try again.");
