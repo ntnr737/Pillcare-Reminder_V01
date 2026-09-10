@@ -390,13 +390,13 @@ export default function Progress() {
                 <Text style={[s.cS, { color: day.taken === day.total ? "#4ade80" : day.taken === 0 ? "#e58585" : TM }]}>{day.taken}/{day.total} taken</Text>
               </View>
               {day.entries.map((e: any) => {
-                const iconName = e.status === "course_completed" ? "checkmark-done-circle" : e.status === "refilled" ? "cube" : e.status === "taken" ? "checkmark-circle" : e.status === "missed" ? "close-circle" : e.status === "skipped" ? "forward-circle" : "time";
-                const color = e.status === "course_completed" ? "#4ade80" : e.status === "refilled" ? "#38bdf8" : e.status === "taken" ? "#4ade80" : e.status === "missed" ? "#e58585" : e.status === "skipped" ? "#e5b285" : A3;
-                const statusLabel = e.status === "course_completed" ? "Course Completed" : e.status === "refilled" ? "Stock Refilled" : e.status;
-                const bg = e.status === "course_completed" ? "rgba(74,222,128,0.15)" : e.status === "refilled" ? "rgba(56,189,248,0.15)" : e.status === "taken" ? "rgba(74,222,128,0.12)" : e.status === "missed" ? "rgba(229,133,133,0.12)" : e.status === "skipped" ? "rgba(229,178,133,0.12)" : AB;
+                const iconName = e.status === "course_completed" ? "checkmark-done-circle" : e.status === "refilled" ? "cube" : e.status === "yoga_completed" ? "fitness" : e.status === "taken" ? "checkmark-circle" : e.status === "missed" ? "close-circle" : e.status === "skipped" ? "forward-circle" : "time";
+                const color = e.status === "course_completed" ? "#4ade80" : e.status === "refilled" ? "#38bdf8" : e.status === "yoga_completed" ? "#a7a1db" : e.status === "taken" ? "#4ade80" : e.status === "missed" ? "#e58585" : e.status === "skipped" ? "#e5b285" : A3;
+                const statusLabel = e.status === "course_completed" ? "Course Completed" : e.status === "refilled" ? "Stock Refilled" : e.status === "yoga_completed" ? "Yoga Completed" : e.status;
+                const bg = e.status === "course_completed" ? "rgba(74,222,128,0.15)" : e.status === "refilled" ? "rgba(56,189,248,0.15)" : e.status === "yoga_completed" ? "rgba(167,161,219,0.18)" : e.status === "taken" ? "rgba(74,222,128,0.12)" : e.status === "missed" ? "rgba(229,133,133,0.12)" : e.status === "skipped" ? "rgba(229,178,133,0.12)" : AB;
 
                 return (
-                  <View key={e.id} style={[s.card, (e.status === "course_completed" || e.status === "refilled") && { borderColor: color, backgroundColor: "rgba(35,37,50,0.8)" }]}>
+                  <View key={e.id} style={[s.card, (e.status === "course_completed" || e.status === "refilled" || e.status === "yoga_completed") && { borderColor: color, backgroundColor: "rgba(35,37,50,0.8)" }]}>
                     <View style={s.cRow}>
                       <View style={[s.cI, { backgroundColor: bg }]}>
                         <Ionicons name={iconName as any} size={16} color={color} />

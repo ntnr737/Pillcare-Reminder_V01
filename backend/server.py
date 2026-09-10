@@ -1515,7 +1515,7 @@ async def yoga_log_history(days: int = 30, user_id: str = Depends(get_current_us
 
 @api.get("/doses/history")
 async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_id)):
-    """Dose history grouped by date for the Progress List tab — bulk query optimized."""
+    """Dose & yoga therapy history grouped by date for the Progress List logbook — bulk query optimized."""
     today = datetime.now(timezone.utc).date()
     start = today - timedelta(days=days - 1)
     start_str = start.isoformat()
@@ -1526,10 +1526,12 @@ async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_i
         PROJECTION
     ).to_list(5000)
 
-    if not all_doses:
-        return []
+    yoga_logs = await db.yoga_log.find(
+        {"user_id": user_id, "date": {"$gte": start_str, "$lte": end_str}},
+        PROJECTION
+    ).to_list(5000)
 
-    med_ids = list({x["medication_id"] for x in all_doses})
+    med_ids = list({x["medication_id"] for x in all_doses if "medication_id" in x})
     meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
     med_map = {m["id"]: m for m in meds}
 
@@ -1537,25 +1539,56 @@ async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_i
     for d in all_doses:
         doses_by_date.setdefault(d["date"], []).append(d)
 
+    yogas_by_date = {}
+    for y in yoga_logs:
+        yogas_by_date.setdefault(y["date"], []).append(y)
+
     result = []
     for i in range(days - 1, -1, -1):
         d_str = (start + timedelta(days=i)).isoformat()
         doses_for_day = doses_by_date.get(d_str, [])
-        if not doses_for_day:
+        yogas_for_day = yogas_by_date.get(d_str, [])
+
+        if not doses_for_day and not yogas_for_day:
             continue
+
         entries = []
-        for dose in sorted(doses_for_day, key=lambda x: x["scheduled_time"]):
-            m = med_map.get(dose["medication_id"], {})
+        for dose in sorted(doses_for_day, key=lambda x: x.get("scheduled_time", "")):
+            m = med_map.get(dose.get("medication_id"), {})
             entries.append({
                 "id": dose["id"],
-                "name": m.get("name", "Unknown"),
+                "name": m.get("name", dose.get("medication_name", "Medication")),
                 "generic_name": m.get("generic_name", ""),
                 "dosage": m.get("dosage", ""),
                 "unit": m.get("unit", ""),
-                "time": dose["scheduled_time"],
+                "time": dose.get("scheduled_time", "08:00"),
                 "status": dose["status"],
+                "note": dose.get("note", ""),
             })
-        taken = sum(1 for e in entries if e["status"] == "taken")
+
+        for y in yogas_for_day:
+            comp_time = "08:00"
+            comp_at = y.get("completed_at")
+            if comp_at:
+                if isinstance(comp_at, datetime):
+                    comp_time = comp_at.strftime("%H:%M")
+                elif isinstance(comp_at, str):
+                    try:
+                        comp_time = comp_at.split("T")[1][:5]
+                    except Exception:
+                        comp_time = "08:00"
+            entries.append({
+                "id": y.get("id", str(uuid.uuid4())),
+                "name": f"Yoga: {y.get('step_name', 'Therapy Session')}",
+                "generic_name": "AI Yoga Therapy",
+                "dosage": "",
+                "unit": "",
+                "time": comp_time,
+                "status": "yoga_completed",
+                "note": f"Completed yoga pose: {y.get('step_name', 'Yoga Pose')}",
+            })
+
+        taken = sum(1 for e in entries if e["status"] in ("taken", "yoga_completed"))
         missed = sum(1 for e in entries if e["status"] in ("missed", "skipped"))
         result.append({"date": d_str, "entries": entries, "taken": taken, "missed": missed, "total": len(entries)})
     return result
