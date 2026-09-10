@@ -358,43 +358,64 @@ export default function Treatment() {
               </View>
             </View>
           </Modal>
-          {fm.length === 0 ? (<View style={s.empty}><Ionicons name="medical-outline" size={26} color={AC} /><Text style={s.emT}>{filter === "refill" ? "No refills needed" : "No medications"}</Text><Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : "Tap + to add one"}</Text></View>
-          ) : fm.map(m => (<View key={m.id} style={s.card}>
-            <View style={s.cRow}>
-              <View style={s.cI}><Ionicons name="medical-outline" size={17} color={A3} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cT}>{m.name}</Text>
-                {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
-                <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
-              </View>
-              {(m.stock <= m.refill_threshold || (m.days_left != null && m.days_left <= 3)) && <View style={s.rTag}><Text style={s.rTx}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>}
+          {fm.length === 0 ? (
+            <View style={s.empty}>
+              <Ionicons name="medical-outline" size={26} color={AC} />
+              <Text style={s.emT}>{filter === "refill" ? "No refills needed" : "No medications"}</Text>
+              <Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : "Tap + to add one"}</Text>
             </View>
-            <View style={s.cFt}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.ftT}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
-              <Text style={s.ftT}>{m.stock} left</Text>
-            </View>
-            {(m.nudges || []).filter((n: any) => !dismissedNudges.has(`${m.id}_${n.current_time}`)).slice(0, 1).map((n: any) => (
-              <View key={n.current_time} style={{ marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: "rgba(229,178,133,0.1)", borderWidth: 1, borderColor: "rgba(229,178,133,0.3)", gap: 6 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="bulb-outline" size={13} color="#e5b285" />
-                  <Text style={{ fontSize: 10, color: "#e5b285", fontWeight: "700" }}>SMART NUDGE</Text>
+          ) : (
+            fm.map(m => {
+              const guide = drugFoodGuide?.guides?.find((g: any) =>
+                g.medication?.toLowerCase().includes(m.name?.toLowerCase()) ||
+                m.name?.toLowerCase().includes(g.medication?.toLowerCase())
+              );
+              return (
+                <View key={m.id} style={s.card}>
+                  <View style={s.cRow}>
+                    <View style={s.cI}><Ionicons name="medical-outline" size={17} color={A3} /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.cT}>{m.name}</Text>
+                      {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
+                      <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
+                    </View>
+                    {(m.stock <= m.refill_threshold || (m.days_left != null && m.days_left <= 3)) && <View style={s.rTag}><Text style={s.rTx}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>}
+                  </View>
+                  {guide?.dos?.[0] && (
+                    <View style={{ marginTop: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", flexDirection: "row", alignItems: "center", gap: 5 }}>
+                      <Ionicons name="restaurant-outline" size={11} color="#4ade80" />
+                      <Text style={{ fontSize: 10, color: "#4ade80", fontWeight: "600", flex: 1 }}>{guide.dos[0]}</Text>
+                    </View>
+                  )}
+                  <View style={s.cFt}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.ftT}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
+                    <Text style={s.ftT}>{m.stock} left</Text>
+                  </View>
+                  {(m.nudges || []).filter((n: any) => !dismissedNudges.has(`${m.id}_${n.current_time}`)).slice(0, 1).map((n: any) => (
+                    <View key={n.current_time} style={{ marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: "rgba(229,178,133,0.1)", borderWidth: 1, borderColor: "rgba(229,178,133,0.3)", gap: 6 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name="bulb-outline" size={13} color="#e5b285" />
+                        <Text style={{ fontSize: 10, color: "#e5b285", fontWeight: "700" }}>SMART NUDGE</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: TM, lineHeight: 15 }}>
+                        {`You miss the ${n.current_time} dose ${n.miss_rate}% of the time. Move the reminder to ${n.suggested_time}?`}
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
+                        <TouchableOpacity style={{ flex: 1, backgroundColor: "#e5b285", borderRadius: 8, paddingVertical: 7, alignItems: "center" }}
+                          onPress={() => applyNudge(m.id, n)}>
+                          <Text style={{ fontSize: 11, color: "#161826", fontWeight: "700" }}>{`Shift to ${n.suggested_time}`}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={{ paddingHorizontal: 12, justifyContent: "center" }}
+                          onPress={() => setDismissedNudges(prev => new Set(prev).add(`${m.id}_${n.current_time}`))}>
+                          <Text style={{ fontSize: 11, color: TM }}>Not now</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))}
                 </View>
-                <Text style={{ fontSize: 11, color: TM, lineHeight: 15 }}>
-                  {`You miss the ${n.current_time} dose ${n.miss_rate}% of the time. Move the reminder to ${n.suggested_time}?`}
-                </Text>
-                <View style={{ flexDirection: "row", gap: 8 }}>
-                  <TouchableOpacity style={{ flex: 1, backgroundColor: "#e5b285", borderRadius: 8, paddingVertical: 7, alignItems: "center" }}
-                    onPress={() => applyNudge(m.id, n)}>
-                    <Text style={{ fontSize: 11, color: "#161826", fontWeight: "700" }}>{`Shift to ${n.suggested_time}`}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={{ paddingHorizontal: 12, justifyContent: "center" }}
-                    onPress={() => setDismissedNudges(prev => new Set(prev).add(`${m.id}_${n.current_time}`))}>
-                    <Text style={{ fontSize: 11, color: TM }}>Not now</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
-          </View>))}
+              );
+            })
+          )}
           {/* Find Medical Store — always shown at bottom of medications */}
           <TouchableOpacity style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12, borderColor: "rgba(74,222,128,0.25)", marginTop: 4 }]}
             onPress={() => router.push("/nearby?type=pharmacy" as any)}>

@@ -99,6 +99,8 @@ export default function Today() {
   const [yogaTipName, setYogaTipName] = useState<string | null>(null);
   const [yogaTipMeta, setYogaTipMeta] = useState<string | null>(null);
   const [adherenceMap, setAdherenceMap] = useState<Record<string, number>>({});
+  const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
+  const [foodGuideOpen, setFoodGuideOpen] = useState(false);
   const [sheet, setSheet] = useState(false);
   const [waterLogged, setWaterLogged] = useState(0);
   const waterGoal = 2500; // in ml (10 glasses of 250ml)
@@ -108,6 +110,10 @@ export default function Today() {
       setWaterLogged(val || 0);
     });
   }, [date]);
+
+  useEffect(() => {
+    api.getDrugFoodGuide().then(g => { if (g) setDrugFoodGuide(g); }).catch(() => {});
+  }, [doses]);
 
   const addWater = async (amountMl: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -432,6 +438,30 @@ export default function Today() {
           </View>
         </TouchableOpacity>
 
+        {/* Drug & Food Clinical Guide Card on Today screen */}
+        {drugFoodGuide && drugFoodGuide.has_medications && (
+          <TouchableOpacity
+            activeOpacity={0.85}
+            style={[s.aiCard, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.05)" }]}
+            onPress={() => setFoodGuideOpen(true)}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={s.aiH}>
+                <Ionicons name="restaurant-outline" size={12} color="#4ade80" />
+                <Text style={[s.aiK, { color: "#4ade80" }]}>DRUG & FOOD CLINICAL GUIDE</Text>
+              </View>
+              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.18)" }}>
+                <Text style={{ fontSize: 9, color: "#4ade80", fontWeight: "700" }}>VIEW GUIDE</Text>
+              </View>
+            </View>
+            <Text style={[s.aiTx, { fontWeight: "700", color: TX, marginTop: 4, marginBottom: 2 }]}>
+              Food Timing & Interaction Advice
+            </Text>
+            <Text style={{ fontSize: 11, color: TM }}>
+              {drugFoodGuide.scanned_medications} medicines scanned • Avoid food interactions & improve absorption
+            </Text>
+          </TouchableOpacity>
+        )}
+
         {/* Dose sections */}
         {total === 0 ? (
           <View style={s.empty}>
@@ -447,6 +477,10 @@ export default function Today() {
               {items.map(dose => {
                 const m = dose.medication || {}, st = dose.status || "pending";
                 const tk = st === "taken", sk = st === "skipped", ms = st === "missed";
+                const guide = drugFoodGuide?.guides?.find((g: any) =>
+                  g.medication?.toLowerCase().includes(m.name?.toLowerCase()) ||
+                  m.name?.toLowerCase().includes(g.medication?.toLowerCase())
+                );
                 return (
                   <View key={dose.id} style={[s.dc, (tk) && s.dcD]}>
                     <View style={[s.dI, tk && { backgroundColor: "rgba(145,132,217,0.08)" }]}>
@@ -457,6 +491,12 @@ export default function Today() {
                       {m.generic_name ? <Text style={[s.dM, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                       <Text style={s.dM}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                       {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : TM, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
+                      {guide?.dos?.[0] && (
+                        <View style={{ marginTop: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" }}>
+                          <Ionicons name="restaurant-outline" size={10} color="#4ade80" />
+                          <Text style={{ fontSize: 9, color: "#4ade80", fontWeight: "600" }}>{guide.dos[0]}</Text>
+                        </View>
+                      )}
                     </View>
                     {/* Time-locked dose actions */}
                     {(() => {
@@ -639,6 +679,67 @@ export default function Today() {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* Drug-Food Modal Guide */}
+      <Modal visible={foodGuideOpen} transparent animationType="slide" onRequestClose={() => setFoodGuideOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
+                <Text style={{ fontSize: 17, fontWeight: "700", color: "#fff" }}>Drug-Food Do's & Don'ts Guide</Text>
+              </View>
+              <TouchableOpacity onPress={() => setFoodGuideOpen(false)}>
+                <Ionicons name="close" size={22} color={TX} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+              {/* DO's List */}
+              <View style={{ backgroundColor: "rgba(74,222,128,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#4ade80" }}>RECOMMENDED DO'S</Text>
+                </View>
+                {(drugFoodGuide?.dos || []).map((doItem: string, idx: number) => (
+                  <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                    <Text style={{ color: "#4ade80", fontWeight: "700" }}>•</Text>
+                    <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{doItem}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* DON'TS List */}
+              <View style={{ backgroundColor: "rgba(239,68,68,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="close-circle" size={16} color="#ef4444" />
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#ef4444" }}>CRITICAL DON'TS</Text>
+                </View>
+                {(drugFoodGuide?.donts || []).map((dontItem: string, idx: number) => (
+                  <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
+                    <Text style={{ color: "#ef4444", fontWeight: "700" }}>•</Text>
+                    <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{dontItem}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Per-Medication Guides */}
+              <Text style={{ fontSize: 13, fontWeight: "700", color: A3, marginTop: 4 }}>Medication-Specific Guidance:</Text>
+              {(drugFoodGuide?.guides || []).map((g: any, idx: number) => (
+                <View key={idx} style={{ backgroundColor: "#252837", padding: 12, borderRadius: 10, gap: 6 }}>
+                  <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{g.medication} <Text style={{ fontSize: 11, color: A3, fontWeight: "500" }}>({g.category})</Text></Text>
+                  {g.dos?.map((d: string, i: number) => (
+                    <Text key={i} style={{ fontSize: 11, color: "#4ade80" }}>✓ {d}</Text>
+                  ))}
+                  {g.donts?.map((d: string, i: number) => (
+                    <Text key={i} style={{ fontSize: 11, color: "#ef4444" }}>✗ {d}</Text>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
 
       <UpgradePrompt
