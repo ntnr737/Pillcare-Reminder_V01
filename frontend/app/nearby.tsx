@@ -10,9 +10,9 @@ import { track } from "@/src/lib/analytics";
 import { get, K } from "@/src/lib/store";
 import * as Location from "expo-location";
 
-const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
-  TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
-  AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
+const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
+  TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
+  AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)";
 
 const BACKEND = process.env.EXPO_PUBLIC_BACKEND_URL || "http://localhost:8000";
 
@@ -68,6 +68,8 @@ export default function Nearby() {
   const params = useLocalSearchParams<{ type?: string }>();
   const [type, setType] = useState<PlaceType>((params.type as PlaceType) || "pharmacy");
   const [radius, setRadius] = useState(2000);
+  const [openOnly, setOpenOnly] = useState(false);
+  const [hasPhoneOnly, setHasPhoneOnly] = useState(false);
   const [places, setPlaces] = useState<Place[]>([]);
   const [source, setSource] = useState<"google" | "osm" | null>(null);
   const [loading, setLoading] = useState(false);
@@ -301,7 +303,7 @@ export default function Nearby() {
         ))}
       </ScrollView>
 
-      {/* Radius selector */}
+      {/* Radius selector & Quick Filters */}
       <View style={s.radRow}>
         <Text style={s.radLabel}>Radius:</Text>
         {RADII.map(r => (
@@ -310,6 +312,21 @@ export default function Nearby() {
             <Text style={[s.radTx, radius === r.value && { color: A3, fontWeight: "700" }]}>{r.label}</Text>
           </TouchableOpacity>
         ))}
+      </View>
+
+      <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}>
+        <TouchableOpacity
+          onPress={() => setOpenOnly(!openOnly)}
+          style={[s.filterChip, openOnly && s.filterChipOn]}>
+          <Ionicons name="time-outline" size={12} color={openOnly ? "#4ade80" : TM} />
+          <Text style={[s.filterChipTx, openOnly && { color: "#4ade80", fontWeight: "700" }]}>Open Now</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => setHasPhoneOnly(!hasPhoneOnly)}
+          style={[s.filterChip, hasPhoneOnly && s.filterChipOn]}>
+          <Ionicons name="logo-whatsapp" size={12} color={hasPhoneOnly ? "#25D366" : TM} />
+          <Text style={[s.filterChipTx, hasPhoneOnly && { color: "#25D366", fontWeight: "700" }]}>WhatsApp Ready</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Results */}
@@ -351,15 +368,17 @@ export default function Nearby() {
           </View>
         ) : null}
 
-        {!loading && !locError && places.length === 0 && (
+        {!loading && !locError && places.filter(p => (!openOnly || p.open !== false) && (!hasPhoneOnly || !!p.phone)).length === 0 && (
           <View style={[s.card, { alignItems: "center", padding: 32, gap: 10 }]}>
             <Ionicons name="search-outline" size={32} color={TM} />
-            <Text style={s.cT}>No {cfg.label} found within {radius >= 1000 ? `${radius / 1000}km` : `${radius}m`}</Text>
-            <Text style={s.cS}>Try increasing the radius</Text>
+            <Text style={s.cT}>No {cfg.label} found matching filters</Text>
+            <Text style={s.cS}>Try expanding radius or resetting quick filters</Text>
           </View>
         )}
 
-        {places.map(p => (
+        {places
+          .filter(p => (!openOnly || p.open !== false) && (!hasPhoneOnly || !!p.phone))
+          .map(p => (
           <TouchableOpacity key={p.id} style={s.card} onPress={() => setSelectedPlace(p)}>
             <View style={s.cardTop}>
               <View style={[s.placeIco, { backgroundColor: `${cfg.color}18` }]}>
@@ -566,6 +585,9 @@ const s = StyleSheet.create({
   radBtn: { paddingHorizontal: 12, height: 28, borderRadius: 999, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" },
   radBtnOn: { backgroundColor: AB, borderColor: AC },
   radTx: { fontSize: 11, color: TM },
+  filterChip: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, height: 26, borderRadius: 999, borderWidth: 1, borderColor: BD, backgroundColor: "transparent" },
+  filterChipOn: { backgroundColor: "rgba(139, 92, 246, 0.12)", borderColor: AC },
+  filterChipTx: { fontSize: 11, color: TM },
   body: { padding: 16, gap: 10, paddingBottom: 40 },
   center: { alignItems: "center", paddingVertical: 48, gap: 12 },
   card: { backgroundColor: SF, borderRadius: 14, padding: 13, gap: 10, borderWidth: 1, borderColor: BD },
