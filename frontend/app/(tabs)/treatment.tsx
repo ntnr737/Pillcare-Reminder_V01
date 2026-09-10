@@ -21,6 +21,51 @@ const TABS = ["Medications", "Measurements", "Activities", "Mood"];
 const ME = ["", "😟", "😔", "😐", "😊", "😄"];
 const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 
+const DEFAULT_MEASUREMENTS = [
+  { key: "blood_pressure", label: "Blood Pressure", unit: "mmHg", units: ["mmHg"], composite: ["Systolic (e.g. 120)", "Diastolic (e.g. 80)"] },
+  { key: "blood_glucose", label: "Blood Glucose", unit: "mg/dL", units: ["mg/dL", "mmol/L"] },
+  { key: "heart_rate", label: "Heart Rate", unit: "bpm", units: ["bpm"] },
+  { key: "weight", label: "Weight", unit: "kg", units: ["kg", "lbs"] },
+  { key: "height", label: "Height", unit: "cm", units: ["cm", "ft/in"] },
+  { key: "body_temp", label: "Body Temperature", unit: "°C", units: ["°C", "°F"] },
+  { key: "spo2", label: "Oxygen (SpO₂)", unit: "%", units: ["%"] },
+  { key: "cholesterol_total", label: "Total Cholesterol", unit: "mg/dL", units: ["mg/dL", "mmol/L"] },
+  { key: "cholesterol_ldl", label: "LDL Cholesterol", unit: "mg/dL", units: ["mg/dL", "mmol/L"] },
+  { key: "cholesterol_hdl", label: "HDL Cholesterol", unit: "mg/dL", units: ["mg/dL", "mmol/L"] },
+  { key: "triglycerides", label: "Triglycerides", unit: "mg/dL", units: ["mg/dL", "mmol/L"] },
+  { key: "hba1c", label: "HbA1c", unit: "%", units: ["%"] },
+  { key: "creatinine", label: "Creatinine", unit: "mg/dL", units: ["mg/dL", "µmol/L"] },
+  { key: "urea", label: "Urea", unit: "mg/dL", units: ["mg/dL", "mmol/L"] },
+  { key: "tsh", label: "TSH", unit: "mIU/L", units: ["mIU/L"] },
+  { key: "vitamin_d", label: "Vitamin D", unit: "ng/mL", units: ["ng/mL", "nmol/L"] },
+  { key: "hemoglobin", label: "Hemoglobin", unit: "g/dL", units: ["g/dL", "g/L"] },
+];
+
+const DEFAULT_ACTIVITIES = [
+  { key: "steps", label: "Steps", unit: "steps", units: ["steps"] },
+  { key: "exercise", label: "Exercise", unit: "mins", units: ["mins", "hrs"] },
+  { key: "water", label: "Water", unit: "ml", units: ["ml", "oz", "glasses"] },
+  { key: "sleep", label: "Sleep", unit: "hrs", units: ["hrs", "mins"] },
+];
+
+const DEFAULT_YOGA = {
+  title: "Medication Absorptive Flow",
+  duration: "12 min",
+  level: "Beginner",
+  description: "Gentle daily asanas to enhance digestive circulation, improve medication absorption, and reduce stress.",
+  steps: [
+    { num: 1, name: "Anulom Vilom Pranayama", duration: "4 mins", benefit: "Calms nervous system & balances blood pressure", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78" },
+    { num: 2, name: "Pawanmuktasana (Wind-relieving Pose)", duration: "4 mins", benefit: "Stimulates abdominal organs & assists medication digestion", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w" },
+    { num: 3, name: "Shavasana (Deep Relaxation)", duration: "4 mins", benefit: "Reduces stress hormones & stabilizes heart rate", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
+  ],
+  channels: [
+    { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
+    { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+    { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true }
+  ],
+  disclaimer: "Consult your doctor before starting any new physical exercise routine."
+};
+
 export default function Treatment() {
   const router = useRouter();
   const params = useLocalSearchParams<{ openYoga?: string }>();
@@ -61,6 +106,8 @@ export default function Treatment() {
   const [sheet, setSheet] = useState(false);
   const [mModal, setMModal] = useState<{ open: boolean; type: any }>({ open: false, type: null });
   const [aModal, setAModal] = useState<{ open: boolean; type: any }>({ open: false, type: null });
+  const [selectedMUnit, setSelectedMUnit] = useState<string>("");
+  const [selectedAUnit, setSelectedAUnit] = useState<string>("");
   const [ms, setMs] = useState(3);
   const [mn, setMn] = useState("");
   const [vP, setVP] = useState("");
@@ -117,13 +164,25 @@ export default function Treatment() {
     backgroundRefresh(loadServer);
   }, [loadCache, loadServer]));
 
+  const openMeasurementModal = (mt: any) => {
+    setMModal({ open: true, type: mt });
+    setSelectedMUnit(mt.unit || (mt.units && mt.units[0]) || "");
+    setVP(""); setVS(""); setVN("");
+  };
+
+  const openActivityModal = (at: any) => {
+    setAModal({ open: true, type: at });
+    setSelectedAUnit(at.unit || (at.units && at.units[0]) || "");
+    setVP(""); setVN("");
+  };
+
   const saveMeasure = async () => {
     if (!mModal.type || !vP) return; setSaving(true);
-    try { await api.createMeasurement({ type: mModal.type.key, value: parseFloat(vP), value_secondary: vS ? parseFloat(vS) : undefined, unit: mModal.type.unit, note: vN || undefined }); setMModal({ open: false, type: null }); setVP(""); setVS(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+    try { await api.createMeasurement({ type: mModal.type.key, value: parseFloat(vP), value_secondary: vS ? parseFloat(vS) : undefined, unit: selectedMUnit || mModal.type.unit || "unit", note: vN || undefined }); setMModal({ open: false, type: null }); setVP(""); setVS(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
   };
   const saveActivity = async () => {
     if (!aModal.type || !vP) return; setSaving(true);
-    try { await api.createActivity({ type: aModal.type.key, value: parseFloat(vP), unit: aModal.type.unit, note: vN || undefined }); setAModal({ open: false, type: null }); setVP(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+    try { await api.createActivity({ type: aModal.type.key, value: parseFloat(vP), unit: selectedAUnit || aModal.type.unit || "unit", note: vN || undefined }); setAModal({ open: false, type: null }); setVP(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
   };
   const saveMood = async () => {
     setSaving(true);
@@ -134,8 +193,8 @@ export default function Treatment() {
   const OPTS = [
     { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setSheet(false); setAddMed(true); } },
     { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setSheet(false); router.push("/appointments"); } },
-    { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setSheet(false); if (catalog?.m?.[0]) setMModal({ open: true, type: catalog.m[0] }); } },
-    { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setSheet(false); if (catalog?.a?.[0]) setAModal({ open: true, type: catalog.a[0] }); } },
+    { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setSheet(false); const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS; openMeasurementModal(mTypes[0]); } },
+    { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setSheet(false); const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES; openActivityModal(aTypes[0]); } },
     { icon: "heart-outline", title: "Log Mood", body: "Track how you're feeling today", fn: () => { setSheet(false); setTab(3); } },
   ];
 
@@ -192,16 +251,28 @@ export default function Treatment() {
             {["all", "active", "refill"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : "Refill Soon"}</Text></TouchableOpacity>))}
           </View>
 
-          {/* Yoga AI card - fixed position, not affected by filter */}
-          {yoga && (<View style={[s.card, { borderColor: "rgba(145,132,217,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
-            <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}><Ionicons name="body-outline" size={17} color={A3} /></View>
-            <View style={{ flex: 1 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}><Ionicons name="sparkles" size={10} color={A3} /><Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text></View>
-              <Text style={s.cT}>{yoga.title || "Gentle Flow"}</Text>
-              <Text style={s.cS}>{yoga.duration || "12 min"} • {yoga.level || "Beginner"}</Text>
-            </View>
-          <TouchableOpacity style={s.viewBtn} onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}><Text style={s.viewBtnT}>View</Text></TouchableOpacity>
-          </View>)}
+          {/* Yoga AI card - fixed position under Medications tab */}
+          {(() => {
+            const activeYoga = yoga || DEFAULT_YOGA;
+            return (
+              <View style={[s.card, { borderColor: "rgba(145,132,217,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
+                <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}>
+                  <Ionicons name="body-outline" size={17} color={A3} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
+                    <Ionicons name="sparkles" size={10} color={A3} />
+                    <Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text>
+                  </View>
+                  <Text style={s.cT}>{activeYoga.title || "Gentle Flow"}</Text>
+                  <Text style={s.cS}>{activeYoga.duration || "12 min"} • {activeYoga.level || "Beginner"}</Text>
+                </View>
+                <TouchableOpacity style={s.viewBtn} onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}>
+                  <Text style={s.viewBtnT}>View</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
           {/* Drug & Food Interaction & Do's and Don'ts Card */}
           {drugFoodGuide && drugFoodGuide.has_medications && (
             <TouchableOpacity
@@ -339,22 +410,89 @@ export default function Treatment() {
         </View>)}
 
         {/* MEASUREMENTS */}
-        {tab === 1 && (<View style={{ gap: 10 }}>
-          <Text style={s.secL}>Log a measurement</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
-            {(catalog?.m || []).map((mt: any) => (<TouchableOpacity key={mt.key} style={s.chip} onPress={() => { setMModal({ open: true, type: mt }); setVP(""); setVS(""); setVN(""); }}><Ionicons name="pulse-outline" size={12} color={A3} /><Text style={s.chipT}>{mt.label}</Text></TouchableOpacity>))}
-          </ScrollView>
-          {measurements.length > 0 ? (<><Text style={s.secL}>Recent</Text>{measurements.slice(0, 10).map((m: any, i: number) => (<View key={i} style={s.card}><View style={s.cRow}><View style={s.cI}><Ionicons name="pulse-outline" size={15} color={A3} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{m.type?.replace(/_/g, " ")}</Text><Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View><Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>{m.value}{m.value_secondary ? `/${m.value_secondary}` : ""}<Text style={{ fontSize: 10, color: TM }}> {m.unit}</Text></Text></View></View>))}</>) : (<View style={s.empty}><Ionicons name="pulse-outline" size={28} color={AC} /><Text style={s.emT}>No measurements yet</Text><Text style={s.emS}>Tap a category above to log one</Text></View>)}
-        </View>)}
+        {tab === 1 && (() => {
+          const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS;
+          return (
+            <View style={{ gap: 10 }}>
+              <Text style={s.secL}>LOG A MEASUREMENT</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+                {mTypes.map((mt: any) => (
+                  <TouchableOpacity key={mt.key} style={s.chip} onPress={() => openMeasurementModal(mt)}>
+                    <Ionicons name="pulse-outline" size={12} color={A3} />
+                    <Text style={s.chipT}>{mt.label} <Text style={{ color: TM, fontSize: 10 }}>({mt.unit})</Text></Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {measurements.length > 0 ? (
+                <>
+                  <Text style={s.secL}>RECENT</Text>
+                  {measurements.slice(0, 10).map((m: any, i: number) => (
+                    <View key={i} style={s.card}>
+                      <View style={s.cRow}>
+                        <View style={s.cI}><Ionicons name="pulse-outline" size={15} color={A3} /></View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.cT}>{m.type?.replace(/_/g, " ")}</Text>
+                          <Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
+                        </View>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>
+                          {m.value}{m.value_secondary ? `/${m.value_secondary}` : ""}
+                          <Text style={{ fontSize: 10, color: TM }}> {m.unit}</Text>
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <View style={s.empty}>
+                  <Ionicons name="pulse-outline" size={28} color={AC} />
+                  <Text style={s.emT}>No measurements yet</Text>
+                  <Text style={s.emS}>Tap a category above to log one</Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
 
         {/* ACTIVITIES */}
-        {tab === 2 && (<View style={{ gap: 10 }}>
-          <Text style={s.secL}>Log an activity</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
-            {(catalog?.a || []).map((at: any) => (<TouchableOpacity key={at.key} style={s.chip} onPress={() => { setAModal({ open: true, type: at }); setVP(""); setVN(""); }}><Ionicons name="body-outline" size={12} color={A3} /><Text style={s.chipT}>{at.label}</Text></TouchableOpacity>))}
-          </ScrollView>
-          {activities.length > 0 ? (<><Text style={s.secL}>Recent</Text>{activities.slice(0, 10).map((a: any, i: number) => (<View key={i} style={s.card}><View style={s.cRow}><View style={s.cI}><Ionicons name="body-outline" size={15} color={A3} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{a.type?.replace(/_/g, " ")}</Text><Text style={s.cS}>{new Date(a.recorded_at).toLocaleDateString()}</Text></View><Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>{a.value}<Text style={{ fontSize: 10, color: TM }}> {a.unit}</Text></Text></View></View>))}</>) : (<View style={s.empty}><Ionicons name="body-outline" size={28} color={AC} /><Text style={s.emT}>No activities yet</Text><Text style={s.emS}>Tap a category above to log one</Text></View>)}
-        </View>)}
+        {tab === 2 && (() => {
+          const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES;
+          return (
+            <View style={{ gap: 10 }}>
+              <Text style={s.secL}>LOG AN ACTIVITY</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
+                {aTypes.map((at: any) => (
+                  <TouchableOpacity key={at.key} style={s.chip} onPress={() => openActivityModal(at)}>
+                    <Ionicons name="body-outline" size={12} color={A3} />
+                    <Text style={s.chipT}>{at.label} <Text style={{ color: TM, fontSize: 10 }}>({at.unit})</Text></Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {activities.length > 0 ? (
+                <>
+                  <Text style={s.secL}>RECENT</Text>
+                  {activities.slice(0, 10).map((a: any, i: number) => (
+                    <View key={i} style={s.card}>
+                      <View style={s.cRow}>
+                        <View style={s.cI}><Ionicons name="body-outline" size={15} color={A3} /></View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.cT}>{a.type?.replace(/_/g, " ")}</Text>
+                          <Text style={s.cS}>{new Date(a.recorded_at).toLocaleDateString()}</Text>
+                        </View>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>{a.value}<Text style={{ fontSize: 10, color: TM }}> {a.unit}</Text></Text>
+                      </View>
+                    </View>
+                  ))}
+                </>
+              ) : (
+                <View style={s.empty}>
+                  <Ionicons name="body-outline" size={28} color={AC} />
+                  <Text style={s.emT}>No activities yet</Text>
+                  <Text style={s.emS}>Tap a category above to log one</Text>
+                </View>
+              )}
+            </View>
+          );
+        })()}
 
         {/* MOOD */}
         {tab === 3 && (<View style={{ gap: 10 }}>
@@ -486,25 +624,65 @@ export default function Treatment() {
       )}
       {/* Measurement Modal */}
       <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
-        <View style={s.ovl}><View style={s.sBox}><View style={s.hand} />
-          <Text style={s.sTitle}>{mModal.type?.label}</Text><Text style={s.cS}>Unit: {mModal.type?.unit}</Text>
-          <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={mModal.type?.composite ? `${mModal.type.composite[0]} value` : "Value"} placeholderTextColor={TM} style={s.inp} />
-          {mModal.type?.composite && <TextInput value={vS} onChangeText={setVS} keyboardType="decimal-pad" placeholder={`${mModal.type.composite[1]} value`} placeholderTextColor={TM} style={s.inp} />}
-          <TextInput value={vN} onChangeText={setVN} placeholder="Note (optional)" placeholderTextColor={TM} style={s.inp} />
-          <TouchableOpacity style={s.subBtn} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save"}</Text></TouchableOpacity>
-          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-        </View></View>
+        <View style={s.ovl}>
+          <View style={s.sBox}>
+            <View style={s.hand} />
+            <Text style={s.sTitle}>Log {mModal.type?.label}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 2 }}>
+              <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Unit:</Text>
+              {(mModal.type?.units || [mModal.type?.unit || ""]).map((u: string) => (
+                <TouchableOpacity key={u} onPress={() => setSelectedMUnit(u)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: selectedMUnit === u ? AB : SF, borderWidth: 1, borderColor: selectedMUnit === u ? AC : BD }}>
+                  <Text style={{ fontSize: 11, color: selectedMUnit === u ? A3 : TM, fontWeight: "700" }}>{u}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {mModal.type?.composite || mModal.type?.key === "blood_pressure" ? (
+              <View style={{ gap: 8 }}>
+                <View style={{ gap: 4 }}>
+                  <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Systolic (Upper number, e.g. 120)</Text>
+                  <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder="120" placeholderTextColor={TM} style={s.inp} />
+                </View>
+                <View style={{ gap: 4 }}>
+                  <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Diastolic (Lower number, e.g. 80)</Text>
+                  <TextInput value={vS} onChangeText={setVS} keyboardType="decimal-pad" placeholder="80" placeholderTextColor={TM} style={s.inp} />
+                </View>
+              </View>
+            ) : (
+              <View style={{ gap: 4 }}>
+                <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Value ({selectedMUnit || mModal.type?.unit})</Text>
+                <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter value in ${selectedMUnit || mModal.type?.unit || ""}`} placeholderTextColor={TM} style={s.inp} />
+              </View>
+            )}
+            <TextInput value={vN} onChangeText={setVN} placeholder="Notes / Observations (optional)" placeholderTextColor={TM} style={s.inp} />
+            <TouchableOpacity style={s.subBtn} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
+            <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       {/* Activity Modal */}
       <Modal visible={aModal.open} transparent animationType="slide" onRequestClose={() => setAModal({ open: false, type: null })}>
-        <View style={s.ovl}><View style={s.sBox}><View style={s.hand} />
-          <Text style={s.sTitle}>{aModal.type?.label}</Text><Text style={s.cS}>Unit: {aModal.type?.unit}</Text>
-          <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder="Value" placeholderTextColor={TM} style={s.inp} />
-          <TextInput value={vN} onChangeText={setVN} placeholder="Note (optional)" placeholderTextColor={TM} style={s.inp} />
-          <TouchableOpacity style={s.subBtn} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save"}</Text></TouchableOpacity>
-          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-        </View></View>
+        <View style={s.ovl}>
+          <View style={s.sBox}>
+            <View style={s.hand} />
+            <Text style={s.sTitle}>Log {aModal.type?.label}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 2 }}>
+              <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Unit:</Text>
+              {(aModal.type?.units || [aModal.type?.unit || ""]).map((u: string) => (
+                <TouchableOpacity key={u} onPress={() => setSelectedAUnit(u)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: selectedAUnit === u ? AB : SF, borderWidth: 1, borderColor: selectedAUnit === u ? AC : BD }}>
+                  <Text style={{ fontSize: 11, color: selectedAUnit === u ? A3 : TM, fontWeight: "700" }}>{u}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <View style={{ gap: 4 }}>
+              <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Value ({selectedAUnit || aModal.type?.unit})</Text>
+              <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter amount in ${selectedAUnit || aModal.type?.unit || ""}`} placeholderTextColor={TM} style={s.inp} />
+            </View>
+            <TextInput value={vN} onChangeText={setVN} placeholder="Notes (optional)" placeholderTextColor={TM} style={s.inp} />
+            <TouchableOpacity style={s.subBtn} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
+            <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
+          </View>
+        </View>
       </Modal>
 
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />
