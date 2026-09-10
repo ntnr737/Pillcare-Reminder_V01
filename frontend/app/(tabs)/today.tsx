@@ -79,7 +79,7 @@ function Ring({ pct }: { pct: number }) {
       <Svg width={72} height={72} viewBox="0 0 72 72" style={{ position: "absolute" }}>
         <Circle cx={36} cy={36} r={R} fill="none" stroke="rgba(145,132,217,0.18)" strokeWidth={7} />
         <Circle cx={36} cy={36} r={R} fill="none" stroke={AC} strokeWidth={7}
-          strokeDasharray={`${C}`} strokeDashoffset={off} strokeLinecap="round" rotation={-90} origin="36,36" />
+          strokeDasharray={`${C}`} strokeDashoffset={off} strokeLinecap="round" rotation={-90} originX={36} originY={36} />
       </Svg>
       <Text style={{ color: TX, fontSize: 13, fontWeight: "700" }}>{pct}%</Text>
     </View>
@@ -324,7 +324,7 @@ export default function Today() {
           <View style={{ flex: 1, gap: 5 }}>
             <View style={s.ovTag}><Text style={s.ovTagTx}>{profile?.nickname?.toUpperCase() || "YOU"}</Text></View>
             <Text style={s.ovTitle}>Your consistency{"\n"}is your strength.</Text>
-            <Text style={s.ovSub}>{total === 0 ? "Add your first medication." : taken === total ? "All done for today! 🎉" : `${total - taken} medication${total - taken === 1 ? "" : "s"} left.`}</Text>
+            <Text style={s.ovSub}>{total === 0 ? "Add your first medication." : taken === total ? "All done for today!" : `${total - taken} medication${total - taken === 1 ? "" : "s"} left.`}</Text>
             <View style={{ gap: 4, marginTop: 4 }}>
               {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={A3} /><Text style={s.mTx}>Next: <Text style={{ color: TX }}>{next.medication?.name}</Text> at {next.scheduled_time}</Text></View>}
               <View style={s.mRow}><Ionicons name="flame" size={12} color={A3} /><Text style={s.mTx}>Streak: <Text style={{ color: TX, fontWeight: "700" }}>{streak} Days</Text></Text></View>
@@ -431,7 +431,7 @@ export default function Today() {
                 const { set } = await import("@/src/lib/store");
                 await set("yoga_done_" + date, true);
                 track("yoga_done");
-                Alert.alert("Yoga Completed! 🎉", "Great job! Daily yoga logged for today.");
+                Alert.alert("Yoga Completed", "Great job! Daily yoga logged for today.");
               }}>
               <Text style={{ fontSize: 12, color: "#4ade80", fontWeight: "700" }}>Mark done</Text>
             </TouchableOpacity>

@@ -99,7 +99,7 @@ export default function Progress() {
     setSyncingVitals(true);
     try {
       const res = await syncHealthVitalsToPillCare(hcSnapshot);
-      Alert.alert("Vitals Synced! 🎉", `Successfully logged ${res.syncedCount} vitals into your PillCare measurements and activities.`);
+      Alert.alert("Vitals Synced!", `Successfully logged ${res.syncedCount} vitals into your PillCare measurements and activities.`);
     } catch {
       Alert.alert("Sync Error", "Could not sync vitals right now.");
     } finally {
