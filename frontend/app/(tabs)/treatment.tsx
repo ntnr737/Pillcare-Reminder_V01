@@ -189,7 +189,7 @@ export default function Treatment() {
     try { await api.createMood({ score: ms, note: mn || undefined }); setMn(""); setMs(3); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
   };
 
-  const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold) : filter === "active" ? meds.filter(m => m.active !== false) : meds;
+  const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold && m.active !== false) : filter === "active" ? meds.filter(m => m.active !== false) : filter === "completed" ? meds.filter(m => m.active === false || m.completed === true) : meds;
   const OPTS = [
     { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setSheet(false); setAddMed(true); } },
     { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setSheet(false); router.push("/appointments"); } },
@@ -248,7 +248,7 @@ export default function Treatment() {
         {tab === 0 && (<View style={{ gap: 10 }}>
           {/* Filter tags - above yoga card so yoga doesn't shift */}
           <View style={s.fRow}>
-            {["all", "active", "refill"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : "Refill Soon"}</Text></TouchableOpacity>))}
+            {["all", "active", "refill", "completed"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : f === "refill" ? "Refill Soon" : "Completed Courses"}</Text></TouchableOpacity>))}
           </View>
 
           {/* Yoga AI card - fixed position under Medications tab */}
@@ -361,8 +361,8 @@ export default function Treatment() {
           {fm.length === 0 ? (
             <View style={s.empty}>
               <Ionicons name="medical-outline" size={26} color={AC} />
-              <Text style={s.emT}>{filter === "refill" ? "No refills needed" : "No medications"}</Text>
-              <Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : "Tap + to add one"}</Text>
+              <Text style={s.emT}>{filter === "refill" ? "No refills needed" : filter === "completed" ? "No completed courses" : "No medications"}</Text>
+              <Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : filter === "completed" ? "Finished medication courses will appear here" : "Tap + to add one"}</Text>
             </View>
           ) : (
             fm.map(m => {
@@ -370,16 +370,25 @@ export default function Treatment() {
                 g.medication?.toLowerCase().includes(m.name?.toLowerCase()) ||
                 m.name?.toLowerCase().includes(g.medication?.toLowerCase())
               );
+              const isCompleted = m.active === false || m.completed === true;
               return (
-                <View key={m.id} style={s.card}>
+                <View key={m.id} style={[s.card, isCompleted && { borderColor: "rgba(74,222,128,0.25)", backgroundColor: "rgba(74,222,128,0.03)" }]}>
                   <View style={s.cRow}>
-                    <View style={s.cI}><Ionicons name="medical-outline" size={17} color={A3} /></View>
+                    <View style={[s.cI, isCompleted && { backgroundColor: "rgba(74,222,128,0.15)" }]}>
+                      <Ionicons name={isCompleted ? "checkmark-done-circle-outline" : "medical-outline"} size={17} color={isCompleted ? "#4ade80" : A3} />
+                    </View>
                     <View style={{ flex: 1 }}>
                       <Text style={s.cT}>{m.name}</Text>
                       {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                       <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                     </View>
-                    {(m.stock <= m.refill_threshold || (m.days_left != null && m.days_left <= 3)) && <View style={s.rTag}><Text style={s.rTx}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>}
+                    {isCompleted ? (
+                      <View style={[s.rTag, { backgroundColor: "rgba(74,222,128,0.15)", borderColor: "rgba(74,222,128,0.3)" }]}>
+                        <Text style={[s.rTx, { color: "#4ade80" }]}>Completed</Text>
+                      </View>
+                    ) : (m.stock <= m.refill_threshold || (m.days_left != null && m.days_left <= 3)) ? (
+                      <View style={s.rTag}><Text style={s.rTx}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>
+                    ) : null}
                   </View>
                   {guide?.dos?.[0] && (
                     <View style={{ marginTop: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", flexDirection: "row", alignItems: "center", gap: 5 }}>
@@ -389,8 +398,60 @@ export default function Treatment() {
                   )}
                   <View style={s.cFt}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.ftT}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
-                    <Text style={s.ftT}>{m.stock} left</Text>
+                    <Text style={s.ftT}>{isCompleted ? "Course Finished" : `${m.stock} left`}</Text>
                   </View>
+
+                  {/* Refill / Completion Action Row */}
+                  {!isCompleted && m.stock <= m.refill_threshold && (
+                    <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
+                      <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.12)", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                        onPress={async () => {
+                          try {
+                            await api.refillMedication(m.id, 30);
+                            Alert.alert("Stock Refilled", `Added +30 pills to ${m.name}.`);
+                            backgroundRefresh(loadServer);
+                          } catch {}
+                        }}>
+                        <Ionicons name="cube-outline" size={14} color="#38bdf8" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>Refill Stock (+30)</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity style={{ backgroundColor: "rgba(74,222,128,0.12)", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
+                        onPress={async () => {
+                          Alert.alert("Mark Course Complete?", `Mark treatment for ${m.name} as complete?`, [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Mark Complete", onPress: async () => {
+                              try { await api.completeMedication(m.id); } catch {}
+                              backgroundRefresh(loadServer);
+                            }}
+                          ]);
+                        }}>
+                        <Ionicons name="checkmark-done-circle-outline" size={14} color="#4ade80" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>Course Complete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* Completed Course Restart Option */}
+                  {isCompleted && (
+                    <View style={{ marginTop: 6, padding: 8, borderRadius: 8, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Ionicons name="checkmark-done-circle" size={14} color="#4ade80" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>COURSE COMPLETED</Text>
+                      </View>
+                      <TouchableOpacity style={{ backgroundColor: "rgba(56,189,248,0.15)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
+                        onPress={async () => {
+                          try {
+                            await api.refillMedication(m.id, 30);
+                            Alert.alert("Course Reactivated", `${m.name} is active again with 30 pills.`);
+                            backgroundRefresh(loadServer);
+                          } catch {}
+                        }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#38bdf8" }}>Restart (+30)</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
                   {(m.nudges || []).filter((n: any) => !dismissedNudges.has(`${m.id}_${n.current_time}`)).slice(0, 1).map((n: any) => (
                     <View key={n.current_time} style={{ marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: "rgba(229,178,133,0.1)", borderWidth: 1, borderColor: "rgba(229,178,133,0.3)", gap: 6 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>

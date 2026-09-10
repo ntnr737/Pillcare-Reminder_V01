@@ -648,11 +648,14 @@ export default function Today() {
           <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Ionicons name="alert-circle" size={22} color="#f87171" />
+              <Ionicons name={(stockModal?.stock ?? 0) <= 0 ? "alert-circle" : "warning"} size={22} color={(stockModal?.stock ?? 0) <= 0 ? "#f87171" : "#fbbf24"} />
               <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{(stockModal?.stock ?? 0) <= 0 ? `${stockModal?.name} is out of stock` : `${stockModal?.name} — only ${stockModal?.stock} left`}</Text>
             </View>
-            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>{(stockModal?.stock ?? 0) <= 0 ? "Do you need to reorder this medicine? If the treatment is finished, we will stop reminding you about it." : "Running low — find a nearby pharmacy before you run out, and confirm today's dose."}</Text>
+            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>{(stockModal?.stock ?? 0) <= 0 ? "You have 0 pills remaining. Refill your stock to continue reminders, or mark this treatment course as complete." : "Running low on medication — refill your stock or find a nearby pharmacy before running out."}</Text>
+
+            {/* If stock > 0 and pending dose exists, allow marking taken */}
             {(() => {
+              if ((stockModal?.stock ?? 0) <= 0) return null;
               const pendingDose = doses.find((d: any) => d.medication_id === stockModal?.id && d.status === "pending");
               if (!pendingDose) return null;
               return (
@@ -662,18 +665,49 @@ export default function Today() {
                 </TouchableOpacity>
               );
             })()}
+
+            {/* 1-Tap Refill Stock Option */}
+            <TouchableOpacity onPress={async () => {
+              const id = stockModal?.id;
+              if (id) {
+                try {
+                  await api.refillMedication(id, 30);
+                  Alert.alert("Stock Refilled", `Added +30 pills to ${stockModal?.name}.`);
+                } catch {}
+                setStockModal(null);
+                backgroundRefresh(fetchServer);
+              }
+            }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(56,189,248,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)" }}>
+              <Ionicons name="cube-outline" size={18} color="#38bdf8" />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#38bdf8", flex: 1 }}>Refill stock (+30 pills)</Text>
+            </TouchableOpacity>
+
+            {/* Find Pharmacy Option */}
             <TouchableOpacity onPress={() => { setStockModal(null); router.push("/nearby"); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
               <Ionicons name="storefront-outline" size={18} color={A3} />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: TX, flex: 1 }}>Find pharmacy</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: TX, flex: 1 }}>Find nearby pharmacy</Text>
               <Ionicons name="chevron-forward" size={14} color={TM} />
             </TouchableOpacity>
-            
-            {(stockModal?.stock ?? 0) <= 0 && (
-              <TouchableOpacity onPress={() => { const id = stockModal?.id; const name = stockModal?.name; Alert.alert("Mark treatment complete?", `Remove ${name || "this medication"} from your reminders? This can't be undone.`, [{ text: "Cancel", style: "cancel" }, { text: "Remove", style: "destructive", onPress: () => { setStockModal(null); if (id) markComplete(id); } }]); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(248,113,113,0.2)" }}>
-                <Ionicons name="checkmark-done-outline" size={18} color="#f87171" />
-                <Text style={{ fontSize: 13, fontWeight: "600", color: "#f87171", flex: 1 }}>Treatment complete</Text>
-              </TouchableOpacity>
-            )}
+
+            {/* Treatment Course Complete Option */}
+            <TouchableOpacity onPress={() => {
+              const id = stockModal?.id;
+              const name = stockModal?.name;
+              Alert.alert("Mark Course Complete?", `Mark treatment for ${name || "this medication"} as completed? It will be archived in your course history.`, [
+                { text: "Cancel", style: "cancel" },
+                { text: "Mark Complete", style: "default", onPress: async () => {
+                  setStockModal(null);
+                  if (id) {
+                    try { await api.completeMedication(id); } catch {}
+                    backgroundRefresh(fetchServer);
+                  }
+                }}
+              ]);
+            }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)" }}>
+              <Ionicons name="checkmark-done-circle-outline" size={18} color="#4ade80" />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#4ade80", flex: 1 }}>Course completed (Archive)</Text>
+            </TouchableOpacity>
+
             <TouchableOpacity onPress={() => setStockModal(null)} style={{ alignItems: "center", paddingVertical: 8 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Remind me later</Text>
             </TouchableOpacity>

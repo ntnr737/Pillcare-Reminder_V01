@@ -80,6 +80,10 @@ export const api = {
   yogaLog: (days: number = 30) => req<any[]>(`/yoga/log?days=${days}`),
   applyReminderNudge: (medId: string, current_time: string, suggested_time: string) =>
     req<any>(`/medications/${medId}/apply-nudge`, { method: "POST", body: JSON.stringify({ current_time, suggested_time }) }),
+  refillMedication: (medId: string, addStock: number = 30) =>
+    req<any>(`/medications/${medId}/refill`, { method: "POST", body: JSON.stringify({ add_stock: addStock }) }),
+  completeMedication: (medId: string) =>
+    req<any>(`/medications/${medId}/complete`, { method: "POST" }),
   moodAdherenceInsight: (days: number = 14) => req<any>(`/insights/mood-adherence?days=${days}`),
   getFeatures: () => req<Features>("/me/features"),
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),

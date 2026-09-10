@@ -877,6 +877,65 @@ async def apply_reminder_nudge(med_id: str, payload: dict = Body(...), user_id: 
     return {"ok": True, "times": new_times}
 
 
+@api.post("/medications/{med_id}/refill")
+async def refill_medication(med_id: str, payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Refill stock for a medication and log the refill event."""
+    add_stock = int(payload.get("add_stock", 30))
+    med = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
+    if not med:
+        raise HTTPException(404, "Medication not found")
+    new_stock = max(0, med.get("stock", 0)) + add_stock
+    await db.medications.update_one(
+        {"id": med_id, "user_id": user_id},
+        {"$set": {"stock": new_stock, "active": True}}
+    )
+    today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
+    now_time = datetime.now(APP_TIMEZONE).strftime("%H:%M")
+    refill_event = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "medication_id": med_id,
+        "medication_name": med.get("name", "Medication"),
+        "date": today_str,
+        "scheduled_time": now_time,
+        "status": "refilled",
+        "note": f"Refilled +{add_stock} pills (Stock: {new_stock})",
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.doses.insert_one(refill_event)
+    await track_event("medication_refilled", user_id, {"medication_id": med_id, "added": add_stock, "new_stock": new_stock})
+    return {"ok": True, "stock": new_stock, "active": True}
+
+
+@api.post("/medications/{med_id}/complete")
+async def mark_medication_complete(med_id: str, user_id: str = Depends(get_current_user_id)):
+    """Mark a medication course as completed and log a course_completed milestone event."""
+    med = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
+    if not med:
+        raise HTTPException(404, "Medication not found")
+    completed_at = datetime.now(timezone.utc).isoformat()
+    await db.medications.update_one(
+        {"id": med_id, "user_id": user_id},
+        {"$set": {"active": False, "completed": True, "completed_at": completed_at}}
+    )
+    today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
+    now_time = datetime.now(APP_TIMEZONE).strftime("%H:%M")
+    complete_event = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "medication_id": med_id,
+        "medication_name": med.get("name", "Medication"),
+        "date": today_str,
+        "scheduled_time": now_time,
+        "status": "course_completed",
+        "note": f"Course completed: {med.get('name', 'Medication')} finished",
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.doses.insert_one(complete_event)
+    await track_event("medication_course_completed", user_id, {"medication_id": med_id, "name": med.get("name", "")})
+    return {"ok": True, "status": "completed"}
+
+
 # Doses
 @api.get("/doses")
 async def list_doses(date_str: str, user_id: str = Depends(get_current_user_id)):
