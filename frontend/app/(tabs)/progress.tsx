@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert, Share } from "react-native";
+import { View, Text, StyleSheet, Linking, ScrollView, TouchableOpacity, RefreshControl, Alert, Share, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -7,7 +7,7 @@ import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
-import { isHealthConnectAvailable, hasHealthPermissions, requestHealthPermissions, readTodayVitals, openHealthConnectSettings } from "@/src/lib/healthConnect";
+import { isHealthConnectAvailable, hasHealthPermissions, requestHealthPermissions, readTodayVitals, openHealthConnectSettings, syncHealthVitalsToPillCare, HealthSnapshot } from "@/src/lib/healthConnect";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed", TM = "rgba(233,233,237,0.55)",
@@ -24,8 +24,10 @@ export default function Progress() {
   const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [hcStatus, setHcStatus] = useState<"unknown" | "unavailable" | "not-granted" | "granted">("unknown");
-  const [hcData, setHcData] = useState<{ steps: number | null; heartRate: number | null; sleepHours: number | null }>({ steps: null, heartRate: null, sleepHours: null });
+  const [hcSnapshot, setHcSnapshot] = useState<HealthSnapshot | null>(null);
   const [hcLoading, setHcLoading] = useState(false);
+  const [syncingVitals, setSyncingVitals] = useState(false);
+  const [hcModalOpen, setHcModalOpen] = useState(false);
   const [moodInsight, setMoodInsight] = useState<any>(null);
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
@@ -54,7 +56,7 @@ export default function Progress() {
       const granted = await hasHealthPermissions();
       if (!granted) { setHcStatus("not-granted"); return; }
       const vitals = await readTodayVitals();
-      setHcData({ steps: vitals.steps, heartRate: vitals.heartRate, sleepHours: vitals.sleepHours });
+      setHcSnapshot(vitals);
       setHcStatus(vitals.granted ? "granted" : "not-granted");
     } catch {
       setHcStatus("unavailable");
@@ -75,7 +77,7 @@ export default function Progress() {
     try {
       const available = await isHealthConnectAvailable();
       if (!available) {
-        Alert.alert("Health Connect not available", "Install the Health Connect app from the Play Store to sync steps, heart rate and sleep.");
+        Alert.alert("Health Connect not available", "Install the Health Connect app from the Play Store to sync vitals and fitness.");
         setHcStatus("unavailable");
         return;
       }
@@ -89,6 +91,19 @@ export default function Progress() {
       setHcStatus("unavailable");
     } finally {
       setHcLoading(false);
+    }
+  };
+
+  const handleAutoSyncPillCare = async () => {
+    if (!hcSnapshot) return;
+    setSyncingVitals(true);
+    try {
+      const res = await syncHealthVitalsToPillCare(hcSnapshot);
+      Alert.alert("Vitals Synced! 🎉", `Successfully logged ${res.syncedCount} vitals into your PillCare measurements and activities.`);
+    } catch {
+      Alert.alert("Sync Error", "Could not sync vitals right now.");
+    } finally {
+      setSyncingVitals(false);
     }
   };
 
@@ -217,37 +232,127 @@ export default function Progress() {
             <View style={[s.card, { flex: 1, gap: 4 }]}><Ionicons name="flame" size={16} color={A3} /><Text style={s.stat}>{streak} <Text style={{ fontSize: 12, fontWeight: "400", color: TM }}>days</Text></Text><Text style={s.statL}>Current streak</Text></View>
             <View style={[s.card, { flex: 1, gap: 4 }]}><Ionicons name="checkmark-circle" size={16} color={A3} /><Text style={s.stat}>{totalTaken}</Text><Text style={s.statL}>Doses taken (7d)</Text></View>
           </View>
-          <Text style={s.secL}>CONNECTED DEVICES</Text>
-          <View style={s.card}>
+          <Text style={s.secL}>HEALTH CONNECT & WEARABLES</Text>
+          <View style={[s.card, { borderColor: hcStatus === "granted" ? "rgba(74,222,128,0.3)" : BD }]}>
             <View style={s.cRow}>
-              <View style={s.cI}><Ionicons name="heart-outline" size={16} color={A3} /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cT}>Health Connect</Text>
-                <Text style={s.cS}>{hcStatus === "granted" ? "Synced from Android Health Connect" : "Sync steps, heart rate & sleep from Android"}</Text>
+              <View style={[s.cI, { backgroundColor: hcStatus === "granted" ? "rgba(74,222,128,0.15)" : AB }]}>
+                <Ionicons name="heart" size={17} color={hcStatus === "granted" ? "#4ade80" : A3} />
               </View>
-              <TouchableOpacity style={s.conBtn} disabled={hcLoading} onPress={hcStatus === "granted" ? loadHealth : connectHealth}>
-                <Text style={s.conT}>{hcLoading ? "…" : hcStatus === "granted" ? "Refresh" : "Connect"}</Text>
-              </TouchableOpacity>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={s.cT}>Android Health Connect</Text>
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: hcStatus === "granted" ? "rgba(74,222,128,0.15)" : "rgba(233,233,237,0.1)" }}>
+                    <Text style={{ fontSize: 9, fontWeight: "700", color: hcStatus === "granted" ? "#4ade80" : TM }}>
+                      {hcStatus === "granted" ? "✓ CONNECTED" : hcStatus === "unavailable" ? "NOT INSTALLED" : "PERMISSION NEEDED"}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={s.cS}>
+                  {hcSnapshot?.lastSyncedAt ? `Last synced at ${hcSnapshot.lastSyncedAt}` : "Syncs vitals & fitness across devices"}
+                </Text>
+              </View>
+              <View style={{ flexDirection: "row", gap: 6 }}>
+                <TouchableOpacity style={s.conBtn} disabled={hcLoading} onPress={hcStatus === "granted" ? loadHealth : connectHealth}>
+                  <Text style={s.conT}>{hcLoading ? "…" : hcStatus === "granted" ? "Refresh" : "Connect"}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[s.conBtn, { backgroundColor: "rgba(233,233,237,0.08)", borderColor: BD }]} onPress={() => setHcModalOpen(true)}>
+                  <Ionicons name="settings-outline" size={13} color={TX} />
+                </TouchableOpacity>
+              </View>
             </View>
-            {hcStatus === "granted" ? (
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-                <View style={{ flex: 1, alignItems: "center" }}>
-                  <Text style={{ color: TX, fontSize: 16, fontWeight: "700" }}>{hcData.steps ?? "–"}</Text>
-                  <Text style={{ color: TM, fontSize: 10 }}>Steps today</Text>
+
+            {/* Metrics Dashboard */}
+            {hcStatus === "granted" && hcSnapshot ? (
+              <View style={{ gap: 10, marginTop: 4 }}>
+                {/* 1-Tap Auto-Sync to PillCare */}
+                <TouchableOpacity
+                  style={{
+                    backgroundColor: "rgba(74,222,128,0.12)",
+                    borderRadius: 10,
+                    padding: 10,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    borderWidth: 1,
+                    borderColor: "rgba(74,222,128,0.25)"
+                  }}
+                  disabled={syncingVitals}
+                  onPress={handleAutoSyncPillCare}>
+                  <Ionicons name="sync" size={14} color="#4ade80" />
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>
+                    {syncingVitals ? "Syncing vitals to PillCare..." : "Auto-Sync Vitals to PillCare Log"}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* 10 Vitals Grid */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  <View style={s.hcTile}>
+                    <Ionicons name="footsteps-outline" size={14} color="#38bdf8" />
+                    <Text style={s.hcVal}>{hcSnapshot.steps ? hcSnapshot.steps.toLocaleString() : "–"}</Text>
+                    <Text style={s.hcLbl}>Steps Today</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="heart-outline" size={14} color="#f87171" />
+                    <Text style={s.hcVal}>{hcSnapshot.heartRate ? `${hcSnapshot.heartRate}` : "–"}</Text>
+                    <Text style={s.hcLbl}>Heart Rate (bpm)</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="moon-outline" size={14} color="#a7a1db" />
+                    <Text style={s.hcVal}>{hcSnapshot.sleepHours ? `${hcSnapshot.sleepHours}` : "–"}</Text>
+                    <Text style={s.hcLbl}>Sleep (hrs)</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="pulse-outline" size={14} color="#ef4444" />
+                    <Text style={s.hcVal}>{hcSnapshot.systolic && hcSnapshot.diastolic ? `${hcSnapshot.systolic}/${hcSnapshot.diastolic}` : "–"}</Text>
+                    <Text style={s.hcLbl}>BP (mmHg)</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="water-outline" size={14} color="#fbbf24" />
+                    <Text style={s.hcVal}>{hcSnapshot.bloodGlucose ? `${hcSnapshot.bloodGlucose}` : "–"}</Text>
+                    <Text style={s.hcLbl}>Glucose (mg/dL)</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="body-outline" size={14} color="#4ade80" />
+                    <Text style={s.hcVal}>{hcSnapshot.spo2 ? `${hcSnapshot.spo2}%` : "–"}</Text>
+                    <Text style={s.hcLbl}>Oxygen (SpO₂)</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="thermometer-outline" size={14} color="#f97316" />
+                    <Text style={s.hcVal}>{hcSnapshot.bodyTemp ? `${hcSnapshot.bodyTemp}°C` : "–"}</Text>
+                    <Text style={s.hcLbl}>Body Temp</Text>
+                  </View>
+
+                  <View style={s.hcTile}>
+                    <Ionicons name="scale-outline" size={14} color="#e879f9" />
+                    <Text style={s.hcVal}>{hcSnapshot.weight ? `${hcSnapshot.weight} kg` : "–"}</Text>
+                    <Text style={s.hcLbl}>Weight</Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1, alignItems: "center" }}>
-                  <Text style={{ color: TX, fontSize: 16, fontWeight: "700" }}>{hcData.heartRate ?? "–"}</Text>
-                  <Text style={{ color: TM, fontSize: 10 }}>Heart rate (bpm)</Text>
-                </View>
-                <View style={{ flex: 1, alignItems: "center" }}>
-                  <Text style={{ color: TX, fontSize: 16, fontWeight: "700" }}>{hcData.sleepHours ?? "–"}</Text>
-                  <Text style={{ color: TM, fontSize: 10 }}>Sleep (hrs)</Text>
+
+                {/* Compatible Apps Footer */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingTop: 4, borderTopWidth: 1, borderTopColor: BD }}>
+                  <Text style={{ fontSize: 9, color: TM, fontWeight: "600" }}>SUPPORTED DATA SOURCES</Text>
+                  <Text style={{ fontSize: 9, color: A3, fontWeight: "700" }}>Google Fit • Samsung Health • Fitbit • Garmin • Oura</Text>
                 </View>
               </View>
             ) : (
-              <TouchableOpacity onPress={openHealthConnectSettings}>
-                <Text style={[s.cS, { fontStyle: "italic", marginTop: 6 }]}>{hcStatus === "unavailable" ? "Install Health Connect from the Play Store, then tap Connect" : "After installing Health Connect, open it → Apps → PillCare → Allow permissions"}</Text>
-              </TouchableOpacity>
+              <View style={{ gap: 8, marginTop: 4 }}>
+                <Text style={{ fontSize: 11, color: TM, lineHeight: 16 }}>
+                  Health Connect consolidates vitals from Google Fit, Samsung Health, Garmin, Fitbit, and Smart Rings directly into PillCare.
+                </Text>
+                <TouchableOpacity style={{ alignSelf: "flex-start" }} onPress={openHealthConnectSettings}>
+                  <Text style={{ fontSize: 11, color: AC, fontWeight: "700", textDecorationLine: "underline" }}>
+                    {hcStatus === "unavailable" ? "Install Health Connect app from Google Play →" : "Configure app permissions in Health Connect →"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
           {adh && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(145,132,217,0.3)" }]}>
@@ -303,6 +408,61 @@ export default function Progress() {
           ))}
         </>)}
       </ScrollView>
+
+      {/* Health Connect Detail & Permission Modal */}
+      <Modal visible={hcModalOpen} transparent animationType="slide" onRequestClose={() => setHcModalOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }}>
+          <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 14 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="heart" size={20} color="#4ade80" />
+                <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff" }}>Health Connect Integration</Text>
+              </View>
+              <TouchableOpacity onPress={() => setHcModalOpen(false)}>
+                <Ionicons name="close" size={22} color={TX} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+              <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>
+                PillCare seamlessly syncs 10 clinical metrics from Android Health Connect, Apple Health, Google Fit, and wearable smart devices:
+              </Text>
+
+              {[
+                { name: "Blood Pressure", unit: "mmHg (Systolic / Diastolic)", icon: "pulse-outline", color: "#ef4444" },
+                { name: "Blood Glucose", unit: "mg/dL / mmol/L", icon: "water-outline", color: "#fbbf24" },
+                { name: "Heart Rate", unit: "Beats Per Minute (bpm)", icon: "heart-outline", color: "#f87171" },
+                { name: "Oxygen Saturation", unit: "SpO₂ (%)", icon: "body-outline", color: "#4ade80" },
+                { name: "Body Temperature", unit: "°C / °F", icon: "thermometer-outline", color: "#f97316" },
+                { name: "Body Weight", unit: "kg / lbs", icon: "scale-outline", color: "#e879f9" },
+                { name: "Daily Steps", unit: "Total step count", icon: "footsteps-outline", color: "#38bdf8" },
+                { name: "Sleep Sessions", unit: "Hours & Rest duration", icon: "moon-outline", color: "#a7a1db" },
+                { name: "Hydration", unit: "Water volume (mL / oz)", icon: "water", color: "#38bdf8" },
+                { name: "Active Calories", unit: "Kilocalories (kcal)", icon: "flame-outline", color: "#f97316" },
+              ].map(item => (
+                <View key={item.name} style={{ flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: "#252837", padding: 10, borderRadius: 10 }}>
+                  <Ionicons name={item.icon as any} size={18} color={item.color} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: TX }}>{item.name}</Text>
+                    <Text style={{ fontSize: 10, color: TM }}>{item.unit}</Text>
+                  </View>
+                  <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
+                </View>
+              ))}
+
+              <TouchableOpacity
+                style={{ backgroundColor: AC, borderRadius: 12, padding: 13, alignItems: "center", marginTop: 6 }}
+                onPress={() => {
+                  setHcModalOpen(false);
+                  openHealthConnectSettings();
+                }}>
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Open Health Connect Android Settings</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <UpgradePrompt
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
@@ -326,4 +486,6 @@ const s = StyleSheet.create({
   grid: { flexDirection: "row", gap: 10 }, stat: { fontSize: 20, fontWeight: "700", color: TX }, statL: { fontSize: 10, color: TM },
   secL: { fontSize: 10, letterSpacing: 1, color: TM, fontWeight: "700" },
   conBtn: { paddingHorizontal: 10, height: 28, borderRadius: 8, backgroundColor: AB, borderWidth: 1, borderColor: "rgba(145,132,217,0.25)", alignItems: "center", justifyContent: "center" }, conT: { fontSize: 10, color: A3, fontWeight: "700" },
+  hcTile: { width: "48%", backgroundColor: "#1e2030", borderRadius: 10, padding: 10, gap: 3, borderWidth: 1, borderColor: BD },
+  hcVal: { fontSize: 16, fontWeight: "700", color: TX }, hcLbl: { fontSize: 10, color: TM },
 });
