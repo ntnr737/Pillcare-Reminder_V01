@@ -430,7 +430,7 @@ export default function Today() {
               onPress={async (e) => {
                 e.stopPropagation?.();
                 const { set } = await import("@/src/lib/store");
-                await set("yoga_done_" + date, true);
+                await set("yoga_done_" + date, [1, 2, 3, 4, 5]);
                 track("yoga_done");
                 Alert.alert("Yoga Completed", "Great job! Daily yoga logged for today.");
               }}>
