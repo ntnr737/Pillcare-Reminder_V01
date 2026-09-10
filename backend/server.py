@@ -2601,39 +2601,39 @@ async def admin_retention(_: None = Depends(require_admin)):
 
 PLAN_FEATURES = {
     "free": {
-        "max_medications": 3,
-        "history_days": 7,
-        "ai_insights": "none",
-        "caregiver_alerts": 1,
-        "nearby_results": 5,
-        "yoga_full": False,
-        "export_data": False,
-        "brand_generic": False,
-        "scanner": False,
-        "max_appointments": 2,
-        "price_inr": 0,
-        "plan_label": "Free",
-    },
-    "basic": {
-        "max_medications": 5,
-        "history_days": 30,
-        "ai_insights": "weekly",
-        "caregiver_alerts": 3,
-        "nearby_results": 10,
+        "max_medications": 999,
+        "history_days": 365,
+        "ai_insights": "daily",
+        "caregiver_alerts": 999,
+        "nearby_results": 50,
         "yoga_full": True,
         "export_data": True,
-        "brand_generic": False,
-        "scanner": False,
-        "max_appointments": 10,
+        "brand_generic": True,
+        "scanner": True,
+        "max_appointments": 999,
+        "price_inr": 0,
+        "plan_label": "Pro Dharma (Unlocked)",
+    },
+    "basic": {
+        "max_medications": 999,
+        "history_days": 365,
+        "ai_insights": "daily",
+        "caregiver_alerts": 999,
+        "nearby_results": 50,
+        "yoga_full": True,
+        "export_data": True,
+        "brand_generic": True,
+        "scanner": True,
+        "max_appointments": 999,
         "price_inr": 30,
-        "plan_label": "Basic",
+        "plan_label": "Pro Dharma",
     },
     "premium": {
         "max_medications": 999,
-        "history_days": 90,
+        "history_days": 365,
         "ai_insights": "daily",
         "caregiver_alerts": 999,
-        "nearby_results": 20,
+        "nearby_results": 50,
         "yoga_full": True,
         "export_data": True,
         "brand_generic": True,
@@ -2661,12 +2661,12 @@ PLAN_FEATURES = {
 
 async def get_user_features(user_id: str) -> dict:
     sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
-    plan = sub.get("plan", "free") if sub else "free"
-    features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["free"]))
+    plan = sub.get("plan", "premium") if sub else "premium"
+    features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["premium"]))
     if sub and sub.get("overrides"):
         features.update(sub["overrides"])
     features["plan"] = plan
-    features["plan_expires"] = sub.get("expires_at").isoformat() if sub and sub.get("expires_at") else None
+    features["plan_expires"] = sub.get("expires_at").isoformat() if sub and sub.get("expires_at") else "2099-12-31T23:59:59Z"
     return features
 
 @api.get("/me/features")
