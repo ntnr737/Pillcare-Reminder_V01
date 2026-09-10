@@ -10,8 +10,9 @@ import { getFeatures } from "@/src/lib/features";
 import { isHealthConnectAvailable, hasHealthPermissions, requestHealthPermissions, readTodayVitals, openHealthConnectSettings, syncHealthVitalsToPillCare, HealthSnapshot } from "@/src/lib/healthConnect";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
-const BG = "#161826", SF = "#232532", TX = "#e9e9ed", TM = "rgba(233,233,237,0.55)",
-  AC = "#9184d9", A3 = "#a7a1db", AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
+const BG = "#0B0D14", SF = "#161926", TX = "#F9FAFB", TM = "rgba(249, 250, 251, 0.65)",
+  AC = "#8B5CF6", A3 = "#A78BFA", AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)",
+  REFILL = "#06B6D4", SUCCESS = "#10B981", YOGA = "#A855F7";
 const DL = ["M", "T", "W", "T", "F", "S", "S"];
 
 export default function Progress() {

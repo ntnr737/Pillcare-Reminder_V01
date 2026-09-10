@@ -9,9 +9,9 @@ import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
 import { useEffect } from "react";
 
-const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
-  TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
-  AB = "rgba(145,132,217,0.14)", BD = "rgba(233,233,237,0.1)";
+const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
+  TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
+  AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)";
 
 const EMERGENCY: Record<string, { number: string; label: string }> = {
   US: { number: "911", label: "Police, Fire & Medical — nationwide" },
