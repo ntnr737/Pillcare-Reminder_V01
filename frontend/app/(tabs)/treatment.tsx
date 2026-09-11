@@ -11,6 +11,7 @@ import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 
@@ -115,6 +116,7 @@ export default function Treatment() {
   const [vS, setVS] = useState("");
   const [vN, setVN] = useState("");
   const [saving, setSaving] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string } | null>(null);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const safeCompletedSteps = Array.isArray(completedSteps) ? completedSteps : [];
   const isStepDone = (num: number) => safeCompletedSteps.includes(num);
@@ -646,12 +648,17 @@ export default function Treatment() {
                       </View>
                     </View>
                     <TouchableOpacity
-                      style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,0,0,0.08)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: "rgba(255,0,0,0.15)" }}
-                      onPress={() => Linking.openURL(step.youtube_video || step.youtube_channel || "https://www.youtube.com/watch?v=QPjwawKxuLw")}>
-                      <Ionicons name="logo-youtube" size={14} color="#FF0000" />
-                      <Text style={{ fontSize: 10, color: TX, flex: 1 }}>Watch on YouTube</Text>
+                      style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "rgba(255,0,0,0.12)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: "rgba(255,0,0,0.3)" }}
+                      onPress={() => setActiveVideo({
+                        url: step.youtube_video || step.youtube_channel || "https://www.youtube.com/watch?v=QPjwawKxuLw",
+                        title: step.name,
+                        channel: step.channel || "Swami Ramdev",
+                        benefit: step.benefit
+                      })}>
+                      <Ionicons name="play-circle" size={16} color="#FF0000" />
+                      <Text style={{ fontSize: 11, color: TX, flex: 1, fontWeight: "700" }}>Watch Inside App</Text>
                       <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Swami Ramdev"}</Text>
-                      <Ionicons name="open-outline" size={10} color={TM} />
+                      <Ionicons name="chevron-forward" size={12} color={A3} />
                     </TouchableOpacity>
                     <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, backgroundColor: stepDone ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: stepDone ? "rgba(74,222,128,0.3)" : BD }} onPress={() => toggleStepDone(step)}>
                       <Ionicons name={stepDone ? "checkmark-circle" : "ellipse-outline"} size={14} color={stepDone ? "#4ade80" : TM} />
@@ -783,6 +790,14 @@ export default function Treatment() {
 
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />
       <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Full yoga library" description="Free plan includes a daily yoga tip. Upgrade to Pro Dharma for full guided routines with video demos." />
+      <VideoPlayerModal
+        visible={!!activeVideo}
+        onClose={() => setActiveVideo(null)}
+        videoUrl={activeVideo?.url}
+        title={activeVideo?.title}
+        channel={activeVideo?.channel}
+        benefit={activeVideo?.benefit}
+      />
     </SafeAreaView>
   );
 }
