@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView, Alert } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { Feather } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { PrimaryButton } from "./PrimaryButton";
 import { api } from "@/src/lib/api";
@@ -112,13 +113,17 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="overFullScreen" transparent onRequestClose={onClose}>
-      <View style={styles.backdrop}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.sheet}>
+      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.sheet}
+          onStartShouldSetResponder={() => true}
+        >
           <View style={styles.handle} />
           <View style={styles.header}>
             <Text style={styles.title}>Add Medication</Text>
-            <TouchableOpacity testID="close-add-med" onPress={onClose}>
-              <Text style={styles.close}>Close</Text>
+            <TouchableOpacity testID="close-add-med" onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Feather name="x" size={22} color={theme.colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -245,7 +250,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             />
           )}
         </KeyboardAvoidingView>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 }

@@ -444,8 +444,8 @@ export default function Nearby() {
 
       {/* Place detail sheet — shown inside app, no redirect */}
       <Modal visible={!!selectedPlace} transparent animationType="slide" onRequestClose={() => setSelectedPlace(null)}>
-        <View style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }}>
-          <View style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: BD }}>
+        <TouchableOpacity style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }} activeOpacity={1} onPress={() => setSelectedPlace(null)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: BD }}>
             {selectedPlace && (<>
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <View style={{ flex: 1, gap: 4 }}>
@@ -474,7 +474,7 @@ export default function Nearby() {
                     ) : null}
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setSelectedPlace(null)} style={{ padding: 4 }}>
+                <TouchableOpacity onPress={() => setSelectedPlace(null)} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                   <Ionicons name="close" size={22} color={TM} />
                 </TouchableOpacity>
               </View>
@@ -508,14 +508,14 @@ export default function Nearby() {
               </View>
               <View style={{ height: 8 }} />
             </>)}
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Phone prompt modal when location has no phone registered */}
       <Modal visible={!!phonePromptPlace} transparent animationType="fade" onRequestClose={() => setPhonePromptPlace(null)}>
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 20 }}>
-          <View style={{ width: "100%", maxWidth: 400, backgroundColor: SF, borderRadius: 16, padding: 20, gap: 14, borderWidth: 1, borderColor: BD }}>
+        <TouchableOpacity style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 20 }} activeOpacity={1} onPress={() => setPhonePromptPlace(null)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ width: "100%", maxWidth: 400, backgroundColor: SF, borderRadius: 16, padding: 20, gap: 14, borderWidth: 1, borderColor: BD }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
@@ -523,7 +523,7 @@ export default function Nearby() {
                   WhatsApp {phonePromptPlace?.place.name}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setPhonePromptPlace(null)}>
+              <TouchableOpacity onPress={() => setPhonePromptPlace(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={20} color={TM} />
               </TouchableOpacity>
             </View>
@@ -564,8 +564,8 @@ export default function Nearby() {
               <Ionicons name="search-outline" size={14} color={A3} />
               <Text style={{ color: A3, fontSize: 12, fontWeight: "600" }}>Search Store Phone on Google</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );

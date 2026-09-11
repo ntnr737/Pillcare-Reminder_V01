@@ -311,14 +311,14 @@ export default function Treatment() {
 
           {/* Drug-Food Modal Guide */}
           <Modal visible={foodGuideOpen} transparent animationType="slide" onRequestClose={() => setFoodGuideOpen(false)}>
-            <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }}>
-              <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
+            <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setFoodGuideOpen(false)}>
+              <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
                     <Text style={{ fontSize: 17, fontWeight: "700", color: "#fff" }}>Drug-Food Do's & Don'ts Guide</Text>
                   </View>
-                  <TouchableOpacity onPress={() => setFoodGuideOpen(false)}>
+                  <TouchableOpacity onPress={() => setFoodGuideOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                     <Ionicons name="close" size={22} color={TX} />
                   </TouchableOpacity>
                 </View>
@@ -366,8 +366,8 @@ export default function Treatment() {
                     </View>
                   ))}
                 </ScrollView>
-              </View>
-            </View>
+              </TouchableOpacity>
+            </TouchableOpacity>
           </Modal>
           {fm.length === 0 ? (
             <View style={s.empty}>
@@ -604,24 +604,30 @@ export default function Treatment() {
       {/* Action Sheet */}
       <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setSheet(false)}>
-          <View style={s.sBox}><View style={s.hand} /><Text style={s.sTitle}>What would you like to do?</Text>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sBox}>
+            <View style={s.hand} />
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <Text style={s.sTitle}>What would you like to do?</Text>
+              <TouchableOpacity onPress={() => setSheet(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
             {OPTS.map(o => (<TouchableOpacity key={o.title} style={s.sOpt} onPress={o.fn}><View style={s.cI}><Ionicons name={o.icon as any} size={17} color={TX} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{o.title}</Text><Text style={s.cS}>{o.body}</Text></View><Ionicons name="chevron-forward" size={14} color={TM} /></TouchableOpacity>))}
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
       {/* Yoga Detail Modal */}
       <Modal visible={yogaOpen} transparent animationType="slide" onRequestClose={() => setYogaOpen(false)}>
-        {/* No TouchableOpacity backdrop — modal stays open on outside tap */}
-        <View style={s.ovl}>
-          <View style={[s.sBox, { maxHeight: "92%" }]}>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setYogaOpen(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={[s.sBox, { maxHeight: "92%" }]}>
             {/* Header row with close X */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
                 <Ionicons name="sparkles" size={10} color={A3} />
                 <Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text>
               </View>
-              <TouchableOpacity onPress={() => setYogaOpen(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(233,233,237,0.1)", alignItems: "center", justifyContent: "center" }}>
+              <TouchableOpacity onPress={() => setYogaOpen(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(233,233,237,0.1)", alignItems: "center", justifyContent: "center" }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={16} color={TM} />
               </TouchableOpacity>
             </View>
@@ -709,8 +715,8 @@ export default function Treatment() {
                 <Text style={s.subT}>Set Daily Reminder</Text>
               </TouchableOpacity>
             )}
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {yogaTimePicker && (
@@ -727,10 +733,15 @@ export default function Treatment() {
       )}
       {/* Measurement Modal */}
       <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
-        <View style={s.ovl}>
-          <View style={s.sBox}>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setMModal({ open: false, type: null })}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sBox}>
             <View style={s.hand} />
-            <Text style={s.sTitle}>Log {mModal.type?.label}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={s.sTitle}>Log {mModal.type?.label}</Text>
+              <TouchableOpacity onPress={() => setMModal({ open: false, type: null })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 2 }}>
               <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Unit:</Text>
               {(mModal.type?.units || [mModal.type?.unit || ""]).map((u: string) => (
@@ -759,16 +770,21 @@ export default function Treatment() {
             <TextInput value={vN} onChangeText={setVN} placeholder="Notes / Observations (optional)" placeholderTextColor={TM} style={s.inp} />
             <TouchableOpacity style={s.subBtn} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
             <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Activity Modal */}
       <Modal visible={aModal.open} transparent animationType="slide" onRequestClose={() => setAModal({ open: false, type: null })}>
-        <View style={s.ovl}>
-          <View style={s.sBox}>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setAModal({ open: false, type: null })}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sBox}>
             <View style={s.hand} />
-            <Text style={s.sTitle}>Log {aModal.type?.label}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={s.sTitle}>Log {aModal.type?.label}</Text>
+              <TouchableOpacity onPress={() => setAModal({ open: false, type: null })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 2 }}>
               <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Unit:</Text>
               {(aModal.type?.units || [aModal.type?.unit || ""]).map((u: string) => (
@@ -784,8 +800,8 @@ export default function Treatment() {
             <TextInput value={vN} onChangeText={setVN} placeholder="Notes (optional)" placeholderTextColor={TM} style={s.inp} />
             <TouchableOpacity style={s.subBtn} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
             <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />

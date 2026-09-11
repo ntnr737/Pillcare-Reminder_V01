@@ -421,14 +421,14 @@ export default function Progress() {
 
       {/* Health Connect Detail & Permission Modal */}
       <Modal visible={hcModalOpen} transparent animationType="slide" onRequestClose={() => setHcModalOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 14 }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setHcModalOpen(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 14 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="heart" size={20} color="#4ade80" />
                 <Text style={{ fontSize: 16, fontWeight: "700", color: "#fff" }}>Health Connect Integration</Text>
               </View>
-              <TouchableOpacity onPress={() => setHcModalOpen(false)}>
+              <TouchableOpacity onPress={() => setHcModalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color={TX} />
               </TouchableOpacity>
             </View>
@@ -461,16 +461,17 @@ export default function Progress() {
               ))}
 
               <TouchableOpacity
-                style={{ backgroundColor: AC, borderRadius: 12, padding: 13, alignItems: "center", marginTop: 6 }}
-                onPress={() => {
+                style={{ backgroundColor: AC, padding: 12, borderRadius: 10, alignItems: "center", marginTop: 8 }}
+                onPress={async () => {
                   setHcModalOpen(false);
-                  openHealthConnectSettings();
+                  const granted = await requestHealthPermissions();
+                  if (!granted) openHealthConnectSettings();
                 }}>
-                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Open Health Connect Android Settings</Text>
+                <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Sync Now / Connect System Settings</Text>
               </TouchableOpacity>
             </ScrollView>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <UpgradePrompt

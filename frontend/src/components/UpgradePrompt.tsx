@@ -35,8 +35,17 @@ const PREMIUM_PERKS = [
 export function UpgradePrompt({ visible, onClose, feature, description }: Props) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={s.overlay}>
-        <View style={s.box}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation?.()}
+          style={s.box}
+        >
+          <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 2 }}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Ionicons name="close" size={20} color={TM} />
+            </TouchableOpacity>
+          </View>
           <View style={s.iconWrap}>
             <Ionicons name="lock-closed" size={24} color={AC} />
           </View>
@@ -91,8 +100,8 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
           <TouchableOpacity style={s.closeBtn} onPress={onClose}>
             <Text style={s.closeTx}>Maybe later</Text>
           </TouchableOpacity>
-        </View>
-      </View>
+        </TouchableOpacity>
+      </TouchableOpacity>
     </Modal>
   );
 }

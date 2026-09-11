@@ -232,11 +232,16 @@ export default function Appointments() {
       </TouchableOpacity>
 
       <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
-        <View style={s.ovl}>
-          <ScrollView>
-            <View style={s.sheet}>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setModal(false)}>
+          <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}>
+            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sheet}>
               <View style={s.handle} />
-              <Text style={s.sheetT}>{editing.id ? "Edit Appointment" : "Book Appointment"}</Text>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <Text style={s.sheetT}>{editing.id ? "Edit Appointment" : "Book Appointment"}</Text>
+                <TouchableOpacity onPress={() => setModal(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="close" size={20} color={TM} />
+                </TouchableOpacity>
+              </View>
 
               <Text style={s.label}>Doctor Name *</Text>
               <TextInput value={editing.doctor_name} onChangeText={v => setEditing(e => ({ ...e, doctor_name: v }))} placeholder="Dr. Name" placeholderTextColor={TM} style={s.inp} />
@@ -322,9 +327,9 @@ export default function Appointments() {
               <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setModal(false)}>
                 <Text style={{ color: TM }}>Cancel</Text>
               </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </ScrollView>
-        </View>
+        </TouchableOpacity>
       </Modal>
         <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Appointment limit reached" description={`Free plan supports up to ${getFeatures().max_appointments} appointments. Upgrade to Pro Dharma for unlimited.`} />
     </SafeAreaView>

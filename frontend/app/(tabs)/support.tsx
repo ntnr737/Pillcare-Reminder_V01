@@ -329,72 +329,86 @@ export default function Support() {
 
       {/* Emergency Modal */}
       <Modal visible={emergencyOpen} transparent animationType="slide" onRequestClose={() => setEmergencyOpen(false)}>
-        <View style={s.ovl}><View style={s.sheet}>
-          <View style={s.handle} />
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-            <Ionicons name="medkit" size={17} color="#e58585" />
-            <Text style={s.sheetT}>Emergency Helpline</Text>
-          </View>
-          {emStatus === "locating" && <Text style={s.cS}>Locating you to find the right local number…</Text>}
-          {emStatus === "error" && <Text style={s.cS}>Couldn't detect location. Showing international emergency number.</Text>}
-          {(emStatus === "ready" || emStatus === "error") && (
-            <View style={[s.card, { borderColor: "rgba(229,133,133,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
-              <View style={[s.cIco, { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(229,133,133,0.14)" }]}><Ionicons name="call" size={18} color="#e58585" /></View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cS}>{emPlace || "Your area"}</Text>
-                <Text style={[s.cT, { fontSize: 22, fontWeight: "700", color: "#e58585" }]}>{emNumber || "112"}</Text>
-                <Text style={s.cS}>{emLabel}</Text>
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setEmergencyOpen(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sheet}>
+            <View style={s.handle} />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
+                <Ionicons name="medkit" size={17} color="#e58585" />
+                <Text style={s.sheetT}>Emergency Helpline</Text>
               </View>
-              <TouchableOpacity style={[s.connectBtn, { backgroundColor: "#e58585", borderColor: "#e58585" }]} onPress={() => Linking.openURL(`tel:${emNumber || "112"}`)}>
-                <Text style={[s.connectTx, { color: "#fff" }]}>Call</Text>
+              <TouchableOpacity onPress={() => setEmergencyOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
               </TouchableOpacity>
             </View>
-          )}
-          <Text style={s.cS}>This number routes to your region's emergency dispatch based on your GPS location.</Text>
-          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setEmergencyOpen(false)}><Text style={{ color: TM }}>Close</Text></TouchableOpacity>
-        </View></View>
+            {emStatus === "locating" && <Text style={s.cS}>Locating you to find the right local number…</Text>}
+            {emStatus === "error" && <Text style={s.cS}>Couldn't detect location. Showing international emergency number.</Text>}
+            {(emStatus === "ready" || emStatus === "error") && (
+              <View style={[s.card, { borderColor: "rgba(229,133,133,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
+                <View style={[s.cIco, { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(229,133,133,0.14)" }]}><Ionicons name="call" size={18} color="#e58585" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cS}>{emPlace || "Your area"}</Text>
+                  <Text style={[s.cT, { fontSize: 22, fontWeight: "700", color: "#e58585" }]}>{emNumber || "112"}</Text>
+                  <Text style={s.cS}>{emLabel}</Text>
+                </View>
+                <TouchableOpacity style={[s.connectBtn, { backgroundColor: "#e58585", borderColor: "#e58585" }]} onPress={() => Linking.openURL(`tel:${emNumber || "112"}`)}>
+                  <Text style={[s.connectTx, { color: "#fff" }]}>Call</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <Text style={s.cS}>This number routes to your region's emergency dispatch based on your GPS location.</Text>
+            <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setEmergencyOpen(false)}><Text style={{ color: TM }}>Close</Text></TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       {/* Caregiver WhatsApp Modal */}
       <Modal visible={caregiverOpen} transparent animationType="slide" onRequestClose={() => { setCaregiverOpen(false); setJustConnected(false); }}>
-        <View style={s.ovl}><View style={s.sheet}>
-          <View style={s.handle} />
-          {justConnected ? (<>
-            <View style={{ alignItems: "center", gap: 8, paddingVertical: 4 }}>
-              <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(74,222,128,0.15)", alignItems: "center", justifyContent: "center" }}>
-                <Ionicons name="checkmark-circle" size={30} color="#4ade80" />
+        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sheet}>
+            <View style={s.handle} />
+            {justConnected ? (<>
+              <View style={{ alignItems: "center", gap: 8, paddingVertical: 4 }}>
+                <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(74,222,128,0.15)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="checkmark-circle" size={30} color="#4ade80" />
+                </View>
+                <Text style={[s.sheetT, { textAlign: "center" }]}>Connected!</Text>
+                <Text style={[s.cS, { textAlign: "center", lineHeight: 17 }]}>Caregiver number {connectedNumber} saved. They'll receive WhatsApp alerts when you miss a dose.</Text>
               </View>
-              <Text style={[s.sheetT, { textAlign: "center" }]}>Connected!</Text>
-              <Text style={[s.cS, { textAlign: "center", lineHeight: 17 }]}>Caregiver number {connectedNumber} saved. They'll receive WhatsApp alerts when you miss a dose.</Text>
+              <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
+                <Text style={[s.subT, { color: "#000" }]}>Done</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
+                <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
+              </TouchableOpacity>
+            </>) : (<>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="logo-whatsapp" size={20} color="#4ade80" />
+                <Text style={s.sheetT}>Connect Caregiver via WhatsApp</Text>
+              </View>
+              <TouchableOpacity onPress={() => setCaregiverOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
-              <Text style={[s.subT, { color: "#000" }]}>Done</Text>
+            <Text style={s.cS}>Enter your caregiver's WhatsApp number. They'll receive alerts when you miss a dose.</Text>
+            <TextInput
+              value={caregiverPhone} onChangeText={setCaregiverPhone}
+              placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM}
+              keyboardType="phone-pad" style={s.inp}
+            />
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={saveCaregiverPhone} disabled={savingCg || !caregiverPhone.trim()}>
+              <Text style={[s.subT, { color: "#000" }]}>{savingCg ? "Saving…" : "Save & Connect"}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
-              <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
-            </TouchableOpacity>
-          </>) : (<>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Ionicons name="logo-whatsapp" size={20} color="#4ade80" />
-            <Text style={s.sheetT}>Connect Caregiver via WhatsApp</Text>
-          </View>
-          <Text style={s.cS}>Enter your caregiver's WhatsApp number. They'll receive alerts when you miss a dose.</Text>
-          <TextInput
-            value={caregiverPhone} onChangeText={setCaregiverPhone}
-            placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM}
-            keyboardType="phone-pad" style={s.inp}
-          />
-          <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={saveCaregiverPhone} disabled={savingCg || !caregiverPhone.trim()}>
-            <Text style={[s.subT, { color: "#000" }]}>{savingCg ? "Saving…" : "Save & Connect"}</Text>
+            {caregiverConnected && (
+              <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
+                <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
+            </>)}
           </TouchableOpacity>
-          {caregiverConnected && (
-            <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
-              <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-          </>)}
-        </View></View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );

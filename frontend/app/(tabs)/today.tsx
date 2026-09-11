@@ -582,9 +582,14 @@ export default function Today() {
       {/* Calendar modal with green/red coloring */}
       <Modal visible={calOpen} transparent animationType="fade" onRequestClose={() => setCalOpen(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setCalOpen(false)}>
-          <View style={s.cal}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.cal}>
             <View style={s.hand} />
-            <Text style={s.calT}>{new Date().toLocaleString("default", { month: "long", year: "numeric" })}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: 4 }}>
+              <Text style={s.calT}>{new Date().toLocaleString("default", { month: "long", year: "numeric" })}</Text>
+              <TouchableOpacity onPress={() => setCalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
             <View style={{ flexDirection: "row", gap: 12, marginBottom: 4 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#4ade80" }} /><Text style={{ fontSize: 9, color: TM }}>All taken</Text></View>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#e5b285" }} /><Text style={{ fontSize: 9, color: TM }}>Partial</Text></View>
@@ -611,16 +616,21 @@ export default function Today() {
               <View style={[s.dI, { borderRadius: 19 }]}><Ionicons name="flame" size={19} color={A3} /></View>
               <View><Text style={s.dN}>{streak} day streak</Text><Text style={s.dM}>Keep it going!</Text></View>
             </View>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
       {/* Action sheet — same as Treatment tab */}
       <Modal visible={actionSheet} transparent animationType="slide" onRequestClose={() => setActionSheet(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setActionSheet(false)}>
-          <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
-            <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>What would you like to do?</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>What would you like to do?</Text>
+              <TouchableOpacity onPress={() => setActionSheet(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
             {[
               { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); handleAddMedication(); } },
               { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
@@ -639,18 +649,23 @@ export default function Today() {
                 <Ionicons name="chevron-forward" size={14} color={TM} />
               </TouchableOpacity>
             ))}
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
       {/* Out of stock modal */}
       <Modal visible={!!stockModal} transparent animationType="slide" onRequestClose={() => setStockModal(null)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockModal(null)}>
-          <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Ionicons name={(stockModal?.stock ?? 0) <= 0 ? "alert-circle" : "warning"} size={22} color={(stockModal?.stock ?? 0) <= 0 ? "#f87171" : "#fbbf24"} />
-              <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{(stockModal?.stock ?? 0) <= 0 ? `${stockModal?.name} is out of stock` : `${stockModal?.name} — only ${stockModal?.stock} left`}</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <Ionicons name={(stockModal?.stock ?? 0) <= 0 ? "alert-circle" : "warning"} size={22} color={(stockModal?.stock ?? 0) <= 0 ? "#f87171" : "#fbbf24"} />
+                <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{(stockModal?.stock ?? 0) <= 0 ? `${stockModal?.name} is out of stock` : `${stockModal?.name} — only ${stockModal?.stock} left`}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setStockModal(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
             </View>
             <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>{(stockModal?.stock ?? 0) <= 0 ? "You have 0 pills remaining. Refill your stock to continue reminders, or mark this treatment course as complete." : "Running low on medication — refill your stock or find a nearby pharmacy before running out."}</Text>
 
@@ -712,20 +727,20 @@ export default function Today() {
             <TouchableOpacity onPress={() => setStockModal(null)} style={{ alignItems: "center", paddingVertical: 8 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Remind me later</Text>
             </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
       {/* Drug-Food Modal Guide */}
       <Modal visible={foodGuideOpen} transparent animationType="slide" onRequestClose={() => setFoodGuideOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }}>
-          <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setFoodGuideOpen(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
                 <Text style={{ fontSize: 17, fontWeight: "700", color: "#fff" }}>Drug-Food Do's & Don'ts Guide</Text>
               </View>
-              <TouchableOpacity onPress={() => setFoodGuideOpen(false)}>
+              <TouchableOpacity onPress={() => setFoodGuideOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={22} color={TX} />
               </TouchableOpacity>
             </View>
@@ -773,8 +788,8 @@ export default function Today() {
                 </View>
               ))}
             </ScrollView>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <UpgradePrompt

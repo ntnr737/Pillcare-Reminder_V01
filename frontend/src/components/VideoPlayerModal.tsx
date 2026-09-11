@@ -70,9 +70,13 @@ export function VideoPlayerModal({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={s.overlay}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
         <SafeAreaView style={s.safeContainer} edges={["top", "bottom"]}>
-          <View style={[s.cardContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <TouchableOpacity
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation?.()}
+            style={[s.cardContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}
+          >
             {/* Modal Header */}
             <View style={s.headerRow}>
               <View style={s.headerLeft}>
@@ -90,7 +94,7 @@ export function VideoPlayerModal({
                   ) : null}
                 </View>
               </View>
-              <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.7}>
+              <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={20} color={TM} />
               </TouchableOpacity>
             </View>
@@ -161,9 +165,9 @@ export function VideoPlayerModal({
                 <Text style={s.doneBtnText}>Done Session</Text>
               </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         </SafeAreaView>
-      </View>
+      </TouchableOpacity>
     </Modal>
   );
 }
