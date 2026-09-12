@@ -17,7 +17,7 @@ module.exports = function gradleWrapperPlugin(config) {
   return withDangerousMod(config, [
     "android",
     async (config) => {
-      // Set gradle wrapper distributionUrl to standard gradle-8.10.2-bin.zip
+      // Set gradle wrapper distributionUrl to AGP-required gradle-8.13-bin.zip
       const wrapperPath = path.join(
         config.modRequest.platformProjectRoot,
         "gradle/wrapper/gradle-wrapper.properties"
@@ -26,7 +26,7 @@ module.exports = function gradleWrapperPlugin(config) {
         let content = fs.readFileSync(wrapperPath, "utf8");
         content = content.replace(
           /distributionUrl=.*/g,
-          "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip"
+          "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.13-bin.zip"
         );
         fs.writeFileSync(wrapperPath, content, "utf8");
       }
