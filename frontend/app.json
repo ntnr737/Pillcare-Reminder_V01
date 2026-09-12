@@ -76,7 +76,6 @@
           }
         }
       ],
-      "./health-connect-plugin",
       "./sound-plugin",
       "./gradle-wrapper-plugin",
       "expo-font",
