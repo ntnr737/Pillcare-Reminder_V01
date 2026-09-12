@@ -6,7 +6,7 @@ module.exports = function gradleWrapperPlugin(config) {
   return withDangerousMod(config, [
     "android",
     async (config) => {
-      // 1. Fix gradle wrapper distributionUrl to valid 8.14.3
+      // 1. Set gradle wrapper distributionUrl to official stable Expo 57 / RN 0.76+ release gradle-8.10.2-bin.zip
       const wrapperPath = path.join(
         config.modRequest.platformProjectRoot,
         "gradle/wrapper/gradle-wrapper.properties"
@@ -15,7 +15,7 @@ module.exports = function gradleWrapperPlugin(config) {
         let content = fs.readFileSync(wrapperPath, "utf8");
         content = content.replace(
           /distributionUrl=.*/g,
-          "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.14.3-bin.zip"
+          "distributionUrl=https\\://services.gradle.org/distributions/gradle-8.10.2-bin.zip"
         );
         fs.writeFileSync(wrapperPath, content, "utf8");
       }
