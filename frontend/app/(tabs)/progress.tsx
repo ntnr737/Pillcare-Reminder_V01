@@ -19,6 +19,7 @@ export default function Progress() {
   const [adh, setAdh] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [tab, setTab] = useState<"charts" | "list">("charts");
+  const [listFilter, setListFilter] = useState<"all" | "meds" | "yoga">("all");
   const router = useRouter();
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [selectedDay, setSelectedDay] = useState<any>(null);
@@ -356,6 +357,36 @@ export default function Progress() {
               </View>
             )}
           </View>
+          {/* Yoga & Wellness Therapy Card */}
+          <View style={[s.card, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)", gap: 12 }]}>
+            <View style={s.cRow}>
+              <View style={[s.cI, { backgroundColor: "rgba(168,85,247,0.18)", borderRadius: 12, width: 36, height: 36 }]}>
+                <Ionicons name="fitness-outline" size={18} color="#A855F7" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Text style={s.cT}>Yoga & Wellness Therapy</Text>
+                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(168,85,247,0.18)" }}>
+                    <Text style={{ fontSize: 9, fontWeight: "700", color: "#A855F7" }}>LOGGED</Text>
+                  </View>
+                </View>
+                <Text style={s.cS}>
+                  {(() => {
+                    const yogaCount = history.reduce((acc: number, day: any) => {
+                      return acc + (day.entries || []).filter((e: any) => e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga")).length;
+                    }, 0);
+                    return yogaCount > 0 ? `${yogaCount} yoga poses logged in your history` : "Clinical yoga therapy tailored to your medications";
+                  })()}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(168,85,247,0.18)", borderWidth: 1, borderColor: "rgba(168,85,247,0.35)" }}
+                onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: "#A855F7" }}>View Poses →</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {adh && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(145,132,217,0.3)" }]}>
             <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}><Ionicons name="sparkles" size={17} color={A3} /></View>
             <View style={{ flex: 1 }}>
@@ -378,44 +409,85 @@ export default function Progress() {
         </>)}
 
         {tab === "list" && (<>
-          {history.length === 0 ? (
-            <View style={[s.card, { alignItems: "center", padding: 32, gap: 8 }]}>
-              <Ionicons name="list-outline" size={28} color={AC} />
-              <Text style={s.cT}>No history yet</Text>
-              <Text style={s.cS}>Start logging medications to see your history</Text>
-            </View>
-          ) : history.map((day: any) => (
-            <View key={day.date} style={{ gap: 6 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 2 }}>
-                <Text style={[s.cS, { fontWeight: "600", color: TX }]}>{formatDate(day.date)}</Text>
-                <Text style={[s.cS, { color: day.taken === day.total ? "#4ade80" : day.taken === 0 ? "#e58585" : TM }]}>{day.taken}/{day.total} taken</Text>
-              </View>
-              {day.entries.map((e: any) => {
-                const iconName = e.status === "course_completed" ? "checkmark-done-circle" : e.status === "refilled" ? "cube" : e.status === "yoga_completed" ? "fitness" : e.status === "taken" ? "checkmark-circle" : e.status === "missed" ? "close-circle" : e.status === "skipped" ? "forward-circle" : "time";
-                const color = e.status === "course_completed" ? "#4ade80" : e.status === "refilled" ? "#38bdf8" : e.status === "yoga_completed" ? "#a7a1db" : e.status === "taken" ? "#4ade80" : e.status === "missed" ? "#e58585" : e.status === "skipped" ? "#e5b285" : A3;
-                const statusLabel = e.status === "course_completed" ? "Course Completed" : e.status === "refilled" ? "Stock Refilled" : e.status === "yoga_completed" ? "Yoga Completed" : e.status;
-                const bg = e.status === "course_completed" ? "rgba(74,222,128,0.15)" : e.status === "refilled" ? "rgba(56,189,248,0.15)" : e.status === "yoga_completed" ? "rgba(167,161,219,0.18)" : e.status === "taken" ? "rgba(74,222,128,0.12)" : e.status === "missed" ? "rgba(229,133,133,0.12)" : e.status === "skipped" ? "rgba(229,178,133,0.12)" : AB;
+          {/* Sub-Filter Controls for History List */}
+          <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
+            {[
+              { key: "all", label: "All History" },
+              { key: "meds", label: "💊 Medications" },
+              { key: "yoga", label: "🧘 Yoga Logs" },
+            ].map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setListFilter(f.key as any)}
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 8,
+                  backgroundColor: listFilter === f.key ? (f.key === "yoga" ? "rgba(168,85,247,0.2)" : "rgba(139,92,246,0.2)") : SF,
+                  borderWidth: 1,
+                  borderColor: listFilter === f.key ? (f.key === "yoga" ? YOGA : AC) : BD,
+                }}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: listFilter === f.key ? (f.key === "yoga" ? YOGA : A3) : TM }}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
 
-                return (
-                  <View key={e.id} style={[s.card, (e.status === "course_completed" || e.status === "refilled" || e.status === "yoga_completed") && { borderColor: color, backgroundColor: "rgba(35,37,50,0.8)" }]}>
-                    <View style={s.cRow}>
-                      <View style={[s.cI, { backgroundColor: bg }]}>
-                        <Ionicons name={iconName as any} size={16} color={color} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.cT}>{e.name}</Text>
-                        {e.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>{e.generic_name}</Text> : null}
-                        <Text style={s.cS}>{e.note || (e.dosage ? `${e.dosage} ${e.unit}` : e.unit || "")} • {e.time}</Text>
-                      </View>
-                      <View style={{ alignItems: "flex-end" }}>
-                        <Text style={[s.cS, { color: color, fontWeight: "700" }]}>{statusLabel}</Text>
+          {(() => {
+            const filteredDays = history.map((day: any) => {
+              const filteredEntries = (day.entries || []).filter((e: any) => {
+                const isYoga = e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga");
+                if (listFilter === "yoga") return isYoga;
+                if (listFilter === "meds") return !isYoga;
+                return true;
+              });
+              return { ...day, entries: filteredEntries };
+            }).filter((day: any) => day.entries.length > 0);
+
+            if (filteredDays.length === 0) {
+              return (
+                <View style={[s.card, { alignItems: "center", padding: 32, gap: 8 }]}>
+                  <Ionicons name={listFilter === "yoga" ? "fitness-outline" : "list-outline"} size={28} color={listFilter === "yoga" ? YOGA : AC} />
+                  <Text style={s.cT}>{listFilter === "yoga" ? "No yoga logs yet" : listFilter === "meds" ? "No medication history" : "No history yet"}</Text>
+                  <Text style={s.cS}>{listFilter === "yoga" ? "Complete yoga poses in Treatment tab to view logs here" : "Start logging medications to see your history"}</Text>
+                </View>
+              );
+            }
+
+            return filteredDays.map((day: any) => (
+              <View key={day.date} style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingBottom: 2 }}>
+                  <Text style={[s.cS, { fontWeight: "600", color: TX }]}>{formatDate(day.date)}</Text>
+                  <Text style={[s.cS, { color: day.taken === day.total ? "#4ade80" : day.taken === 0 ? "#e58585" : TM }]}>{day.taken}/{day.total} taken</Text>
+                </View>
+                {day.entries.map((e: any) => {
+                  const iconName = e.status === "course_completed" ? "checkmark-done-circle" : e.status === "refilled" ? "cube" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "fitness" : e.status === "taken" ? "checkmark-circle" : e.status === "missed" ? "close-circle" : e.status === "skipped" ? "forward-circle" : "time";
+                  const color = e.status === "course_completed" ? "#4ade80" : e.status === "refilled" ? "#38bdf8" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "#A855F7" : e.status === "taken" ? "#4ade80" : e.status === "missed" ? "#e58585" : e.status === "skipped" ? "#e5b285" : A3;
+                  const statusLabel = e.status === "course_completed" ? "Course Completed" : e.status === "refilled" ? "Stock Refilled" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "Yoga Completed" : e.status;
+                  const bg = e.status === "course_completed" ? "rgba(74,222,128,0.15)" : e.status === "refilled" ? "rgba(56,189,248,0.15)" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "rgba(168,85,247,0.18)" : e.status === "taken" ? "rgba(74,222,128,0.12)" : e.status === "missed" ? "rgba(229,133,133,0.12)" : e.status === "skipped" ? "rgba(229,178,133,0.12)" : AB;
+
+                  return (
+                    <View key={e.id} style={[s.card, (e.status === "course_completed" || e.status === "refilled" || e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga")) && { borderColor: color, backgroundColor: "rgba(35,37,50,0.8)" }]}>
+                      <View style={s.cRow}>
+                        <View style={[s.cI, { backgroundColor: bg }]}>
+                          <Ionicons name={iconName as any} size={16} color={color} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.cT}>{e.name}</Text>
+                          {e.generic_name ? <Text style={[s.cS, { color: e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? YOGA : A3, fontStyle: "italic" }]}>{e.generic_name}</Text> : null}
+                          <Text style={s.cS}>{e.note || (e.dosage ? `${e.dosage} ${e.unit}` : e.unit || "")} • {e.time}</Text>
+                        </View>
+                        <View style={{ alignItems: "flex-end" }}>
+                          <Text style={[s.cS, { color: color, fontWeight: "700" }]}>{statusLabel}</Text>
+                        </View>
                       </View>
                     </View>
-                  </View>
-                );
-              })}
-            </View>
-          ))}
+                  );
+                })}
+              </View>
+            ));
+          })()}
         </>)}
       </ScrollView>
 

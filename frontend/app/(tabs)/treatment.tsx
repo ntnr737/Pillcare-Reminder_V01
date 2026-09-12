@@ -6,7 +6,7 @@ import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
-import { resyncReminders } from "@/src/lib/notifications";
+import { resyncReminders, YOGA_CATEGORY } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
@@ -128,13 +128,46 @@ export default function Treatment() {
       else setCompletedSteps([]);
     });
   }, []);
-  const toggleStepDone = (step: any) => {
+  const toggleStepDone = async (step: any) => {
     const num = step.num;
     const isDone = isStepDone(num);
     const next = isDone ? safeCompletedSteps.filter(n => n !== num) : [...safeCompletedSteps, num];
-    setCompletedSteps(next); set(yogaDoneKey(), next);
-    if (isDone) { api.yogaUncomplete(num, step.name).catch(() => {}); }
-    else { api.yogaComplete(num, step.name, step.youtube_video || step.youtube_channel).catch(() => {}); }
+    setCompletedSteps(next);
+    await set(yogaDoneKey(), next);
+
+    // Update local history array for Progress tab offline instant view
+    const d = new Date();
+    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const hStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const historyCache = (await get<any[]>(K.history)) || [];
+
+    let dayItem = historyCache.find((item: any) => item.date === dStr);
+    if (!dayItem) {
+      dayItem = { date: dStr, total: 0, taken: 0, entries: [] };
+      historyCache.unshift(dayItem);
+    }
+
+    if (!isDone) {
+      const newEntry = {
+        id: `yoga_${num}_${Date.now()}`,
+        name: `Yoga: ${step.name || "Therapy Pose"}`,
+        generic_name: "AI Yoga Therapy",
+        dosage: "",
+        unit: "",
+        time: hStr,
+        status: "yoga_completed",
+        note: `Completed ${step.duration || "pose"}`
+      };
+      if (!dayItem.entries.some((e: any) => e.name === newEntry.name)) {
+        dayItem.entries.push(newEntry);
+      }
+      track("yoga_done", { pose: step.name });
+      api.yogaComplete(num, step.name, step.youtube_video || step.youtube_channel).catch(() => {});
+    } else {
+      dayItem.entries = dayItem.entries.filter((e: any) => e.name !== `Yoga: ${step.name}`);
+      api.yogaUncomplete(num, step.name).catch(() => {});
+    }
+    await set(K.history, [...historyCache]);
   };
   const [dismissedNudges, setDismissedNudges] = useState<Set<string>>(new Set());
   const applyNudge = async (medId: string, n: any) => {
@@ -223,6 +256,7 @@ export default function Treatment() {
           title: "🧘 Time for your Yoga Routine",
           body: yoga?.title ? `Today: ${yoga.title}` : "Open PillCare to start your daily yoga practice",
           data: { isYogaReminder: true },
+          categoryIdentifier: YOGA_CATEGORY,
           sound: "pillcare_wellness",
         },
         trigger: {
@@ -241,6 +275,7 @@ export default function Treatment() {
       setYogaTime(time);
       setYogaTimePicker(false);
       setYogaOpen(false);
+      resyncReminders().catch(() => {});
       Alert.alert("Yoga Reminder Set", `Daily reminder set for ${h}:${m}`);
     } catch {
       Alert.alert("Error", "Could not set yoga reminder. Please try again.");

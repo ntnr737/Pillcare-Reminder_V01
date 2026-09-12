@@ -406,11 +406,20 @@ export default function Today() {
         {/* AI Recommended Yoga Therapy Card */}
         <TouchableOpacity
           activeOpacity={0.85}
-          style={[s.aiCard, { borderColor: "rgba(145,132,217,0.3)" }]}
+          style={[s.aiCard, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)" }]}
           onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
           <View style={s.aiH}>
-            <Ionicons name="leaf-outline" size={10} color={A3} />
-            <Text style={s.aiK}>AI YOGA THERAPY — {yogaReminderTime || "07:00 AM daily"}</Text>
+            <Ionicons name="leaf-outline" size={12} color="#A855F7" />
+            <Text style={[s.aiK, { color: "#A855F7" }]}>
+              AI YOGA THERAPY — {(() => {
+                if (!yogaReminderTime) return "08:00 AM daily";
+                const [h, m] = yogaReminderTime.split(":").map(Number);
+                if (isNaN(h) || isNaN(m)) return `${yogaReminderTime} daily`;
+                const period = h >= 12 ? "PM" : "AM";
+                const hour12 = h % 12 === 0 ? 12 : h % 12;
+                return `${hour12}:${String(m).padStart(2, "0")} ${period} daily`;
+              })()}
+            </Text>
           </View>
           <Text style={[s.aiTx, { fontWeight: "700", color: TX, marginBottom: 2 }]} numberOfLines={2}>
             {yogaTipName || "Anulom Vilom & Pawanmuktasana Flow"}
@@ -420,17 +429,39 @@ export default function Today() {
           </Text>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: "rgba(145,132,217,0.15)", borderRadius: 8, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+              style={{ flex: 1, backgroundColor: "rgba(168,85,247,0.18)", borderRadius: 8, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, borderWidth: 1, borderColor: "rgba(168,85,247,0.3)" }}
               onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
-              <Ionicons name="play-circle-outline" size={14} color={A3} />
-              <Text style={{ fontSize: 12, color: A3, fontWeight: "700" }}>View routine</Text>
+              <Ionicons name="play-circle-outline" size={14} color="#A855F7" />
+              <Text style={{ fontSize: 12, color: "#A855F7", fontWeight: "700" }}>View routine</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 8, paddingVertical: 9, alignItems: "center" }}
+              style={{ flex: 1, backgroundColor: "rgba(74,222,128,0.12)", borderRadius: 8, paddingVertical: 9, alignItems: "center", borderWidth: 1, borderColor: "rgba(74,222,128,0.3)" }}
               onPress={async (e) => {
                 e.stopPropagation?.();
-                const { set } = await import("@/src/lib/store");
+                const { set, get, K } = await import("@/src/lib/store");
                 await set("yoga_done_" + date, [1, 2, 3, 4, 5]);
+                const historyCache = (await get<any[]>(K.history)) || [];
+                let dayItem = historyCache.find((item: any) => item.date === date);
+                if (!dayItem) {
+                  dayItem = { date, total: 0, taken: 0, entries: [] };
+                  historyCache.unshift(dayItem);
+                }
+                const newEntry = {
+                  id: `yoga_session_${Date.now()}`,
+                  name: "Yoga: Daily Therapy Session",
+                  generic_name: "AI Yoga Therapy",
+                  dosage: "",
+                  unit: "",
+                  time: yogaReminderTime || "08:00",
+                  status: "yoga_completed",
+                  note: "Completed full daily routine"
+                };
+                if (!dayItem.entries.some((entry: any) => entry.name === newEntry.name)) {
+                  dayItem.entries.push(newEntry);
+                }
+                await set(K.history, [...historyCache]);
+                const { api } = await import("@/src/lib/api");
+                api.yogaComplete(1, "Daily Yoga Therapy Flow", "https://www.youtube.com/watch?v=QPjwawKxuLw").catch(() => {});
                 track("yoga_done");
                 Alert.alert("Yoga Completed", "Great job! Daily yoga logged for today.");
               }}>

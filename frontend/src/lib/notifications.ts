@@ -7,7 +7,7 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
-import { get, K } from "./store";
+import { get, set, K } from "./store";
 import Constants from "expo-constants";
 
 // Show notification in foreground always
@@ -23,6 +23,101 @@ try {
   });
 } catch (e) {
   console.warn("Failed to set notification handler:", e);
+}
+
+export const MEDICATION_CATEGORY = "medication-reminder-category";
+export const YOGA_CATEGORY = "yoga-reminder-category";
+
+/**
+ * Setup interactive action buttons for device notification bar alerts
+ */
+export async function ensureCategories(): Promise<void> {
+  try {
+    await Notifications.setNotificationCategoryAsync(MEDICATION_CATEGORY, [
+      {
+        identifier: "MARK_TAKEN",
+        buttonTitle: "✓ Mark as Taken",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "SNOOZE_15",
+        buttonTitle: "⏰ Snooze 15m",
+        options: { opensAppToForeground: false },
+      },
+    ]);
+
+    await Notifications.setNotificationCategoryAsync(YOGA_CATEGORY, [
+      {
+        identifier: "MARK_YOGA_DONE",
+        buttonTitle: "🧘 Mark as Done",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "OPEN_YOGA",
+        buttonTitle: "▶ Watch Video",
+        options: { opensAppToForeground: true },
+      },
+    ]);
+  } catch (e) {
+    console.warn("Category setup failed:", e);
+  }
+}
+
+/**
+ * Global listener for interactive notification action buttons tapped from OS notification bar
+ */
+export function setupNotificationListeners(onNavigate?: (path: string) => void): () => void {
+  ensureCategories().catch(() => {});
+
+  const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
+    try {
+      const actionId = response.actionIdentifier;
+      const data = response.notification.request.content.data || {};
+
+      if (actionId === "MARK_TAKEN") {
+        if (data.medicationId) {
+          const medId = String(data.medicationId);
+          const nowStr = new Date().toISOString();
+          const todayDate = nowStr.split("T")[0];
+          api.setDoseStatus(medId, "taken", nowStr).catch(() => {});
+          const key = K.doses(todayDate);
+          const cached = (await get<any[]>(key)) || [];
+          const updated = cached.map((d: any) =>
+            d.medication_id === medId || d.id === medId ? { ...d, status: "taken", taken_at: nowStr } : d
+          );
+          await set(key, updated);
+        }
+      } else if (actionId === "SNOOZE_15") {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: response.notification.request.content.title,
+            body: `[Snoozed] ${response.notification.request.content.body}`,
+            data: data,
+            categoryIdentifier: MEDICATION_CATEGORY,
+            sound: "default",
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: 900,
+          },
+        });
+      } else if (actionId === "MARK_YOGA_DONE") {
+        const todayStr = new Date().toISOString().split("T")[0];
+        const yogaDoneKey = `yoga_done_${todayStr}`;
+        const steps = [1, 2, 3, 4, 5];
+        await set(yogaDoneKey, steps);
+        for (const s of steps) {
+          api.yogaComplete(s, `Yoga Pose #${s}`, "https://www.youtube.com/watch?v=QPjwawKxuLw").catch(() => {});
+        }
+      } else if (actionId === "OPEN_YOGA") {
+        onNavigate?.("/(tabs)/treatment?openYoga=true");
+      }
+    } catch (e) {
+      console.warn("Notification listener response error:", e);
+    }
+  });
+
+  return () => sub.remove();
 }
 
 /**
@@ -193,6 +288,7 @@ export async function resyncReminders(): Promise<void> {
             title: `PillCare Reminder: ${med.name}`,
             body: label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`,
             data: { medicationId: med.id, scheduledTime: t },
+            categoryIdentifier: MEDICATION_CATEGORY,
             sound: "default",
           },
           trigger: {
@@ -226,6 +322,7 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
         title: "🧘 Time for your Yoga Therapy Routine",
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
+        categoryIdentifier: YOGA_CATEGORY,
         sound: "default",
       },
       trigger: {
