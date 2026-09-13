@@ -21,7 +21,8 @@ const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
   AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)",
   REFILL = "#06B6D4", SUCCESS = "#10B981";
 const TABS = ["Medications", "Measurements", "Activities", "Mood"];
-const ME = ["", "Very Low", "Low", "Neutral", "Good", "Great"];
+const ME = ["", "😟", "😔", "😐", "😊", "😄"];
+const MOOD_LABELS = ["", "Very Low", "Low", "Neutral", "Good", "Great"];
 const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 
 const DEFAULT_MEASUREMENTS = [
@@ -652,8 +653,8 @@ export default function Treatment() {
             <View style={s.mRow}>
               {[1, 2, 3, 4, 5].map(n => (
                 <TouchableOpacity key={n} onPress={() => setMs(n)} style={[s.mBtn, ms === n && { borderColor: MC[n], backgroundColor: `${MC[n]}22` }]}>
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: ms === n ? MC[n] : A3 }}>{n}/5</Text>
-                  <Text style={[s.mNum, { color: ms === n ? MC[n] : TM, fontSize: 10 }]}>{ME[n]}</Text>
+                  <Text style={{ fontSize: 22 }}>{ME[n]}</Text>
+                  <Text style={[s.mNum, ms === n && { color: MC[n] }]}>{n}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -665,11 +666,9 @@ export default function Treatment() {
               <Text style={s.secL}>Recent Logs</Text>
               {mood.slice(0, 6).map((m: any, i: number) => (
                 <View key={i} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}>
-                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: `${MC[m.score] || "#a7a1db"}25`, borderWidth: 1, borderColor: MC[m.score] || "#a7a1db", alignItems: "center", justifyContent: "center" }}>
-                    <Text style={{ fontSize: 13, fontWeight: "800", color: MC[m.score] || "#a7a1db" }}>{m.score}</Text>
-                  </View>
+                  <Text style={{ fontSize: 24 }}>{ME[m.score] || "😐"}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.cT}>Mood: {ME[m.score] || "Neutral"} ({m.score}/5)</Text>
+                    <Text style={s.cT}>Mood {m.score}/5 ({MOOD_LABELS[m.score] || "Neutral"})</Text>
                     <Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
                   </View>
                   {m.note && <Text style={[s.cS, { maxWidth: 100, textAlign: "right" }]}>{m.note}</Text>}
