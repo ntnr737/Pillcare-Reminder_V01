@@ -116,20 +116,21 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="overFullScreen" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose}>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.sheet}
-          onStartShouldSetResponder={() => true}
         >
-          <View style={styles.handle} />
-          <View style={styles.header}>
-            <Text style={styles.title}>Add Medication</Text>
-            <TouchableOpacity testID="close-add-med" onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Feather name="x" size={22} color={theme.colors.textSecondary} />
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ flex: 1 }}>
+            <View style={styles.handle} />
+            <View style={styles.header}>
+              <Text style={styles.title}>Add Medication</Text>
+              <TouchableOpacity testID="close-add-med" onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Feather name="x" size={22} color={theme.colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
 
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <Text style={styles.label}>Medication name</Text>
@@ -276,14 +277,16 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             onSelect={setUnit}
             onClose={() => setShowUnitModal(false)}
           />
+          </TouchableOpacity>
         </KeyboardAvoidingView>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: theme.colors.overlay, justifyContent: "flex-end" },
+  overlay: { flex: 1, justifyContent: "flex-end" },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: theme.colors.overlay },
   sheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%" },
   handle: { width: 48, height: 4, backgroundColor: theme.colors.borderStrong, borderRadius: 2, alignSelf: "center", marginTop: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },
