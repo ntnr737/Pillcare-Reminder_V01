@@ -20,6 +20,7 @@ try {
       shouldSetBadge: true,
       shouldShowBanner: true,
       shouldShowList: true,
+      priority: Notifications.AndroidNotificationPriority.MAX,
     }),
   });
 } catch (e) {
@@ -115,7 +116,9 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
             data: data,
             categoryIdentifier: MEDICATION_CATEGORY,
             sound: "default",
-          },
+            channelId: "medication-reminders",
+            priority: Notifications.AndroidNotificationPriority.MAX,
+          } as any,
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
             seconds: 900,
@@ -143,83 +146,45 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
 /**
  * Create Android notification channels.
  * MUST be called on every app launch before any notification is scheduled.
- * Uses system default sound to ensure 100% compatibility across Expo Go and native builds.
+ * Sets MAX importance, high-vibration pattern, and public lockscreen visibility.
  */
 export async function ensureChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
   try {
-    // Try custom PillCare sound first (works in native standalone build with sound-plugin), fallback to default system sound
-    try {
-      await Notifications.setNotificationChannelAsync("medication-reminders", {
-        name: "Medication Reminders",
-        description: "Alerts when it is time to take a medication",
-        importance: Notifications.AndroidImportance.MAX,
-        sound: "pillcare_reminder",
-        enableVibrate: true,
-        vibrationPattern: [0, 300, 150, 300, 150, 600],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: false,
-        showBadge: true,
-      });
-    } catch {
-      await Notifications.setNotificationChannelAsync("medication-reminders", {
-        name: "Medication Reminders",
-        description: "Alerts when it is time to take a medication",
-        importance: Notifications.AndroidImportance.MAX,
-        sound: "default",
-        enableVibrate: true,
-        vibrationPattern: [0, 300, 150, 300, 150, 600],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: false,
-        showBadge: true,
-      });
-    }
+    await Notifications.setNotificationChannelAsync("medication-reminders", {
+      name: "Medication Reminders",
+      description: "Alerts when it is time to take a medication",
+      importance: Notifications.AndroidImportance.MAX,
+      sound: "default",
+      enableVibrate: true,
+      vibrationPattern: [0, 500, 250, 500, 250, 500],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+      showBadge: true,
+    });
 
-    try {
-      await Notifications.setNotificationChannelAsync("yoga-reminders", {
-        name: "Yoga & Wellness",
-        importance: Notifications.AndroidImportance.DEFAULT,
-        sound: "pillcare_wellness",
-        enableVibrate: true,
-        vibrationPattern: [0, 200, 100, 200],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-    } catch {
-      await Notifications.setNotificationChannelAsync("yoga-reminders", {
-        name: "Yoga & Wellness",
-        importance: Notifications.AndroidImportance.DEFAULT,
-        sound: "default",
-        enableVibrate: true,
-        vibrationPattern: [0, 200, 100, 200],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      });
-    }
+    await Notifications.setNotificationChannelAsync("yoga-reminders", {
+      name: "Yoga & Wellness",
+      description: "Daily wellness & yoga flow reminders",
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: "default",
+      enableVibrate: true,
+      vibrationPattern: [0, 300, 150, 300],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      showBadge: true,
+    });
 
-    try {
-      await Notifications.setNotificationChannelAsync("urgent-reminders", {
-        name: "Urgent Dose Alerts",
-        description: "High priority alerts for critical dose schedules",
-        importance: Notifications.AndroidImportance.MAX,
-        sound: "pillcare_urgent",
-        enableVibrate: true,
-        vibrationPattern: [0, 400, 200, 400, 200, 800],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true,
-        showBadge: true,
-      });
-    } catch {
-      await Notifications.setNotificationChannelAsync("urgent-reminders", {
-        name: "Urgent Dose Alerts",
-        description: "High priority alerts for critical dose schedules",
-        importance: Notifications.AndroidImportance.MAX,
-        sound: "default",
-        enableVibrate: true,
-        vibrationPattern: [0, 400, 200, 400, 200, 800],
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: true,
-        showBadge: true,
-      });
-    }
+    await Notifications.setNotificationChannelAsync("urgent-reminders", {
+      name: "Urgent Dose Alerts",
+      description: "High priority alerts for critical dose schedules",
+      importance: Notifications.AndroidImportance.MAX,
+      sound: "default",
+      enableVibrate: true,
+      vibrationPattern: [0, 600, 200, 600, 200, 800],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+      showBadge: true,
+    });
 
     await Notifications.setNotificationChannelAsync("broadcasts", {
       name: "Updates & Announcements",
@@ -231,6 +196,24 @@ export async function ensureChannels(): Promise<void> {
   } catch (e) {
     console.warn("Channel setup failed:", e);
   }
+}
+
+/**
+ * Trigger an instant test notification for sound and bar verification.
+ */
+export async function sendTestNotificationNow(title = "PillCare Alert Test", body = "Notification sound & bar alert working properly!"): Promise<void> {
+  await ensureChannels();
+  await Notifications.scheduleNotificationAsync({
+    content: {
+      title,
+      body,
+      sound: "default",
+      channelId: "medication-reminders",
+      priority: Notifications.AndroidNotificationPriority.MAX,
+      categoryIdentifier: MEDICATION_CATEGORY,
+    } as any,
+    trigger: null,
+  });
 }
 
 /**
@@ -297,20 +280,51 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
     const activeMeds = (meds || []).filter((m: any) => m.active !== false);
     await Notifications.cancelAllScheduledNotificationsAsync();
     let scheduled = 0;
+    const now = new Date();
+
     for (const med of activeMeds) {
       const times: string[] = Array.isArray(med.times) ? med.times : [];
       for (const t of times) {
         const parsed = parseTime(t);
         if (!parsed) continue;
         const label = med.dosage ? `${med.dosage} ${med.unit || ""}`.trim() : "";
+        const title = `PillCare Reminder: ${med.name}`;
+        const body = label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`;
+        const data = { medicationId: med.id, scheduledTime: t };
+
+        // 1. If dose time is TODAY and upcoming (e.g. 2-3 mins after current time), schedule an EXACT DATE trigger
+        const targetToday = new Date();
+        targetToday.setHours(parsed.hour, parsed.minute, 0, 0);
+
+        if (targetToday.getTime() > now.getTime()) {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title,
+              body,
+              data,
+              categoryIdentifier: MEDICATION_CATEGORY,
+              sound: "default",
+              channelId: "medication-reminders",
+              priority: Notifications.AndroidNotificationPriority.MAX,
+            } as any,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.DATE,
+              date: targetToday,
+            },
+          });
+        }
+
+        // 2. Schedule DAILY recurring trigger for long-term daily reminders
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: `PillCare Reminder: ${med.name}`,
-            body: label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`,
-            data: { medicationId: med.id, scheduledTime: t },
+            title,
+            body,
+            data,
             categoryIdentifier: MEDICATION_CATEGORY,
             sound: "default",
-          },
+            channelId: "medication-reminders",
+            priority: Notifications.AndroidNotificationPriority.MAX,
+          } as any,
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: parsed.hour,
@@ -344,7 +358,9 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,
         sound: "default",
-      },
+        channelId: "yoga-reminders",
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      } as any,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DAILY,
         hour: parsed.hour,
@@ -377,7 +393,9 @@ export async function scheduleWaterReminders(): Promise<void> {
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
           data: { type: "water_reminder" },
           sound: "default",
-        },
+          channelId: "medication-reminders",
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        } as any,
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour: wt.hour,

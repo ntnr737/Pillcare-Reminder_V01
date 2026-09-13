@@ -7,6 +7,7 @@ import * as Location from "expo-location";
 import { signOut } from "@/src/lib/auth";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
+import { resyncReminders, sendTestNotificationNow } from "@/src/lib/notifications";
 import { useEffect } from "react";
 
 const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
@@ -239,6 +240,44 @@ export default function Support() {
             </View>
           </View>
         </View>
+
+        {/* NOTIFICATIONS & ALERTS */}
+        <Text style={s.secL}>NOTIFICATIONS & ALERTS</Text>
+        <TouchableOpacity style={s.card} onPress={async () => {
+          try {
+            await sendTestNotificationNow("PillCare Alert Test", "Sound & notification bar alert active!");
+            Alert.alert("Test Notification Triggered", "Check your device notification bar for the alert & sound chime!");
+          } catch {
+            Alert.alert("Notification Error", "Please ensure notification permissions are granted in settings.");
+          }
+        }}>
+          <View style={s.cRow}>
+            <View style={[s.cIco, { backgroundColor: "rgba(139,92,246,0.14)" }]}><Ionicons name="notifications-outline" size={17} color={A3} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cT}>Test Notification Sound & Alert</Text>
+              <Text style={s.cS}>Send an instant test alert to verify chime & notification bar</Text>
+            </View>
+            <Ionicons name="play-outline" size={14} color={A3} />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={s.card} onPress={async () => {
+          try {
+            await resyncReminders();
+            Alert.alert("Reminders Synced", "All medication daily alarms updated and scheduled.");
+          } catch {
+            Alert.alert("Sync Error", "Could not resync notification alarms.");
+          }
+        }}>
+          <View style={s.cRow}>
+            <View style={[s.cIco, { backgroundColor: "rgba(56,189,248,0.12)" }]}><Ionicons name="refresh-outline" size={17} color="#38bdf8" /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.cT}>Re-sync All Medication Alarms</Text>
+              <Text style={s.cS}>Re-align daily dose schedules with device alarm manager</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={13} color={TM} />
+          </View>
+        </TouchableOpacity>
 
         {/* DATA & EXPORT */}
         <Text style={s.secL}>YOUR DATA</Text>
