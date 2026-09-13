@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Body
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, HTMLResponse
 import io
 import hmac
 import time
@@ -2489,6 +2489,406 @@ def require_admin(x_admin_secret: str = Header(default=""), authorization: str =
         return {"role": "admin", "sub": "secret_key"}
     raise HTTPException(401, "Admin access required")
 
+
+ADMIN_PANEL_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PillCare Admin Mission Control</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
+    body { background-color: #0b0c10; color: #f3f4f6; padding: 24px; min-height: 100vh; }
+    .container { max-width: 1400px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px; border-bottom: 1px solid #1f2937; margin-bottom: 24px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .brand-icon { width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #8b5cf6, #06b6d4); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: bold; }
+    h1 { font-size: 22px; font-weight: 700; color: #ffffff; letter-spacing: -0.5px; }
+    .sub { font-size: 13px; color: #9ca3af; }
+    .auth-bar { display: flex; gap: 10px; align-items: center; }
+    input, select, button { font-family: inherit; }
+    .inp { background: #171822; border: 1px solid #374151; color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; outline: none; transition: border 0.2s; }
+    .inp:focus { border-color: #8b5cf6; }
+    .btn { background: #8b5cf6; color: #fff; border: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; transition: background 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+    .btn:hover { background: #7c3aed; }
+    .btn-secondary { background: #1f2937; color: #e5e7eb; border: 1px solid #374151; }
+    .btn-secondary:hover { background: #374151; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card { background: #171822; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+    .kpi-title { font-size: 12px; color: #9ca3af; font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+    .kpi-val { font-size: 28px; font-weight: 800; color: #fff; }
+    .kpi-sub { font-size: 12px; color: #10b981; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; margin-top: 32px; }
+    .section-title { font-size: 18px; font-weight: 700; color: #fff; }
+    table { width: 100%; border-collapse: collapse; background: #171822; border-radius: 12px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); font-size: 13px; }
+    th { background: #11121c; text-align: left; padding: 14px 16px; color: #9ca3af; font-weight: 600; border-bottom: 1px solid #1f2937; }
+    td { padding: 14px 16px; border-bottom: 1px solid #1f2937; color: #e5e7eb; vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: rgba(255,255,255,0.02); }
+    .badge { padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase; display: inline-block; }
+    .badge-free { background: rgba(156,163,175,0.15); color: #9ca3af; border: 1px solid rgba(156,163,175,0.3); }
+    .badge-basic { background: rgba(56,189,248,0.15); color: #38bdf8; border: 1px solid rgba(56,189,248,0.3); }
+    .badge-premium { background: rgba(168,85,247,0.15); color: #c084fc; border: 1px solid rgba(168,85,247,0.3); }
+    .badge-enterprise { background: rgba(251,146,60,0.15); color: #fb923c; border: 1px solid rgba(251,146,60,0.3); }
+    .toggles { display: flex; flex-wrap: wrap; gap: 8px; }
+    .toggle-chip { background: #11121c; border: 1px solid #374151; padding: 4px 8px; border-radius: 6px; font-size: 11px; color: #d1d5db; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .toggle-chip input { cursor: pointer; accent-color: #8b5cf6; }
+    .toast { position: fixed; bottom: 20px; right: 20px; background: #10b981; color: #fff; padding: 12px 20px; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none; z-index: 1000; }
+    .panel { background: #171822; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); padding: 24px; margin-bottom: 24px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; color: #9ca3af; margin-bottom: 6px; font-weight: 500; }
+    .form-control { width: 100%; background: #11121c; border: 1px solid #374151; color: #fff; padding: 10px; border-radius: 8px; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="brand">
+        <div class="brand-icon">💊</div>
+        <div>
+          <h1>PillCare Mission Control</h1>
+          <div class="sub">Admin Panel & Feature Controls • PillCare Platform</div>
+        </div>
+      </div>
+      <div class="auth-bar">
+        <input type="password" id="adminSecret" class="inp" placeholder="Enter Admin Secret Key" value="" onchange="saveSecret()" />
+        <button class="btn" onclick="loadAllData()">↻ Refresh Data</button>
+        <button class="btn btn-secondary" onclick="exportData()">📥 Export (.xlsx)</button>
+      </div>
+    </header>
+
+    <!-- KPI STATS GRID -->
+    <div class="grid">
+      <div class="card">
+        <div class="kpi-title">Total Users</div>
+        <div class="kpi-val" id="statUsers">...</div>
+        <div class="kpi-sub">👥 Registered Patients</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">7-Day Active Users</div>
+        <div class="kpi-val" id="statActive">...</div>
+        <div class="kpi-sub">🔥 Engaged this week</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">Doses Logged</div>
+        <div class="kpi-val" id="statDoses">...</div>
+        <div class="kpi-sub" id="statAdherence">Adherence: ...</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">Active Paid Plans</div>
+        <div class="kpi-val" id="statSubscriptions">...</div>
+        <div class="kpi-sub">💎 Pro & Elite Subscribers</div>
+      </div>
+      <div class="card">
+        <div class="kpi-title">Est. Monthly Revenue</div>
+        <div class="kpi-val" id="statRevenue">₹0</div>
+        <div class="kpi-sub">⚡ Recurring Subscription Model</div>
+      </div>
+    </div>
+
+    <!-- USER DIRECTORY & FEATURE TIERS TABLE -->
+    <div class="section-header">
+      <div class="section-title">User Directory & Premium Feature Controls</div>
+      <input type="text" id="userSearch" class="inp" placeholder="Search by name, email, city or plan..." style="width: 320px;" onkeyup="filterUsers()" />
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>User Info</th>
+          <th>Location & Contact</th>
+          <th>Assigned Subscription Plan</th>
+          <th>Feature Overrides & Access Toggles</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="userTableBody">
+        <tr><td colspan="5" style="text-align: center; padding: 40px; color: #9ca3af;">Loading users from database...</td></tr>
+      </tbody>
+    </table>
+
+    <!-- BROADCAST PUSH NOTIFICATION CENTER -->
+    <div class="section-header">
+      <div class="section-title">Broadcast Push Notification Center</div>
+    </div>
+    <div class="panel">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+        <div class="form-group">
+          <label>Notification Title</label>
+          <input type="text" id="notifTitle" class="form-control" placeholder="e.g. 💊 PillCare Important Update" />
+        </div>
+        <div class="form-group">
+          <label>Target User ID (Leave blank to broadcast to ALL users)</label>
+          <input type="text" id="notifTarget" class="form-control" placeholder="All Users or specific User ID" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Message Body</label>
+        <textarea id="notifBody" class="form-control" rows="2" placeholder="e.g. Remember to log your doses on time today! Your health streak is active."></textarea>
+      </div>
+      <button class="btn" onclick="sendNotification()">🚀 Send Push Notification</button>
+    </div>
+
+    <!-- SECURITY & BLOCKED IP TABLE -->
+    <div class="section-header">
+      <div class="section-title">Security Audit & Rate-Limited IPs</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>IP Address</th>
+          <th>Failed Login Attempts</th>
+          <th>Last Attempt</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="blockedIpBody">
+        <tr><td colspan="4" style="text-align: center; padding: 20px; color: #9ca3af;">No blocked IPs detected.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let allUsers = [];
+    const SECRET_KEY = "pillcare_admin_secret";
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const saved = localStorage.getItem(SECRET_KEY);
+      if (saved) document.getElementById("adminSecret").value = saved;
+      loadAllData();
+    });
+
+    function saveSecret() {
+      const val = document.getElementById("adminSecret").value;
+      localStorage.setItem(SECRET_KEY, val);
+    }
+
+    function getHeaders() {
+      const sec = document.getElementById("adminSecret").value;
+      return { "x-admin-secret": sec, "Content-Type": "application/json" };
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.innerText = msg;
+      t.style.display = "block";
+      setTimeout(() => { t.style.display = "none"; }, 3500);
+    }
+
+    async function loadAllData() {
+      saveSecret();
+      await Promise.all([fetchStats(), fetchUsers(), fetchBlockedIps(), fetchRevenue()]);
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch("/admin/stats", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("statUsers").innerText = data.total_users || 0;
+        document.getElementById("statActive").innerText = data.active_users_7d || 0;
+        document.getElementById("statDoses").innerText = data.total_doses || 0;
+        document.getElementById("statAdherence").innerText = `Adherence: ${data.adherence_rate || 0}%`;
+      } catch (e) { console.error("Stats load failed", e); }
+    }
+
+    async function fetchRevenue() {
+      try {
+        const res = await fetch("/admin/revenue", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("statSubscriptions").innerText = data.active_subscriptions || 0;
+        document.getElementById("statRevenue").innerText = `₹${data.monthly_recurring_revenue || 0}`;
+      } catch (e) { console.error("Revenue load failed", e); }
+    }
+
+    async function fetchUsers() {
+      try {
+        const res = await fetch("/admin/users?limit=200", { headers: getHeaders() });
+        if (!res.ok) {
+          document.getElementById("userTableBody").innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ef4444; padding:30px;">Access Denied — Please enter a valid Admin Secret Key in the header input.</td></tr>`;
+          return;
+        }
+        allUsers = await res.json();
+        renderUserTable(allUsers);
+      } catch (e) { console.error("Users load failed", e); }
+    }
+
+    function renderUserTable(users) {
+      const tbody = document.getElementById("userTableBody");
+      if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:30px; color:#9ca3af;">No users found matching query.</td></tr>`;
+        return;
+      }
+      tbody.innerHTML = users.map(u => {
+        const uid = u.user_id || u.id;
+        const plan = (u.plan || "free").toLowerCase();
+        const overrides = u.overrides || {};
+        return `
+          <tr>
+            <td>
+              <div style="font-weight:700; color:#fff;">${u.name || u.nickname || "Anonymous User"}</div>
+              <div style="font-size:11px; color:#9ca3af;">ID: ${uid.substring(0, 12)}...</div>
+            </td>
+            <td>
+              <div>${u.email || u.phone || "No contact"}</div>
+              <div style="font-size:11px; color:#9ca3af;">${u.city || "Unknown City"}, ${u.state || "India"}</div>
+            </td>
+            <td>
+              <select class="inp" style="background:#11121c;" onchange="updatePlan('${uid}', this.value)">
+                <option value="free" ${plan === 'free' ? 'selected' : ''}>Free Plan (₹0)</option>
+                <option value="basic" ${plan === 'basic' ? 'selected' : ''}>Pro Dharma (Basic ₹30)</option>
+                <option value="premium" ${plan === 'premium' ? 'selected' : ''}>Elite Moksha (Premium ₹99)</option>
+                <option value="enterprise" ${plan === 'enterprise' ? 'selected' : ''}>Enterprise / Hospital</option>
+              </select>
+              <div style="margin-top:4px;">
+                <span class="badge badge-${plan}">${plan}</span>
+              </div>
+            </td>
+            <td>
+              <div class="toggles">
+                <label class="toggle-chip">
+                  <input type="checkbox" ${overrides.export_data ?? (plan !== 'free') ? 'checked' : ''} onchange="toggleFeature('${uid}', 'export_data', this.checked)" /> 📄 Export PDF
+                </label>
+                <label class="toggle-chip">
+                  <input type="checkbox" ${overrides.scanner ?? (plan !== 'free') ? 'checked' : ''} onchange="toggleFeature('${uid}', 'scanner', this.checked)" /> 📷 OCR Scanner
+                </label>
+                <label class="toggle-chip">
+                  <input type="checkbox" ${overrides.yoga_full ?? (plan !== 'free') ? 'checked' : ''} onchange="toggleFeature('${uid}', 'yoga_full', this.checked)" /> 🧘 Yoga Full
+                </label>
+                <label class="toggle-chip">
+                  <input type="checkbox" ${overrides.brand_generic ?? (plan !== 'free') ? 'checked' : ''} onchange="toggleFeature('${uid}', 'brand_generic', this.checked)" /> 💊 Brand -> Generic
+                </label>
+                <label class="toggle-chip">
+                  <input type="checkbox" ${overrides.caregiver_alerts ? 'checked' : ''} onchange="toggleFeature('${uid}', 'caregiver_alerts', this.checked ? 999 : 0)" /> 👥 Caregivers
+                </label>
+              </div>
+            </td>
+            <td>
+              <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="viewUserAnalytics('${uid}')">📊 Analytics</button>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    function filterUsers() {
+      const q = document.getElementById("userSearch").value.toLowerCase();
+      const filtered = allUsers.filter(u => 
+        (u.name || "").toLowerCase().includes(q) || 
+        (u.email || "").toLowerCase().includes(q) ||
+        (u.city || "").toLowerCase().includes(q) ||
+        (u.plan || "").toLowerCase().includes(q)
+      );
+      renderUserTable(filtered);
+    }
+
+    async function updatePlan(userId, plan) {
+      try {
+        const res = await fetch(`/admin/users/${userId}/subscription`, {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ plan: plan, expires_days: 365, status: "active", note: "Updated via Admin Panel UI" })
+        });
+        if (res.ok) {
+          showToast(`Successfully updated subscription plan to ${plan.toUpperCase()}`);
+          loadAllData();
+        } else {
+          showToast("Failed to update plan. Check Admin Secret Key.");
+        }
+      } catch (e) { showToast("Error connecting to server."); }
+    }
+
+    async function toggleFeature(userId, feature, value) {
+      try {
+        const res = await fetch(`/admin/users/${userId}/features`, {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ feature: feature, value: value })
+        });
+        if (res.ok) {
+          showToast(`Feature '${feature}' updated to ${value}`);
+        } else {
+          showToast("Failed to update feature override.");
+        }
+      } catch (e) { showToast("Error connecting to server."); }
+    }
+
+    async function sendNotification() {
+      const title = document.getElementById("notifTitle").value;
+      const body = document.getElementById("notifBody").value;
+      const target = document.getElementById("notifTarget").value;
+      if (!title || !body) { showToast("Please provide both Title and Body."); return; }
+      try {
+        const res = await fetch("/admin/notify", {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ title: title, body: body, user_id: target || undefined })
+        });
+        if (res.ok) {
+          showToast("🚀 Push Notification sent successfully!");
+          document.getElementById("notifTitle").value = "";
+          document.getElementById("notifBody").value = "";
+        } else {
+          showToast("Failed to send push notification.");
+        }
+      } catch (e) { showToast("Network error."); }
+    }
+
+    async function fetchBlockedIps() {
+      try {
+        const res = await fetch("/admin/blocked-ips", { headers: getHeaders() });
+        if (!res.ok) return;
+        const ips = await res.json();
+        const tbody = document.getElementById("blockedIpBody");
+        if (!ips || ips.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4" style="text-align:center; padding:20px; color:#9ca3af;">No blocked IPs detected. System is secure.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = ips.map(i => `
+          <tr>
+            <td><code>${i.ip}</code></td>
+            <td>${i.attempts}</td>
+            <td>${new Date(i.last_attempt).toLocaleString()}</td>
+            <td><button class="btn btn-secondary" style="padding:4px 10px; font-size:11px;" onclick="unblockIp('${i.ip}')">Unblock IP</button></td>
+          </tr>
+        `).join("");
+      } catch (e) {}
+    }
+
+    async function unblockIp(ip) {
+      try {
+        const res = await fetch(`/admin/blocked-ips/${ip}`, { method: "DELETE", headers: getHeaders() });
+        if (res.ok) {
+          showToast(`IP ${ip} unblocked.`);
+          fetchBlockedIps();
+        }
+      } catch (e) {}
+    }
+
+    function exportData() {
+      const sec = document.getElementById("adminSecret").value;
+      window.location.href = `/admin/export/users?x-admin-secret=${encodeURIComponent(sec)}`;
+    }
+
+    function viewUserAnalytics(userId) {
+      alert(`User ID: ${userId}\nTo inspect full dose logs & events, view the analytics endpoints.`);
+    }
+  </script>
+</body>
+</html>
+"""
+
+@app.get("/admin", response_class=HTMLResponse)
+@app.get("/admin/dashboard", response_class=HTMLResponse)
+async def admin_dashboard_ui():
+    """Renders the PillCare Web Admin Panel UI."""
+    return HTMLResponse(content=ADMIN_PANEL_HTML)
+
+
 # ── Admin Analytics Endpoints ────────────────────────────────
 @app.get("/admin/stats")
 async def admin_stats(_: None = Depends(require_admin)):
@@ -2644,37 +3044,37 @@ async def admin_retention(_: None = Depends(require_admin)):
 
 PLAN_FEATURES = {
     "free": {
-        "max_medications": 999,
-        "history_days": 365,
-        "ai_insights": "daily",
-        "caregiver_alerts": 999,
-        "nearby_results": 50,
-        "yoga_full": True,
-        "export_data": True,
-        "brand_generic": True,
-        "scanner": True,
-        "max_appointments": 999,
+        "max_medications": 3,
+        "history_days": 7,
+        "ai_insights": "weekly",
+        "caregiver_alerts": 0,
+        "nearby_results": 5,
+        "yoga_full": False,
+        "export_data": False,
+        "brand_generic": False,
+        "scanner": False,
+        "max_appointments": 2,
         "price_inr": 0,
-        "plan_label": "Pro Dharma (Unlocked)",
+        "plan_label": "Free Plan",
     },
     "basic": {
-        "max_medications": 999,
-        "history_days": 365,
+        "max_medications": 10,
+        "history_days": 30,
         "ai_insights": "daily",
-        "caregiver_alerts": 999,
-        "nearby_results": 50,
+        "caregiver_alerts": 2,
+        "nearby_results": 15,
         "yoga_full": True,
         "export_data": True,
         "brand_generic": True,
         "scanner": True,
-        "max_appointments": 999,
+        "max_appointments": 5,
         "price_inr": 30,
-        "plan_label": "Pro Dharma",
+        "plan_label": "Pro Dharma (Basic)",
     },
     "premium": {
         "max_medications": 999,
         "history_days": 365,
-        "ai_insights": "daily",
+        "ai_insights": "realtime",
         "caregiver_alerts": 999,
         "nearby_results": 50,
         "yoga_full": True,
@@ -2683,14 +3083,14 @@ PLAN_FEATURES = {
         "scanner": True,
         "max_appointments": 999,
         "price_inr": 99,
-        "plan_label": "Pro Dharma",
+        "plan_label": "Elite Moksha (Premium)",
     },
     "enterprise": {
         "max_medications": 999,
         "history_days": 365,
-        "ai_insights": "daily",
+        "ai_insights": "realtime",
         "caregiver_alerts": 999,
-        "nearby_results": 50,
+        "nearby_results": 100,
         "yoga_full": True,
         "export_data": True,
         "brand_generic": True,
@@ -2698,18 +3098,36 @@ PLAN_FEATURES = {
         "max_appointments": 999,
         "api_access": True,
         "price_inr": 0,
-        "plan_label": "Elite Moksha",
+        "plan_label": "Enterprise / Hospital",
     }
 }
 
 async def get_user_features(user_id: str) -> dict:
     sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
-    plan = sub.get("plan", "premium") if sub else "premium"
-    features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["premium"]))
-    if sub and sub.get("overrides"):
+    plan = sub.get("plan", "free") if sub else "free"
+    
+    if sub and sub.get("expires_at"):
+        exp = sub["expires_at"]
+        if isinstance(exp, str):
+            try: exp = datetime.fromisoformat(exp)
+            except Exception: exp = None
+        if exp and isinstance(exp, datetime):
+            if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
+            if exp < datetime.now(timezone.utc): plan = "free"
+
+    features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["free"]))
+    if sub and sub.get("overrides") and isinstance(sub["overrides"], dict):
         features.update(sub["overrides"])
     features["plan"] = plan
-    features["plan_expires"] = sub.get("expires_at").isoformat() if sub and sub.get("expires_at") else "2099-12-31T23:59:59Z"
+
+    exp_val = sub.get("expires_at") if sub else None
+    if isinstance(exp_val, datetime):
+        features["plan_expires"] = exp_val.isoformat()
+    elif isinstance(exp_val, str):
+        features["plan_expires"] = exp_val
+    else:
+        features["plan_expires"] = "2099-12-31T23:59:59Z" if plan in ["premium", "enterprise"] else None
+
     return features
 
 @api.get("/me/features")
