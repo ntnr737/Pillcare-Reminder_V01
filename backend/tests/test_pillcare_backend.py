@@ -15,7 +15,10 @@ API = f"{BASE_URL}/api"
 @pytest.fixture(scope="session")
 def s():
     sess = requests.Session()
-    sess.headers.update({"Content-Type": "application/json"})
+    sess.headers.update({
+        "Content-Type": "application/json",
+        "Authorization": "Bearer demo_token_monkey_test"
+    })
     return sess
 
 

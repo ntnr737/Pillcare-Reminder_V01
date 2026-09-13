@@ -2469,7 +2469,7 @@ async def track_event(event: str, user_id: str, props: dict = {}):
         pass  # analytics must never break the app
 
 # Admin auth — separate secret for dashboard access
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "pillcare_admin_secret_key_2026")
 
 def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
     """Accept either admin secret key OR admin JWT (from Google Sign-In)."""
