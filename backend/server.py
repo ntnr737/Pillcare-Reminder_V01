@@ -293,6 +293,13 @@ class DoseStatusUpdate(BaseModel):
     taken_at: Optional[datetime] = None  # client sends actual time taken
 
 
+class MarkTakenByMedPayload(BaseModel):
+    medication_id: str
+    scheduled_time: Optional[str] = None
+    taken_at: Optional[datetime] = None
+    date_str: Optional[str] = None
+
+
 class Measurement(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
@@ -1007,6 +1014,37 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
         await track_event("dose_missed", user_id, {"medication_id": res.get("medication_id", "")})
 
     return res
+
+
+@api.post("/doses/mark-taken-by-medication")
+async def mark_taken_by_medication(payload: MarkTakenByMedPayload, user_id: str = Depends(get_current_user_id)):
+    """Mark a dose as taken using medication_id & optional scheduled_time. Ideal for OS Notification Bar Action Buttons."""
+    today_str = payload.date_str or datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
+    await _ensure_doses_for_date(user_id, today_str)
+
+    query = {
+        "user_id": user_id,
+        "medication_id": payload.medication_id,
+        "date": today_str,
+    }
+    if payload.scheduled_time:
+        query["scheduled_time"] = payload.scheduled_time
+
+    # Look for pending dose first
+    dose = await db.doses.find_one({**query, "status": "pending"}, PROJECTION)
+    if not dose:
+        dose = await db.doses.find_one(query, PROJECTION)
+    if not dose:
+        # Fallback to any pending dose for medication today
+        dose = await db.doses.find_one({"user_id": user_id, "medication_id": payload.medication_id, "date": today_str, "status": "pending"}, PROJECTION)
+    if not dose:
+        # Fallback to any dose for medication today
+        dose = await db.doses.find_one({"user_id": user_id, "medication_id": payload.medication_id, "date": today_str}, PROJECTION)
+
+    if not dose:
+        raise HTTPException(404, f"No dose entry found for medication {payload.medication_id} on {today_str}")
+
+    return await update_dose_status(dose["id"], DoseStatusUpdate(status="taken", taken_at=payload.taken_at), user_id)
 
 
 # Measurements

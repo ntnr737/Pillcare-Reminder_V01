@@ -8,6 +8,7 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { api } from "./api";
 import { get, set, K } from "./store";
+import { recordTaken } from "./sync";
 import Constants from "expo-constants";
 
 // Show notification in foreground always
@@ -74,18 +75,37 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
       const actionId = response.actionIdentifier;
       const data = response.notification.request.content.data || {};
 
-      if (actionId === "MARK_TAKEN") {
+      if (actionId === "MARK_TAKEN" || actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
         if (data.medicationId) {
           const medId = String(data.medicationId);
+          const schedTime = data.scheduledTime ? String(data.scheduledTime) : undefined;
           const nowStr = new Date().toISOString();
           const todayDate = nowStr.split("T")[0];
-          api.setDoseStatus(medId, "taken", nowStr).catch(() => {});
+
+          // 1. Mark local persistent taken registry immediately (offline-first, zero latency)
+          if (data.doseId) {
+            await recordTaken(String(data.doseId), todayDate, nowStr);
+          }
+          await recordTaken(medId, todayDate, nowStr);
+
+          // 2. Call backend endpoint to mark dose as taken and update stock in database
+          try {
+            await api.markTakenByMedication(medId, schedTime, nowStr);
+          } catch (err) {
+            console.warn("Server mark taken failed, enqueued locally:", err);
+          }
+
+          // 3. Update cached doses array in AsyncStorage so UI updates instantly when app opens
           const key = K.doses(todayDate);
           const cached = (await get<any[]>(key)) || [];
-          const updated = cached.map((d: any) =>
-            d.medication_id === medId || d.id === medId ? { ...d, status: "taken", taken_at: nowStr } : d
-          );
-          await set(key, updated);
+          if (cached.length) {
+            const updated = cached.map((d: any) =>
+              d.medication_id === medId || d.id === medId || (d.medication_id === medId && d.scheduled_time === schedTime)
+                ? { ...d, status: "taken", taken_at: nowStr }
+                : d
+            );
+            await set(key, updated);
+          }
         }
       } else if (actionId === "SNOOZE_15") {
         await Notifications.scheduleNotificationAsync({
