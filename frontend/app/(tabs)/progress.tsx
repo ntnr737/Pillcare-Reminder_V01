@@ -34,6 +34,15 @@ export default function Progress() {
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
 
+  const [waterLogged, setWaterLogged] = useState<number>(0);
+  const todayIso = new Date().toISOString().split("T")[0];
+
+  useEffect(() => {
+    get<number>("water_logged_" + todayIso).then(val => {
+      if (val !== null && val !== undefined) setWaterLogged(val);
+    });
+  }, [todayIso]);
+
   useEffect(() => {
     get<any>(K.adherence).then(a => { if (a) setAdh(a); });
     get<any[]>(K.history).then(h => { if (h) setHistory(h); });
@@ -175,6 +184,131 @@ export default function Progress() {
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AC} />}>
 
         {tab === "charts" && (<>
+          {/* HOLISTIC DAILY HEALTH & WELLNESS SCORE CARD (Apple Health & Health Connect Synthesis) */}
+          {(() => {
+            const todayHistory = history.find((h: any) => h.date === todayIso);
+            const todayTotal = todayHistory?.total || 0;
+            const todayTaken = todayHistory?.taken || 0;
+            const medPct = todayTotal > 0 ? Math.round((todayTaken / todayTotal) * 100) : 100;
+            const medScore = Math.round((medPct / 100) * 35);
+
+            const yogaDone = history.some((h: any) =>
+              h.date === todayIso && (h.entries || []).some((e: any) => e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga"))
+            );
+            const yogaScore = yogaDone ? 25 : 10;
+            const hydrScore = Math.min(20, Math.round((waterLogged / 2500) * 20));
+
+            let vitalsScore = 10;
+            if (hcSnapshot) {
+              if ((hcSnapshot.steps || 0) >= 5000) vitalsScore += 5;
+              if ((hcSnapshot.sleepHours || 0) >= 6.5) vitalsScore += 5;
+            }
+
+            const holisticScore = Math.min(100, medScore + yogaScore + hydrScore + vitalsScore);
+            const ratingLabel = holisticScore >= 85 ? "OPTIMAL WELLNESS & BALANCE" : holisticScore >= 65 ? "GOOD HEALTH PROGRESS" : "NEEDS HYDRATION & DOSE FOCUS";
+            const ratingColor = holisticScore >= 85 ? "#4ade80" : holisticScore >= 65 ? "#38bdf8" : "#fbbf24";
+
+            return (
+              <View style={[s.card, { borderColor: "rgba(56,189,248,0.35)", backgroundColor: "rgba(14,165,233,0.06)", gap: 12 }]}>
+                {/* Top Header */}
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flex: 1, gap: 3 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="sparkles" size={14} color="#38bdf8" />
+                      <Text style={{ fontSize: 10, letterSpacing: 1, color: "#38bdf8", fontWeight: "700" }}>
+                        HOLISTIC DAILY HEALTH SUMMARY
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 15, fontWeight: "800", color: TX }}>
+                      Today's Wellness Score
+                    </Text>
+                    <Text style={{ fontSize: 10, color: ratingColor, fontWeight: "700" }}>
+                      ● {ratingLabel}
+                    </Text>
+                  </View>
+
+                  <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: "rgba(56,189,248,0.15)", borderWidth: 2, borderColor: "#38bdf8", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 20, fontWeight: "900", color: TX }}>{holisticScore}</Text>
+                    <Text style={{ fontSize: 8, color: "#38bdf8", fontWeight: "700", marginTop: -2 }}>/ 100</Text>
+                  </View>
+                </View>
+
+                {/* 4 Pillars Mini Dashboard Grid */}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+                  {/* Pillar 1: Medications */}
+                  <View style={{ flex: 1, minWidth: 140, backgroundColor: "#1e2130", borderRadius: 10, padding: 10, gap: 4, borderWidth: 1, borderColor: BD }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Ionicons name="medical-outline" size={14} color={A3} />
+                      <Text style={{ fontSize: 9, color: todayTotal > 0 && todayTaken === todayTotal ? "#4ade80" : A3, fontWeight: "700" }}>
+                        {todayTotal > 0 ? `${medPct}%` : "100%"}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: TX }}>
+                      {todayTaken}/{todayTotal || 0} Doses
+                    </Text>
+                    <Text style={{ fontSize: 10, color: TM }}>Medication Timing</Text>
+                  </View>
+
+                  {/* Pillar 2: Yoga Therapy */}
+                  <View style={{ flex: 1, minWidth: 140, backgroundColor: "#1e2130", borderRadius: 10, padding: 10, gap: 4, borderWidth: 1, borderColor: BD }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Ionicons name="fitness-outline" size={14} color="#A855F7" />
+                      <Text style={{ fontSize: 9, color: yogaDone ? "#4ade80" : "#A855F7", fontWeight: "700" }}>
+                        {yogaDone ? "✓ DONE" : "PENDING"}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: TX }}>
+                      {yogaDone ? "12 min Session" : "Yoga Routine"}
+                    </Text>
+                    <Text style={{ fontSize: 10, color: TM }}>AYUSH Therapy Flow</Text>
+                  </View>
+
+                  {/* Pillar 3: Hydration */}
+                  <View style={{ flex: 1, minWidth: 140, backgroundColor: "#1e2130", borderRadius: 10, padding: 10, gap: 4, borderWidth: 1, borderColor: BD }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Ionicons name="water-outline" size={14} color="#38bdf8" />
+                      <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
+                        {Math.round((waterLogged / 2500) * 100)}%
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: TX }}>
+                      {waterLogged} mL
+                    </Text>
+                    <Text style={{ fontSize: 10, color: TM }}>Water Intake (2.5L Goal)</Text>
+                  </View>
+
+                  {/* Pillar 4: Vitals & Wearables */}
+                  <View style={{ flex: 1, minWidth: 140, backgroundColor: "#1e2130", borderRadius: 10, padding: 10, gap: 4, borderWidth: 1, borderColor: BD }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Ionicons name="heart-outline" size={14} color="#f87171" />
+                      <Text style={{ fontSize: 9, color: hcStatus === "granted" ? "#4ade80" : TM, fontWeight: "700" }}>
+                        {hcStatus === "granted" ? "ACTIVE" : "CONNECT"}
+                      </Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: TX }}>
+                      {hcSnapshot?.steps ? `${hcSnapshot.steps.toLocaleString()} steps` : "Health Connect"}
+                    </Text>
+                    <Text style={{ fontSize: 10, color: TM }}>
+                      {hcSnapshot?.sleepHours ? `${hcSnapshot.sleepHours}h sleep` : "Vitals Sync"}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Integrated Clinical & Behavioral Health Narrative */}
+                <View style={{ backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 10, gap: 4 }}>
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>
+                    Apple Health-Style Integrated Report:
+                  </Text>
+                  <Text style={{ fontSize: 10, color: TM, lineHeight: 15 }}>
+                    {todayTaken > 0 || yogaDone || waterLogged > 0
+                      ? `Combining your ${todayTaken}/${todayTotal || 1} doses taken, ${yogaDone ? "completed yoga flow" : "daily routine"}, ${waterLogged} mL hydration, and wearable vitals creates a balanced daily health profile. Regular hydration and dose compliance maintain stable therapeutic plasma levels.`
+                      : `Log your daily doses, water intake, and yoga session to generate your personalized holistic health report and track positive lifestyle changes.`}
+                  </Text>
+                </View>
+              </View>
+            );
+          })()}
+
           <View style={s.card}>
             <View style={s.cH}>
               <View><Text style={s.cT}>30-Day Adherence</Text><Text style={s.cS}>Tap a bar to see that day</Text></View>
