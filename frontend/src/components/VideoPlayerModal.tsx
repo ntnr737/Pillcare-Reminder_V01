@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Platform,
   Linking,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -119,11 +120,26 @@ export function VideoPlayerModal({
                 // Native WebView for iOS / Android
                 <WebView
                   source={{ uri: embedUrl }}
-                  style={{ flex: 1, borderRadius: 12 }}
+                  style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
                   allowsInlineMediaPlayback
                   mediaPlaybackRequiresUserAction={false}
                   javaScriptEnabled
                   domStorageEnabled
+                  startInLoadingState={true}
+                  renderLoading={() => (
+                    <View style={s.loadingContainer}>
+                      <ActivityIndicator size="small" color={A3} />
+                    </View>
+                  )}
+                  renderError={() => (
+                    <View style={s.offlineFallbackContainer}>
+                      <Ionicons name="cloud-offline-outline" size={38} color={A3} />
+                      <Text style={s.offlineTitle}>Video Unavailable Offline</Text>
+                      <Text style={s.offlineSub}>
+                        Internet connection required to stream YouTube video.
+                      </Text>
+                    </View>
+                  )}
                 />
               ) : (
                 // Native Fallback
@@ -312,5 +328,38 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: "#4ade80",
     fontWeight: "700",
+  },
+  loadingContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: BG,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  offlineFallbackContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: BG,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 16,
+    gap: 6,
+  },
+  offlineTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: TX,
+    marginTop: 4,
+  },
+  offlineSub: {
+    fontSize: 11,
+    color: TM,
+    textAlign: "center",
   },
 });
