@@ -951,10 +951,10 @@ async def list_doses(date_str: str, user_id: str = Depends(get_current_user_id))
     enriched = []
     for d in doses:
         m = med_map.get(d["medication_id"])
-        # Skip doses whose medication was soft-deleted (active: False) via
+        # Skip doses whose medication was soft-deleted (active: False) or completed (completed: True) via
         # "Treatment complete" — otherwise the old dose row keeps resurfacing
         # its stale stock value forever, making the out-of-stock prompt look stuck.
-        if m and m.get("active", True):
+        if m and m.get("active", True) and not m.get("completed", False):
             enriched.append({**d, "medication": m})
     enriched.sort(key=lambda x: x["scheduled_time"])
     return enriched

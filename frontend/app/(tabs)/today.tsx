@@ -155,8 +155,14 @@ export default function Today() {
     const lows = [...new Set(doses.map((d: any) => d.medication_id))]
       .map(mid => doses.find((d: any) => d.medication_id === mid))
       .filter(Boolean)
-      .map((d: any) => ({ id: d.medication_id, name: d.medication_name || d.medication?.name || "", stock: d.medication?.stock ?? 999 }))
-      .filter((m: any) => m.stock !== undefined && m.stock <= 3);
+      .map((d: any) => ({
+        id: d.medication_id,
+        name: d.medication_name || d.medication?.name || "",
+        stock: d.medication?.stock ?? 999,
+        active: d.medication?.active,
+        completed: d.medication?.completed,
+      }))
+      .filter((m: any) => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
     if (!lows.length) return;
     (async () => {
       for (const m of lows) {
@@ -585,8 +591,14 @@ export default function Today() {
       const lowStock = [...new Set(doses.map((d: any) => d.medication_id))]
       .map(mid => doses.find((d: any) => d.medication_id === mid))
       .filter(Boolean)
-      .map((d: any) => ({ id: d.medication_id, name: d.medication_name || d.medication?.name || "", stock: d.medication?.stock ?? 999 }))
-      .filter(m => m.stock !== undefined && m.stock <= 3);
+      .map((d: any) => ({
+        id: d.medication_id,
+        name: d.medication_name || d.medication?.name || "",
+        stock: d.medication?.stock ?? 999,
+        active: d.medication?.active,
+        completed: d.medication?.completed,
+      }))
+      .filter(m => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
       if (!lowStock.length) return null;
       const onStockPress = (m: { id: string; name: string; stock: number }) => {
         setStockModal(m);
