@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { RefillModal } from "@/src/components/RefillModal";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
 import { resyncReminders, YOGA_CATEGORY } from "@/src/lib/notifications";
@@ -170,6 +171,7 @@ export default function Treatment() {
     await set(K.history, [...historyCache]);
   };
   const [dismissedNudges, setDismissedNudges] = useState<Set<string>>(new Set());
+  const [refillMed, setRefillMed] = useState<{ id: string; name: string; stock?: number } | null>(null);
   const applyNudge = async (medId: string, n: any) => {
     try {
       await api.applyReminderNudge(medId, n.current_time, n.suggested_time);
@@ -451,24 +453,19 @@ export default function Treatment() {
                   {!isCompleted && m.stock <= m.refill_threshold && (
                     <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
                       <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.12)", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                        onPress={async () => {
-                          try {
-                            await api.refillMedication(m.id, 30);
-                            Alert.alert("Stock Refilled", `Added +30 pills to ${m.name}.`);
-                            backgroundRefresh(loadServer);
-                          } catch {}
-                        }}>
+                        onPress={() => setRefillMed(m)}>
                         <Ionicons name="cube-outline" size={14} color="#38bdf8" />
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>Refill Stock (+30)</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>Refill Stock</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity style={{ backgroundColor: "rgba(74,222,128,0.12)", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
-                        onPress={async () => {
+                        onPress={() => {
                           Alert.alert("Mark Course Complete?", `Mark treatment for ${m.name} as complete?`, [
                             { text: "Cancel", style: "cancel" },
                             { text: "Mark Complete", onPress: async () => {
+                              setMeds(prev => prev.map(item => item.id === m.id ? { ...item, active: false, completed: true, completed_at: new Date().toISOString() } : item));
                               try { await api.completeMedication(m.id); } catch {}
-                              backgroundRefresh(loadServer);
+                              await loadServer();
                             }}
                           ]);
                         }}>
@@ -486,14 +483,8 @@ export default function Treatment() {
                         <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>COURSE COMPLETED</Text>
                       </View>
                       <TouchableOpacity style={{ backgroundColor: "rgba(56,189,248,0.15)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
-                        onPress={async () => {
-                          try {
-                            await api.refillMedication(m.id, 30);
-                            Alert.alert("Course Reactivated", `${m.name} is active again with 30 pills.`);
-                            backgroundRefresh(loadServer);
-                          } catch {}
-                        }}>
-                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#38bdf8" }}>Restart (+30)</Text>
+                        onPress={() => setRefillMed(m)}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#38bdf8" }}>Restart Course</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -840,6 +831,7 @@ export default function Treatment() {
       </Modal>
 
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />
+      <RefillModal visible={!!refillMed} medication={refillMed} onClose={() => setRefillMed(null)} onRefilled={async () => { await loadServer(); }} />
       <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Full yoga library" description="Free plan includes a daily yoga tip. Upgrade to Pro Dharma for full guided routines with video demos." />
       <VideoPlayerModal
         visible={!!activeVideo}

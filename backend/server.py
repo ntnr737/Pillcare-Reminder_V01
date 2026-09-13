@@ -918,6 +918,9 @@ async def mark_medication_complete(med_id: str, user_id: str = Depends(get_curre
         {"id": med_id, "user_id": user_id},
         {"$set": {"active": False, "completed": True, "completed_at": completed_at}}
     )
+    # Remove all pending doses for this medication so they immediately disappear from today's schedule
+    await db.doses.delete_many({"medication_id": med_id, "user_id": user_id, "status": "pending"})
+    
     today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
     now_time = datetime.now(APP_TIMEZONE).strftime("%H:%M")
     complete_event = {

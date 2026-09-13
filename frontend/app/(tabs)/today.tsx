@@ -6,6 +6,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import * as Haptics from "expo-haptics";
 import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { RefillModal } from "@/src/components/RefillModal";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { getFeatures } from "@/src/lib/features";
 import { track } from "@/src/lib/analytics";
@@ -143,6 +144,7 @@ export default function Today() {
   };
   const [actionSheet, setActionSheet] = useState(false);
   const [stockModal, setStockModal] = useState<{ id: string; name: string; stock: number } | null>(null);
+  const [refillMed, setRefillMed] = useState<{ id: string; name: string; stock?: number } | null>(null);
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
 
@@ -713,20 +715,15 @@ export default function Today() {
               );
             })()}
 
-            {/* 1-Tap Refill Stock Option */}
-            <TouchableOpacity onPress={async () => {
-              const id = stockModal?.id;
-              if (id) {
-                try {
-                  await api.refillMedication(id, 30);
-                  Alert.alert("Stock Refilled", `Added +30 pills to ${stockModal?.name}.`);
-                } catch {}
-                setStockModal(null);
-                backgroundRefresh(fetchServer);
-              }
+            {/* Custom Refill Stock Option */}
+            <TouchableOpacity onPress={() => {
+              const med = stockModal;
+              setStockModal(null);
+              if (med) setRefillMed(med);
             }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(56,189,248,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)" }}>
               <Ionicons name="cube-outline" size={18} color="#38bdf8" />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: "#38bdf8", flex: 1 }}>Refill stock (+30 pills)</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: "#38bdf8", flex: 1 }}>Refill stock (Select quantity)</Text>
+              <Ionicons name="chevron-forward" size={14} color="#38bdf8" />
             </TouchableOpacity>
 
             {/* Find Pharmacy Option */}
@@ -745,8 +742,9 @@ export default function Today() {
                 { text: "Mark Complete", style: "default", onPress: async () => {
                   setStockModal(null);
                   if (id) {
+                    setDoses(prev => prev.filter(d => d.medication_id !== id));
                     try { await api.completeMedication(id); } catch {}
-                    backgroundRefresh(fetchServer);
+                    await fetchServer();
                   }
                 }}
               ]);
@@ -830,6 +828,7 @@ export default function Today() {
         description={`Free plan supports up to ${getFeatures().max_medications} medications. Upgrade to Pro Dharma for unlimited.`}
       />
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
+      <RefillModal visible={!!refillMed} medication={refillMed} onClose={() => setRefillMed(null)} onRefilled={async () => { await fetchServer(); }} />
     </SafeAreaView>
   );
 }
