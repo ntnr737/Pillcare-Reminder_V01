@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect } from "react";
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert, Platform } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert, Platform, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
@@ -190,20 +190,35 @@ export default function Treatment() {
     get<any>(K.yogaTip).then(y => { if (y) setYoga(y); });
   }, []);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const loadServer = useCallback(async () => {
     try {
       const [m, mes, act, mo, mc, ac] = await Promise.all([
         api.listMedications(true), api.listMeasurements(), api.listActivities(),
         api.listMood(), api.measurementCatalog(), api.activityCatalog()
       ]);
-      setMeds(m); setMeasurements(mes); setActivities(act); setMood(mo);
-      setCatalog({ m: mc.measurements, a: ac.activities });
+      if (m && Array.isArray(m)) setMeds(m);
+      if (mes && Array.isArray(mes)) setMeasurements(mes);
+      if (act && Array.isArray(act)) setActivities(act);
+      if (mo && Array.isArray(mo)) setMood(mo);
+      if (mc?.measurements) setCatalog((prev: any) => ({ ...prev, m: mc.measurements }));
+      if (ac?.activities) setCatalog((prev: any) => ({ ...prev, a: ac.activities }));
       set(K.medications, m); set(K.measurements, mes); set(K.mood, mo);
       resyncReminders().catch(() => {});
-    } catch {}
+    } catch {
+      await loadCache();
+    }
     // Fetch AI yoga tip in non-blocking background promise
     api.yogaTip().then(y => { if (y) { setYoga(y); set(K.yogaTip, y); } }).catch(() => {});
-  }, []);
+  }, [loadCache]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await loadCache();
+    try { await loadServer(); } catch {}
+    setRefreshing(false);
+  };
 
   useFocusEffect(useCallback(() => {
     loadCache();
@@ -286,12 +301,17 @@ export default function Treatment() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.hdr}><Text style={s.title}>Treatment</Text></View>
+      <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+        <Text style={s.title}>Treatment</Text>
+        <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-treatment-btn">
+          <Ionicons name="refresh" size={20} color={A3} />
+        </TouchableOpacity>
+      </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
         {TABS.map((t, i) => (<TouchableOpacity key={t} onPress={() => setTab(i)} style={[s.tab, i === tab && s.tabOn]}><Text style={[s.tabT, i === tab && s.tabTOn]}>{t}</Text></TouchableOpacity>))}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={A3} colors={[A3]} />}>
         {/* MEDICATIONS */}
         {tab === 0 && (<View style={{ gap: 10 }}>
           {/* Filter tags - above yoga card so yoga doesn't shift */}
@@ -842,7 +862,7 @@ export default function Treatment() {
         </TouchableOpacity>
       </Modal>
 
-      <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(loadServer); }} />
+      <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); loadCache(); get<any[]>(K.medications).then(m => { if (m) resyncReminders(m); }).catch(() => resyncReminders()); backgroundRefresh(loadServer); }} />
       <RefillModal visible={!!refillMed} medication={refillMed} onClose={() => setRefillMed(null)} onRefilled={async () => { await loadServer(); }} />
       <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Full yoga library" description="Free plan includes a daily yoga tip. Upgrade to Pro Dharma for full guided routines with video demos." />
       <VideoPlayerModal

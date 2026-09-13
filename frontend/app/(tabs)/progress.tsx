@@ -138,8 +138,12 @@ export default function Progress() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.hdr}>
-          <Text style={s.title}>Progress</Text>
+      <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
+        <Text style={s.title}>Progress</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-progress-btn">
+            <Ionicons name="refresh" size={20} color={A3} />
+          </TouchableOpacity>
           <TouchableOpacity style={[s.iBtn, {flexDirection:"row",alignItems:"center",gap:5,paddingHorizontal:10,borderRadius:10,backgroundColor:"rgba(145,132,217,0.1)"}]}
             onPress={async () => {
               const features = getFeatures();
@@ -163,6 +167,7 @@ export default function Progress() {
             <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>{exporting ? "Exporting…" : "Export CSV"}</Text>
           </TouchableOpacity>
         </View>
+      </View>
       <View style={s.seg}>
         <TouchableOpacity style={[s.segO, tab === "charts" && s.segOn]} onPress={() => setTab("charts")}><Text style={[s.segT, tab === "charts" && s.segTOn]}>Charts</Text></TouchableOpacity>
         <TouchableOpacity style={[s.segO, tab === "list" && s.segOn]} onPress={() => setTab("list")}><Text style={[s.segT, tab === "list" && s.segTOn]}>List</Text></TouchableOpacity>

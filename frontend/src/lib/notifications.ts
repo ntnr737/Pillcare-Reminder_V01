@@ -279,13 +279,13 @@ function parseTime(t: string): { hour: number; minute: number } | null {
   return { hour, minute };
 }
 
-export async function resyncReminders(): Promise<void> {
+export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
   try {
     const granted = await requestNotificationPermission();
     if (!granted) return;
 
     // Local-first medication resolution — reads from AsyncStorage first, falls back to API
-    let meds = (await get<any[]>(K.medications)) || [];
+    let meds = overrideMeds || (await get<any[]>(K.medications)) || [];
     if (!meds || meds.length === 0) {
       try {
         meds = await api.listMedications(true);
@@ -316,7 +316,7 @@ export async function resyncReminders(): Promise<void> {
             hour: parsed.hour,
             minute: parsed.minute,
             channelId: "medication-reminders",
-          },
+          } as any,
         });
         scheduled++;
       }
