@@ -108,6 +108,7 @@ export default function Today() {
   const waterGoal = 2500; // in ml (10 glasses of 250ml)
 
   useEffect(() => {
+    setDismissedStockBanner(false);
     get<number>("water_logged_" + date).then(val => {
       setWaterLogged(val || 0);
     });
@@ -145,6 +146,8 @@ export default function Today() {
   const [actionSheet, setActionSheet] = useState(false);
   const [stockModal, setStockModal] = useState<{ id: string; name: string; stock: number } | null>(null);
   const [refillMed, setRefillMed] = useState<{ id: string; name: string; stock?: number } | null>(null);
+  const [dismissedStockBanner, setDismissedStockBanner] = useState(false);
+  const [stockListOpen, setStockListOpen] = useState(false);
   const pending = useRef<Set<string>>(new Set());
   const days = getWD(date);
 
@@ -598,41 +601,85 @@ export default function Today() {
         })}
       </ScrollView>
 
-      {/* Low stock & out of stock warnings */}
-      {doses.length > 0 && (() => {
-      const lowStock = [...new Set(doses.map((d: any) => d.medication_id))]
-      .map(mid => doses.find((d: any) => d.medication_id === mid))
-      .filter(Boolean)
-      .map((d: any) => ({
-        id: d.medication_id,
-        name: d.medication_name || d.medication?.name || "",
-        stock: d.medication?.stock ?? 999,
-        active: d.medication?.active,
-        completed: d.medication?.completed,
-      }))
-      .filter(m => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
-      if (!lowStock.length) return null;
-      const onStockPress = (m: { id: string; name: string; stock: number }) => {
-        setStockModal(m);
-      };
-      return (
-        <View style={{ marginHorizontal: 14, marginBottom: 10, gap: 6 }}>
-          {lowStock.map((m, i) => (
-          <TouchableOpacity key={i} style={{ backgroundColor: m.stock <= 0 ? "rgba(248,113,113,0.1)" : "rgba(251,191,36,0.1)", borderRadius: 10, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: m.stock <= 0 ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)" }}
-            onPress={() => onStockPress(m)}>
-            <Ionicons name={m.stock <= 0 ? "alert-circle" : "warning"} size={16} color={m.stock <= 0 ? "#f87171" : "#fbbf24"} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: m.stock <= 0 ? "#f87171" : "#fbbf24" }}>
-                {m.stock <= 0 ? `${m.name} is out of stock` : `${m.name} — only ${m.stock} left`}
-              </Text>
-              <Text style={{ fontSize: 11, color: TM, marginTop: 1 }}>{m.stock <= 0 ? "Tap for options" : "Tap to find nearest pharmacy"}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={13} color={TM} />
-          </TouchableOpacity>
-          ))}
-        </View>
+      {/* Low stock & out of stock consolidated summary banner */}
+      {doses.length > 0 && !dismissedStockBanner && (() => {
+        const lowStock = [...new Set(doses.map((d: any) => d.medication_id))]
+          .map(mid => doses.find((d: any) => d.medication_id === mid))
+          .filter(Boolean)
+          .map((d: any) => ({
+            id: d.medication_id,
+            name: d.medication_name || d.medication?.name || "",
+            stock: d.medication?.stock ?? 999,
+            active: d.medication?.active,
+            completed: d.medication?.completed,
+          }))
+          .filter(m => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
+
+        if (!lowStock.length) return null;
+
+        const hasZeroStock = lowStock.some(m => m.stock <= 0);
+        const accentColor = hasZeroStock ? "#f87171" : "#fbbf24";
+        const bgAlpha = hasZeroStock ? "rgba(248,113,113,0.12)" : "rgba(251,191,36,0.12)";
+        const borderAlpha = hasZeroStock ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)";
+
+        const firstTwoNames = lowStock.slice(0, 2).map(m => m.name).join(", ");
+        const remainingCount = lowStock.length - 2;
+        const summaryNames = remainingCount > 0 ? `${firstTwoNames} +${remainingCount} more` : firstTwoNames;
+        const bannerTitle = lowStock.length === 1
+          ? (lowStock[0].stock <= 0 ? `${lowStock[0].name} is out of stock` : `${lowStock[0].name} — only ${lowStock[0].stock} left`)
+          : `${lowStock.length} Medications Low on Stock: ${summaryNames}`;
+
+        return (
+          <View style={{ marginHorizontal: 14, marginBottom: 10 }}>
+            <TouchableOpacity
+              activeOpacity={0.88}
+              style={{
+                backgroundColor: bgAlpha,
+                borderRadius: 12,
+                padding: 12,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                borderWidth: 1,
+                borderColor: borderAlpha,
+              }}
+              onPress={() => setStockListOpen(true)}
+            >
+              <Ionicons name={hasZeroStock ? "alert-circle" : "warning"} size={18} color={accentColor} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: accentColor }} numberOfLines={1}>
+                  {bannerTitle}
+                </Text>
+                <Text style={{ fontSize: 11, color: TM, marginTop: 2 }}>
+                  Tap to manage & refill • Tap ✕ to remind later
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: "rgba(145,132,217,0.15)",
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: "rgba(145,132,217,0.3)",
+                }}
+                onPress={() => setStockListOpen(true)}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>Manage</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 4 }}
+                onPress={() => setDismissedStockBanner(true)}
+              >
+                <Ionicons name="close" size={16} color={TM} />
+              </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
         );
-    })()}
+      })()}
       {/* FAB */}
       <TouchableOpacity style={s.fab} onPress={() => setActionSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
 
@@ -841,6 +888,93 @@ export default function Today() {
                 </View>
               ))}
             </ScrollView>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Consolidated Low & Out of Stock Management Modal Sheet */}
+      <Modal visible={stockListOpen} transparent animationType="slide" onRequestClose={() => setStockListOpen(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockListOpen(false)}>
+          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1e212d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "80%", gap: 14 }}>
+            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 2 }} />
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="warning" size={20} color="#fbbf24" />
+                <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>Low & Out of Stock Medications</Text>
+              </View>
+              <TouchableOpacity onPress={() => setStockListOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={20} color={TM} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+              {(() => {
+                const lowStockList = [...new Set(doses.map((d: any) => d.medication_id))]
+                  .map(mid => doses.find((d: any) => d.medication_id === mid))
+                  .filter(Boolean)
+                  .map((d: any) => ({
+                    id: d.medication_id,
+                    name: d.medication_name || d.medication?.name || "",
+                    stock: d.medication?.stock ?? 999,
+                    active: d.medication?.active,
+                    completed: d.medication?.completed,
+                  }))
+                  .filter(m => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
+
+                if (!lowStockList.length) {
+                  return (
+                    <Text style={{ fontSize: 13, color: TM, textAlign: "center", paddingVertical: 20 }}>
+                      All medication stocks are sufficient!
+                    </Text>
+                  );
+                }
+
+                return lowStockList.map((item, idx) => (
+                  <View key={idx} style={{ backgroundColor: "#262938", borderRadius: 12, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderWidth: 1, borderColor: item.stock <= 0 ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)" }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{item.name}</Text>
+                      <Text style={{ fontSize: 11, color: item.stock <= 0 ? "#f87171" : "#fbbf24", fontWeight: "600", marginTop: 2 }}>
+                        {item.stock <= 0 ? "⚠️ Out of stock (0 left)" : `⚠️ Only ${item.stock} left`}
+                      </Text>
+                    </View>
+                    <View style={{ flexDirection: "row", gap: 6 }}>
+                      <TouchableOpacity
+                        style={{ backgroundColor: "rgba(56,189,248,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)" }}
+                        onPress={() => {
+                          setStockListOpen(false);
+                          setRefillMed(item);
+                        }}>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>Refill</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={{ backgroundColor: "rgba(74,222,128,0.12)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)" }}
+                        onPress={() => {
+                          setStockListOpen(false);
+                          Alert.alert("Mark Course Complete?", `Archive ${item.name}? It will hide from daily dose lists.`, [
+                            { text: "Cancel", style: "cancel" },
+                            { text: "Mark Complete", onPress: () => markComplete(item.id) }
+                          ]);
+                        }}>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>Done</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ));
+              })()}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(139,92,246,0.2)", borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: "rgba(139,92,246,0.35)", marginTop: 4 }}
+              onPress={() => { setStockListOpen(false); router.push("/nearby"); }}>
+              <Ionicons name="storefront-outline" size={16} color={A3} />
+              <Text style={{ fontSize: 13, fontWeight: "700", color: A3 }}>Find Nearby Pharmacy</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={{ alignItems: "center", paddingVertical: 8 }}
+              onPress={() => { setStockListOpen(false); setDismissedStockBanner(true); }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: TM }}>Dismiss banner for today</Text>
+            </TouchableOpacity>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
