@@ -241,31 +241,35 @@ export default function Progress() {
           </View>
           <Text style={s.secL}>HEALTH CONNECT & WEARABLES</Text>
           <View style={[s.card, { borderColor: hcStatus === "granted" ? "rgba(74,222,128,0.3)" : BD }]}>
-            <View style={s.cRow}>
-              <View style={[s.cI, { backgroundColor: hcStatus === "granted" ? "rgba(74,222,128,0.15)" : AB }]}>
-                <Ionicons name="heart" size={17} color={hcStatus === "granted" ? "#4ade80" : A3} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Text style={s.cT}>Android Health Connect</Text>
-                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: hcStatus === "granted" ? "rgba(74,222,128,0.15)" : "rgba(233,233,237,0.1)" }}>
-                    <Text style={{ fontSize: 9, fontWeight: "700", color: hcStatus === "granted" ? "#4ade80" : TM }}>
-                      {hcStatus === "granted" ? "✓ CONNECTED" : hcStatus === "unavailable" ? "NOT INSTALLED" : "PERMISSION NEEDED"}
-                    </Text>
+            <View style={{ gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                  <View style={[s.cI, { backgroundColor: hcStatus === "granted" ? "rgba(74,222,128,0.15)" : AB }]}>
+                    <Ionicons name="heart" size={17} color={hcStatus === "granted" ? "#4ade80" : A3} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.cT} numberOfLines={1}>Android Health Connect</Text>
+                    <View style={{ alignSelf: "flex-start", marginTop: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: hcStatus === "granted" ? "rgba(74,222,128,0.15)" : "rgba(233,233,237,0.1)" }}>
+                      <Text style={{ fontSize: 9, fontWeight: "700", color: hcStatus === "granted" ? "#4ade80" : TM }}>
+                        {hcStatus === "granted" ? "✓ CONNECTED" : hcStatus === "unavailable" ? "NOT INSTALLED" : "PERMISSION NEEDED"}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                <Text style={s.cS}>
-                  {hcSnapshot?.lastSyncedAt ? `Last synced at ${hcSnapshot.lastSyncedAt}` : "Syncs vitals & fitness across devices"}
-                </Text>
+
+                <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                  <TouchableOpacity style={s.conBtn} disabled={hcLoading} onPress={hcStatus === "granted" ? loadHealth : connectHealth}>
+                    <Text style={s.conT}>{hcLoading ? "…" : hcStatus === "granted" ? "Refresh" : "Connect"}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.conBtn, { backgroundColor: "rgba(233,233,237,0.08)", borderColor: BD }]} onPress={() => setHcModalOpen(true)}>
+                    <Ionicons name="settings-outline" size={13} color={TX} />
+                  </TouchableOpacity>
+                </View>
               </View>
-              <View style={{ flexDirection: "row", gap: 6 }}>
-                <TouchableOpacity style={s.conBtn} disabled={hcLoading} onPress={hcStatus === "granted" ? loadHealth : connectHealth}>
-                  <Text style={s.conT}>{hcLoading ? "…" : hcStatus === "granted" ? "Refresh" : "Connect"}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[s.conBtn, { backgroundColor: "rgba(233,233,237,0.08)", borderColor: BD }]} onPress={() => setHcModalOpen(true)}>
-                  <Ionicons name="settings-outline" size={13} color={TX} />
-                </TouchableOpacity>
-              </View>
+
+              <Text style={s.cS}>
+                {hcSnapshot?.lastSyncedAt ? `Last synced at ${hcSnapshot.lastSyncedAt}` : "Syncs vitals & fitness across devices"}
+              </Text>
             </View>
 
             {/* Metrics Dashboard */}
@@ -363,26 +367,18 @@ export default function Progress() {
             )}
           </View>
           {/* Yoga & Wellness Therapy Card */}
-          <View style={[s.card, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)", gap: 12 }]}>
-            <View style={s.cRow}>
-              <View style={[s.cI, { backgroundColor: "rgba(168,85,247,0.18)", borderRadius: 12, width: 36, height: 36 }]}>
-                <Ionicons name="fitness-outline" size={18} color="#A855F7" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Text style={s.cT}>Yoga & Wellness Therapy</Text>
-                  <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(168,85,247,0.18)" }}>
+          <View style={[s.card, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)", gap: 10 }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+                <View style={[s.cI, { backgroundColor: "rgba(168,85,247,0.18)", borderRadius: 12, width: 36, height: 36 }]}>
+                  <Ionicons name="fitness-outline" size={18} color="#A855F7" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.cT} numberOfLines={1}>Yoga & Wellness Therapy</Text>
+                  <View style={{ alignSelf: "flex-start", marginTop: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(168,85,247,0.18)" }}>
                     <Text style={{ fontSize: 9, fontWeight: "700", color: "#A855F7" }}>LOGGED</Text>
                   </View>
                 </View>
-                <Text style={s.cS}>
-                  {(() => {
-                    const yogaCount = history.reduce((acc: number, day: any) => {
-                      return acc + (day.entries || []).filter((e: any) => e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga")).length;
-                    }, 0);
-                    return yogaCount > 0 ? `${yogaCount} yoga poses logged in your history` : "Clinical yoga therapy tailored to your medications";
-                  })()}
-                </Text>
               </View>
               <TouchableOpacity
                 style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(168,85,247,0.18)", borderWidth: 1, borderColor: "rgba(168,85,247,0.35)" }}
@@ -390,6 +386,14 @@ export default function Progress() {
                 <Text style={{ fontSize: 11, fontWeight: "700", color: "#A855F7" }}>View Poses →</Text>
               </TouchableOpacity>
             </View>
+            <Text style={s.cS}>
+              {(() => {
+                const yogaCount = history.reduce((acc: number, day: any) => {
+                  return acc + (day.entries || []).filter((e: any) => e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga")).length;
+                }, 0);
+                return yogaCount > 0 ? `${yogaCount} yoga poses logged in your history` : "Clinical yoga therapy tailored to your medications";
+              })()}
+            </Text>
           </View>
 
           {adh && (<View style={[s.card, { flexDirection: "row", gap: 12, borderColor: "rgba(145,132,217,0.3)" }]}>
