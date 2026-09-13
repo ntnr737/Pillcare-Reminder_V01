@@ -429,6 +429,18 @@ export default function Treatment() {
                       <Text style={s.cT}>{m.name}</Text>
                       {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                       <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
+                      {m.food_relation ? (
+                        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.1)", borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", alignSelf: "flex-start" }}>
+                          <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
+                            {m.food_relation === "before_food" ? "⌛ Before Food" : m.food_relation === "with_food" ? "🥗 With Food" : m.food_relation === "anytime" ? "⏰ Anytime" : "🍽️ After Food"}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {m.notes ? (
+                        <Text style={{ fontSize: 10, color: TM, fontStyle: "italic", marginTop: 2 }}>
+                          📝 {m.notes}
+                        </Text>
+                      ) : null}
                     </View>
                     {isCompleted ? (
                       <View style={[s.rTag, { backgroundColor: "rgba(74,222,128,0.15)", borderColor: "rgba(74,222,128,0.3)" }]}>

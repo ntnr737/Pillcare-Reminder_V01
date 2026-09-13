@@ -249,6 +249,7 @@ class Medication(BaseModel):
     generic_name: Optional[str] = None
     dosage: float
     unit: str
+    food_relation: Optional[str] = "after_food"  # "after_food", "before_food", "with_food", "anytime"
     frequency_per_day: int = 1
     times: List[str] = []  # e.g. ["08:00", "20:00"]
     start_date: str  # YYYY-MM-DD
@@ -266,6 +267,7 @@ class MedicationCreate(BaseModel):
     generic_name: Optional[str] = None
     dosage: float
     unit: str
+    food_relation: Optional[str] = "after_food"
     frequency_per_day: int = 1
     times: List[str] = []
     start_date: str

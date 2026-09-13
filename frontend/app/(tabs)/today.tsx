@@ -531,6 +531,18 @@ export default function Today() {
                       {m.generic_name ? <Text style={[s.dM, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                       <Text style={s.dM}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                       {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : TM, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
+                      {m.food_relation ? (
+                        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.1)", borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", alignSelf: "flex-start" }}>
+                          <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
+                            {m.food_relation === "before_food" ? "⌛ Before Food" : m.food_relation === "with_food" ? "🥗 With Food" : m.food_relation === "anytime" ? "⏰ Anytime" : "🍽️ After Food"}
+                          </Text>
+                        </View>
+                      ) : null}
+                      {m.notes || dose.note ? (
+                        <Text style={{ fontSize: 10, color: TM, fontStyle: "italic", marginTop: 2 }}>
+                          📝 {m.notes || dose.note}
+                        </Text>
+                      ) : null}
                       {guide?.dos?.[0] && (
                         <View style={{ marginTop: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" }}>
                           <Ionicons name="restaurant-outline" size={10} color="#4ade80" />

@@ -4,6 +4,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { PrimaryButton } from "./PrimaryButton";
+import { UnitDropdownModal } from "./UnitDropdownModal";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { enqueueWrite, flushQueue } from "@/src/lib/sync";
@@ -36,6 +37,8 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   const [stock, setStock] = useState("30");
   const [refill, setRefill] = useState("5");
   const [notes, setNotes] = useState("");
+  const [foodRelation, setFoodRelation] = useState("after_food");
+  const [showUnitModal, setShowUnitModal] = useState(false);
   const [showDate, setShowDate] = useState(false);
   const [showTimeIdx, setShowTimeIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -59,7 +62,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
 
   const reset = () => {
     setName(""); setDosage(""); setUnit("tablet"); setFreq("1");
-    setTimes(["08:00"]); setStartDate(new Date()); setStock("30"); setRefill("5"); setNotes("");
+    setTimes(["08:00"]); setStartDate(new Date()); setStock("30"); setRefill("5"); setNotes(""); setFoodRelation("after_food");
   };
 
   const save = async () => {
@@ -69,6 +72,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
       name: name.trim(),
       dosage: parseFloat(dosage) || 0,
       unit,
+      food_relation: foodRelation,
       frequency_per_day: parseInt(freq) || 1,
       times,
       start_date: fmt(startDate),
@@ -153,18 +157,14 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
               </View>
               <View style={{ flex: 1, marginLeft: 8 }}>
                 <Text style={styles.label}>Unit</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  {units.map((u) => (
-                    <TouchableOpacity
-                      key={u}
-                      testID={`unit-${u}`}
-                      onPress={() => setUnit(u)}
-                      style={[styles.chip, unit === u && styles.chipActive]}
-                    >
-                      <Text style={[styles.chipText, unit === u && styles.chipTextActive]}>{u}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                <TouchableOpacity
+                  testID="unit-dropdown-btn"
+                  onPress={() => setShowUnitModal(true)}
+                  style={styles.dropdownBtn}
+                >
+                  <Text style={styles.dropdownText}>{unit}</Text>
+                  <Feather name="chevron-down" size={18} color={theme.colors.brand} />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -203,12 +203,32 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
               </View>
             </View>
 
-            <Text style={styles.label}>Notes</Text>
+            <Text style={styles.label}>Food Instruction (MCI Guidelines)</Text>
+            <View style={styles.foodRow}>
+              {[
+                { key: "after_food", label: "🍽️ After Food" },
+                { key: "before_food", label: "⌛ Before Food" },
+                { key: "with_food", label: "🥗 With Food" },
+                { key: "anytime", label: "⏰ Anytime" },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.key}
+                  onPress={() => setFoodRelation(item.key)}
+                  style={[styles.foodChip, foodRelation === item.key && styles.foodChipActive]}
+                >
+                  <Text style={[styles.foodChipText, foodRelation === item.key && styles.foodChipTextActive]}>
+                    {item.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Special Notes / Instructions</Text>
             <TextInput
               testID="notes-input"
               value={notes}
               onChangeText={setNotes}
-              placeholder="After food"
+              placeholder="e.g. Take with a full glass of water, do not crush..."
               placeholderTextColor={theme.colors.textDisabled}
               style={[styles.input, { height: 60 }]}
               multiline
@@ -249,6 +269,13 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
               }}
             />
           )}
+
+          <UnitDropdownModal
+            visible={showUnitModal}
+            selectedUnit={unit}
+            onSelect={setUnit}
+            onClose={() => setShowUnitModal(false)}
+          />
         </KeyboardAvoidingView>
       </TouchableOpacity>
     </Modal>
@@ -267,6 +294,13 @@ const styles = StyleSheet.create({
   input: { backgroundColor: theme.colors.surfaceElevated, borderRadius: 12, padding: 14, color: theme.colors.textPrimary, fontSize: 16, borderWidth: 1, borderColor: theme.colors.borderSubtle, minHeight: 48 },
   inputText: { color: theme.colors.textPrimary, fontSize: 16 },
   row: { flexDirection: "row" },
+  dropdownBtn: { backgroundColor: theme.colors.surfaceElevated, borderRadius: 12, paddingHorizontal: 14, height: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: theme.colors.borderSubtle },
+  dropdownText: { color: theme.colors.textPrimary, fontSize: 15, fontWeight: "600", textTransform: "capitalize" },
+  foodRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginVertical: 4 },
+  foodChip: { backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.borderSubtle },
+  foodChipActive: { backgroundColor: theme.colors.brandMuted, borderColor: theme.colors.brand },
+  foodChipText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "600" },
+  foodChipTextActive: { color: theme.colors.brand, fontWeight: "700" },
   chip: { backgroundColor: theme.colors.surfaceElevated, height: 40, paddingHorizontal: 14, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.colors.borderSubtle, flexShrink: 0 },
   chipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
   chipText: { color: theme.colors.textSecondary, fontWeight: "600" },
