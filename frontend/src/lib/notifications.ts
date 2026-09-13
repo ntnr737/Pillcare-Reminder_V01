@@ -43,7 +43,7 @@ export async function ensureCategories(): Promise<void> {
       },
       {
         identifier: "SNOOZE_15",
-        buttonTitle: "⏰ Snooze 15m",
+        buttonTitle: "Snooze 15m",
         options: { opensAppToForeground: false },
       },
     ]);
@@ -51,12 +51,12 @@ export async function ensureCategories(): Promise<void> {
     await Notifications.setNotificationCategoryAsync(YOGA_CATEGORY, [
       {
         identifier: "MARK_YOGA_DONE",
-        buttonTitle: "🧘 Mark as Done",
+        buttonTitle: "Mark as Done",
         options: { opensAppToForeground: false },
       },
       {
         identifier: "OPEN_YOGA",
-        buttonTitle: "▶ Watch Video",
+        buttonTitle: "Watch Video",
         options: { opensAppToForeground: true },
       },
     ]);
@@ -353,7 +353,7 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
     const title = yogaTip?.title || "Daily Medication Yoga Therapy";
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "🧘 Time for your Yoga Therapy Routine",
+        title: "Time for your Yoga Therapy Routine",
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,
@@ -389,7 +389,7 @@ export async function scheduleWaterReminders(): Promise<void> {
     for (const wt of waterTimes) {
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: "💧 Stay Hydrated! — PillCare Water Reminder",
+          title: "Stay Hydrated! — PillCare Water Reminder",
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
           data: { type: "water_reminder" },
           sound: "default",

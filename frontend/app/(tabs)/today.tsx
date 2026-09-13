@@ -537,13 +537,13 @@ export default function Today() {
                       {m.food_relation ? (
                         <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.1)", borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", alignSelf: "flex-start" }}>
                           <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
-                            {m.food_relation === "before_food" ? "⌛ Before Food" : m.food_relation === "with_food" ? "🥗 With Food" : m.food_relation === "anytime" ? "⏰ Anytime" : "🍽️ After Food"}
+                            {m.food_relation === "before_food" ? "Before Food" : m.food_relation === "with_food" ? "With Food" : m.food_relation === "anytime" ? "Anytime" : "After Food"}
                           </Text>
                         </View>
                       ) : null}
                       {m.notes || dose.note ? (
                         <Text style={{ fontSize: 10, color: TM, fontStyle: "italic", marginTop: 2 }}>
-                          📝 {m.notes || dose.note}
+                          Note: {m.notes || dose.note}
                         </Text>
                       ) : null}
                       {guide?.dos?.[0] && (
@@ -934,7 +934,7 @@ export default function Today() {
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{item.name}</Text>
                       <Text style={{ fontSize: 11, color: item.stock <= 0 ? "#f87171" : "#fbbf24", fontWeight: "600", marginTop: 2 }}>
-                        {item.stock <= 0 ? "⚠️ Out of stock (0 left)" : `⚠️ Only ${item.stock} left`}
+                        {item.stock <= 0 ? "Out of stock (0 left)" : `Only ${item.stock} left`}
                       </Text>
                     </View>
                     <View style={{ flexDirection: "row", gap: 6 }}>

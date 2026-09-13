@@ -207,10 +207,10 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             <Text style={styles.label}>Food Instruction (MCI Guidelines)</Text>
             <View style={styles.foodRow}>
               {[
-                { key: "after_food", label: "🍽️ After Food" },
-                { key: "before_food", label: "⌛ Before Food" },
-                { key: "with_food", label: "🥗 With Food" },
-                { key: "anytime", label: "⏰ Anytime" },
+                { key: "after_food", label: "After Food" },
+                { key: "before_food", label: "Before Food" },
+                { key: "with_food", label: "With Food" },
+                { key: "anytime", label: "Anytime" },
               ].map((item) => (
                 <TouchableOpacity
                   key={item.key}

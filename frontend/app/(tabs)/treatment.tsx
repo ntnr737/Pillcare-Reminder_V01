@@ -21,7 +21,7 @@ const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
   AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)",
   REFILL = "#06B6D4", SUCCESS = "#10B981";
 const TABS = ["Medications", "Measurements", "Activities", "Mood"];
-const ME = ["", "😟", "😔", "😐", "😊", "😄"];
+const ME = ["", "Very Low", "Low", "Neutral", "Good", "Great"];
 const MC = ["", "#e58585", "#e5b285", "#a7a1db", "#85c1e5", "#85e5a5"];
 
 const DEFAULT_MEASUREMENTS = [
@@ -270,7 +270,7 @@ export default function Treatment() {
       }
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: "🧘 Time for your Yoga Routine",
+          title: "Time for your Yoga Routine",
           body: yoga?.title ? `Today: ${yoga.title}` : "Open PillCare to start your daily yoga practice",
           data: { isYogaReminder: true },
           categoryIdentifier: YOGA_CATEGORY,
@@ -452,13 +452,13 @@ export default function Treatment() {
                       {m.food_relation ? (
                         <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.1)", borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", alignSelf: "flex-start" }}>
                           <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
-                            {m.food_relation === "before_food" ? "⌛ Before Food" : m.food_relation === "with_food" ? "🥗 With Food" : m.food_relation === "anytime" ? "⏰ Anytime" : "🍽️ After Food"}
+                            {m.food_relation === "before_food" ? "Before Food" : m.food_relation === "with_food" ? "With Food" : m.food_relation === "anytime" ? "Anytime" : "After Food"}
                           </Text>
                         </View>
                       ) : null}
                       {m.notes ? (
                         <Text style={{ fontSize: 10, color: TM, fontStyle: "italic", marginTop: 2 }}>
-                          📝 {m.notes}
+                          Note: {m.notes}
                         </Text>
                       ) : null}
                     </View>
@@ -648,12 +648,35 @@ export default function Treatment() {
         {/* MOOD */}
         {tab === 3 && (<View style={{ gap: 10 }}>
           <View style={s.card}>
-            <Text style={s.cT}>How are you feeling?</Text>
-            <View style={s.mRow}>{[1, 2, 3, 4, 5].map(n => (<TouchableOpacity key={n} onPress={() => setMs(n)} style={[s.mBtn, ms === n && { borderColor: MC[n], backgroundColor: `${MC[n]}22` }]}><Text style={{ fontSize: 22 }}>{ME[n]}</Text><Text style={[s.mNum, ms === n && { color: MC[n] }]}>{n}</Text></TouchableOpacity>))}</View>
+            <Text style={s.cT}>How are you feeling today?</Text>
+            <View style={s.mRow}>
+              {[1, 2, 3, 4, 5].map(n => (
+                <TouchableOpacity key={n} onPress={() => setMs(n)} style={[s.mBtn, ms === n && { borderColor: MC[n], backgroundColor: `${MC[n]}22` }]}>
+                  <Text style={{ fontSize: 13, fontWeight: "700", color: ms === n ? MC[n] : A3 }}>{n}/5</Text>
+                  <Text style={[s.mNum, { color: ms === n ? MC[n] : TM, fontSize: 10 }]}>{ME[n]}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
             <TextInput value={mn} onChangeText={setMn} placeholder="Add a note (optional)" placeholderTextColor={TM} style={s.inp} multiline />
             <TouchableOpacity style={s.subBtn} onPress={saveMood} disabled={saving}><Text style={s.subT}>{saving ? "Saving…" : "Log Mood"}</Text></TouchableOpacity>
           </View>
-          {mood.length > 0 && (<><Text style={s.secL}>Recent</Text>{mood.slice(0, 6).map((m: any, i: number) => (<View key={i} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}><Text style={{ fontSize: 24 }}>{ME[m.score] || "😐"}</Text><View style={{ flex: 1 }}><Text style={s.cT}>Mood {m.score}/5</Text><Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text></View>{m.note && <Text style={[s.cS, { maxWidth: 100, textAlign: "right" }]}>{m.note}</Text>}</View>))}</>)}
+          {mood.length > 0 && (
+            <>
+              <Text style={s.secL}>Recent Logs</Text>
+              {mood.slice(0, 6).map((m: any, i: number) => (
+                <View key={i} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}>
+                  <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: `${MC[m.score] || "#a7a1db"}25`, borderWidth: 1, borderColor: MC[m.score] || "#a7a1db", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 13, fontWeight: "800", color: MC[m.score] || "#a7a1db" }}>{m.score}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.cT}>Mood: {ME[m.score] || "Neutral"} ({m.score}/5)</Text>
+                    <Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
+                  </View>
+                  {m.note && <Text style={[s.cS, { maxWidth: 100, textAlign: "right" }]}>{m.note}</Text>}
+                </View>
+              ))}
+            </>
+          )}
         </View>)}
       </ScrollView>
 

@@ -672,8 +672,8 @@ export default function Progress() {
           <View style={{ flexDirection: "row", gap: 8, marginBottom: 4 }}>
             {[
               { key: "all", label: "All History" },
-              { key: "meds", label: "💊 Medications" },
-              { key: "yoga", label: "🧘 Yoga Logs" },
+              { key: "meds", label: "Medications" },
+              { key: "yoga", label: "Yoga Logs" },
             ].map((f) => (
               <TouchableOpacity
                 key={f.key}
