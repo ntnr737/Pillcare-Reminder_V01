@@ -34,6 +34,7 @@ export interface VideoPlayerModalProps {
   title?: string;
   channel?: string;
   benefit?: string;
+  onCompleteSession?: () => void;
 }
 
 export function extractYouTubeId(url?: string): string {
@@ -54,6 +55,7 @@ export function VideoPlayerModal({
   title,
   channel,
   benefit,
+  onCompleteSession,
 }: VideoPlayerModalProps) {
   const insets = useSafeAreaInsets();
   const videoId = extractYouTubeId(videoUrl);
@@ -62,6 +64,13 @@ export function VideoPlayerModal({
   const handleExternalOpen = () => {
     const rawUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
     Linking.openURL(rawUrl).catch(() => {});
+  };
+
+  const handleDoneSession = () => {
+    if (onCompleteSession) {
+      onCompleteSession();
+    }
+    onClose();
   };
 
   return (
@@ -173,12 +182,12 @@ export function VideoPlayerModal({
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={onClose}
+                onPress={handleDoneSession}
                 style={s.doneBtn}
                 activeOpacity={0.8}
               >
                 <Ionicons name="checkmark-circle" size={15} color="#4ade80" />
-                <Text style={s.doneBtnText}>Done Session</Text>
+                <Text style={s.doneBtnText}>Complete & Log Session</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>

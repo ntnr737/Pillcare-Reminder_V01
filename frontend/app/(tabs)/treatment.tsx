@@ -118,7 +118,7 @@ export default function Treatment() {
   const [vS, setVS] = useState("");
   const [vN, setVN] = useState("");
   const [saving, setSaving] = useState(false);
-  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string } | null>(null);
+  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string; step?: any } | null>(null);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
   const safeCompletedSteps = Array.isArray(completedSteps) ? completedSteps : [];
   const isStepDone = (num: number) => safeCompletedSteps.includes(num);
@@ -739,7 +739,8 @@ export default function Treatment() {
                         url: step.youtube_video || step.youtube_channel || "https://www.youtube.com/watch?v=QPjwawKxuLw",
                         title: step.name,
                         channel: step.channel || "Swami Ramdev",
-                        benefit: step.benefit
+                        benefit: step.benefit,
+                        step: step,
                       })}>
                       <Ionicons name="play-circle" size={16} color="#FF0000" />
                       <Text style={{ fontSize: 11, color: TX, flex: 1, fontWeight: "700" }}>Watch Inside App</Text>
@@ -894,6 +895,11 @@ export default function Treatment() {
         title={activeVideo?.title}
         channel={activeVideo?.channel}
         benefit={activeVideo?.benefit}
+        onCompleteSession={() => {
+          if (activeVideo?.step) {
+            toggleStepDone(activeVideo.step);
+          }
+        }}
       />
     </SafeAreaView>
   );

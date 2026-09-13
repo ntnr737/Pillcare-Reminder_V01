@@ -56,7 +56,10 @@ export default function Progress() {
     } catch {}
   }, []);
 
-  useFocusEffect(useCallback(() => { backgroundRefresh(loadServer); }, [loadServer]));
+  useFocusEffect(useCallback(() => {
+    get<any[]>(K.history).then(h => { if (h && Array.isArray(h)) setHistory(h); });
+    backgroundRefresh(loadServer);
+  }, [loadServer]));
   const onRefresh = async () => { setRefreshing(true); await loadServer(); setRefreshing(false); };
 
   const loadHealth = useCallback(async () => {
@@ -696,7 +699,7 @@ export default function Progress() {
           {(() => {
             const filteredDays = history.map((day: any) => {
               const filteredEntries = (day.entries || []).filter((e: any) => {
-                const isYoga = e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga");
+                const isYoga = e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") || e.generic_name?.toLowerCase().includes("yoga") || String(e.id || "").startsWith("yoga_");
                 if (listFilter === "yoga") return isYoga;
                 if (listFilter === "meds") return !isYoga;
                 return true;
