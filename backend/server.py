@@ -1,5 +1,5 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Body
-from fastapi.responses import StreamingResponse, HTMLResponse
+from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Response
 import io
 import hmac
 import time
@@ -2608,6 +2608,103 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
       </tbody>
     </table>
 
+    <!-- JP MORGAN FINANCIAL METRICS & SUBSCRIPTION UNIT ECONOMICS -->
+    <div class="section-header">
+      <div class="section-title">JP Morgan Financial Metrics & Subscription Unit Economics</div>
+      <button class="btn btn-secondary" onclick="fetchFinancials()">↻ Refresh Financials</button>
+    </div>
+    <div class="grid">
+      <div class="card" style="border-left: 4px solid #10b981;">
+        <div class="kpi-title">Monthly Recurring Revenue (MRR)</div>
+        <div class="kpi-val" id="finMrr">₹0</div>
+        <div class="kpi-sub">📈 Real-time Subscription Run Rate</div>
+      </div>
+      <div class="card" style="border-left: 4px solid #38bdf8;">
+        <div class="kpi-title">Annual Recurring Revenue (ARR)</div>
+        <div class="kpi-val" id="finArr">₹0</div>
+        <div class="kpi-sub">🚀 Annualized Forecast (MRR × 12)</div>
+      </div>
+      <div class="card" style="border-left: 4px solid #a855f7;">
+        <div class="kpi-title">Average Revenue Per User (ARPU)</div>
+        <div class="kpi-val" id="finArpu">₹0</div>
+        <div class="kpi-sub">👤 Per Active Subscriber</div>
+      </div>
+      <div class="card" style="border-left: 4px solid #f59e0b;">
+        <div class="kpi-title">Customer Lifetime Value (LTV)</div>
+        <div class="kpi-val" id="finLtv">₹0</div>
+        <div class="kpi-sub">💎 Est. 12-Month Retention Basis</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <span style="font-weight:700; color:#fff;">Subscription Distribution:</span>
+          <span id="finDistribution" style="font-size:13px; color:#9ca3af; margin-left:10px;">Loading distribution...</span>
+        </div>
+        <div id="finPaidPct" style="font-weight:700; color:#10b981; font-size:14px;">Paid Conversion: ...</div>
+      </div>
+    </div>
+
+    <!-- SWIGGY/ZOMATO STYLE FLASH ANNOUNCEMENT CONTROL -->
+    <div class="section-header">
+      <div class="section-title">Swiggy / Zomato Flash In-App Announcement Control</div>
+    </div>
+    <div class="panel">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+        <div class="form-group">
+          <label>Announcement Title</label>
+          <input type="text" id="annTitle" class="form-control" placeholder="e.g. ⚡ Flash Offer: Upgrade to Elite for ₹49" />
+        </div>
+        <div class="form-group">
+          <label>Type / Badge Style</label>
+          <select id="annType" class="form-control">
+            <option value="offer">🎁 Special Offer / Promotion</option>
+            <option value="info">📢 Information / Feature Release</option>
+            <option value="warning">⚠️ Warning / Maintenance</option>
+            <option value="alert">🚨 Critical System Alert</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Target User Subscription Tier</label>
+          <select id="annTargetPlan" class="form-control">
+            <option value="all">🌐 All Users (Free + Paid)</option>
+            <option value="free">Free Plan Users Only</option>
+            <option value="basic">Pro Dharma (Basic) Users Only</option>
+            <option value="premium">Elite Moksha (Premium) Users Only</option>
+          </select>
+        </div>
+      </div>
+      <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 14px;">
+        <div class="form-group">
+          <label>Announcement Message Body</label>
+          <input type="text" id="annBody" class="form-control" placeholder="e.g. Unlock unlimited AI Drug-Food Guide & OCR Doctor Scanner today!" />
+        </div>
+        <div class="form-group">
+          <label>Optional Action Link / Deep URL</label>
+          <input type="text" id="annLinkUrl" class="form-control" placeholder="e.g. https://pillcare.in/upgrade" />
+        </div>
+      </div>
+      <button class="btn" onclick="publishAnnouncement()">📣 Publish In-App Announcement</button>
+    </div>
+
+    <div style="margin-bottom:24px;">
+      <h3 style="font-size:14px; font-weight:700; color:#fff; margin-bottom:10px;">Active Broadcast Announcements</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Badge & Title</th>
+            <th>Message Content</th>
+            <th>Target Plan</th>
+            <th>Published Date</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="announcementsTableBody">
+          <tr><td colspan="5" style="text-align: center; padding: 20px; color: #9ca3af;">Loading active announcements...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- BROADCAST PUSH NOTIFICATION CENTER -->
     <div class="section-header">
       <div class="section-title">Broadcast Push Notification Center</div>
@@ -2680,7 +2777,87 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
 
     async function loadAllData() {
       saveSecret();
-      await Promise.all([fetchStats(), fetchUsers(), fetchBlockedIps(), fetchRevenue()]);
+      await Promise.all([fetchStats(), fetchUsers(), fetchBlockedIps(), fetchRevenue(), fetchFinancials(), fetchAnnouncements()]);
+    }
+
+    async function fetchFinancials() {
+      try {
+        const res = await fetch("/admin/analytics/financials", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("finMrr").innerText = `₹${(data.mrr || 0).toLocaleString("en-IN")}`;
+        document.getElementById("finArr").innerText = `₹${(data.arr || 0).toLocaleString("en-IN")}`;
+        document.getElementById("finArpu").innerText = `₹${(data.arpu || 0).toLocaleString("en-IN")}`;
+        document.getElementById("finLtv").innerText = `₹${(data.ltv || 0).toLocaleString("en-IN")}`;
+        document.getElementById("finPaidPct").innerText = `Paid Conversion: ${data.paid_conversion_rate || 0}% (${data.active_subscribers || 0}/${data.total_users || 0})`;
+        const dist = data.tier_breakdown || {};
+        document.getElementById("finDistribution").innerText = `Free: ${dist.free || 0} | Basic (Pro): ${dist.basic || 0} | Premium (Elite): ${dist.premium || 0} | Enterprise: ${dist.enterprise || 0}`;
+      } catch (e) { console.error("Financials load failed", e); }
+    }
+
+    async function fetchAnnouncements() {
+      try {
+        const res = await fetch("/admin/announcements", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const tbody = document.getElementById("announcementsTableBody");
+        if (!data || data.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:20px; color:#9ca3af;">No active announcements currently broadcast.</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = data.map(a => `
+          <tr>
+            <td>
+              <span class="badge badge-${a.type || 'info'}">${(a.type || 'info').toUpperCase()}</span>
+              <div style="font-weight:700; color:#fff; margin-top:4px;">${a.title || ''}</div>
+            </td>
+            <td><div style="font-size:12px; color:#d1d5db;">${a.body || ''}</div></td>
+            <td><span class="badge badge-free">${(a.target_plan || 'all').toUpperCase()}</span></td>
+            <td><div style="font-size:11px; color:#9ca3af;">${a.created_at ? new Date(a.created_at).toLocaleString('en-IN') : 'Just now'}</div></td>
+            <td>
+              <button class="btn btn-secondary" style="padding:4px 10px; font-size:11px; color:#ef4444;" onclick="deleteAnnouncement('${a.id}')">🗑️ Delete</button>
+            </td>
+          </tr>
+        `).join("");
+      } catch (e) { console.error("Announcements load failed", e); }
+    }
+
+    async function publishAnnouncement() {
+      const title = document.getElementById("annTitle").value;
+      const body = document.getElementById("annBody").value;
+      const type = document.getElementById("annType").value;
+      const target_plan = document.getElementById("annTargetPlan").value;
+      const link_url = document.getElementById("annLinkUrl").value;
+      if (!title || !body) { showToast("Please provide Title and Body for the announcement."); return; }
+      try {
+        const res = await fetch("/admin/announcements", {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({ title, body, type, target_plan, link_url: link_url || undefined })
+        });
+        if (res.ok) {
+          showToast("📢 In-App Flash Announcement published live!");
+          document.getElementById("annTitle").value = "";
+          document.getElementById("annBody").value = "";
+          document.getElementById("annLinkUrl").value = "";
+          fetchAnnouncements();
+        } else {
+          showToast("Failed to publish announcement.");
+        }
+      } catch (e) { showToast("Network error publishing announcement."); }
+    }
+
+    async function deleteAnnouncement(annId) {
+      try {
+        const res = await fetch(`/admin/announcements/${annId}`, {
+          method: "DELETE",
+          headers: getHeaders()
+        });
+        if (res.ok) {
+          showToast("Announcement deleted.");
+          fetchAnnouncements();
+        }
+      } catch (e) { showToast("Network error deleting announcement."); }
     }
 
     async function fetchStats() {
@@ -2881,6 +3058,13 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
 </body>
 </html>
 """
+
+@app.get("/", response_class=HTMLResponse)
+async def root_or_admin(request: Request):
+    host = request.headers.get("host", "").lower()
+    if "admin" in host:
+        return HTMLResponse(content=ADMIN_PANEL_HTML)
+    return JSONResponse({"name": "PillCare Backend API", "version": "1.0.1", "status": "online", "docs": "/docs"})
 
 @app.get("/admin", response_class=HTMLResponse)
 @app.get("/admin/dashboard", response_class=HTMLResponse)
@@ -3365,6 +3549,85 @@ async def admin_google_login(request: Request, payload: AdminGoogleAuth):
 
     await track_event("admin_login", email, {"ip": ip, "email": email})
     return {"token": admin_token, "name": idinfo.get("name"), "email": email, "picture": idinfo.get("picture")}
+
+class AnnouncementCreate(BaseModel):
+    title: str
+    body: str
+    action_text: Optional[str] = "Explore Now"
+    action_link: Optional[str] = None
+    type: str = "banner"
+    target_plan: str = "all"
+    expires_hours: int = 72
+
+@app.post("/admin/announcements")
+async def create_announcement(payload: AnnouncementCreate, _: None = Depends(require_admin)):
+    exp = datetime.now(timezone.utc) + timedelta(hours=payload.expires_hours)
+    doc = {
+        "id": f"ann_{uuid.uuid4().hex[:12]}",
+        "title": payload.title,
+        "body": payload.body,
+        "action_text": payload.action_text,
+        "action_link": payload.action_link,
+        "type": payload.type,
+        "target_plan": payload.target_plan,
+        "active": True,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": exp,
+    }
+    await db.announcements.insert_one(doc)
+    doc.pop("_id", None)
+    return {"ok": True, "id": doc["id"], "announcement": doc}
+
+@app.get("/admin/announcements")
+async def list_admin_announcements(_: None = Depends(require_admin)):
+    items = await db.announcements.find({}, PROJECTION).sort("created_at", -1).to_list(100)
+    return items
+
+@app.delete("/admin/announcements/{ann_id}")
+async def delete_announcement(ann_id: str, _: None = Depends(require_admin)):
+    await db.announcements.update_one({"id": ann_id}, {"$set": {"active": False}})
+    return {"ok": True}
+
+@api.get("/announcements/active")
+async def get_active_announcements(plan: str = "free"):
+    now = datetime.now(timezone.utc)
+    items = await db.announcements.find({
+        "active": True,
+        "expires_at": {"$gte": now},
+        "target_plan": {"$in": ["all", plan.lower()]}
+    }, PROJECTION).sort("created_at", -1).to_list(10)
+    return items
+
+@app.get("/admin/analytics/financials")
+async def admin_financial_kpis(_: None = Depends(require_admin)):
+    """JP Morgan-Grade Financial Metrics: MRR, ARR, ARPU, LTV, Plan breakdown."""
+    total_users = await db.profile.count_documents({})
+    paid_subs = await db.subscriptions.find({"status": "active", "plan": {"$in": ["basic", "premium", "enterprise"]}}).to_list(5000)
+    
+    mrr = sum(30 if s.get("plan") == "basic" else 99 if s.get("plan") == "premium" else 0 for s in paid_subs)
+    arr = mrr * 12
+    arpu = round(mrr / total_users, 2) if total_users > 0 else 0.0
+    ltv = round(arpu * 18, 2)
+    
+    plan_counts = {
+        "free": await db.subscriptions.count_documents({"plan": "free"}),
+        "basic": await db.subscriptions.count_documents({"plan": "basic"}),
+        "premium": await db.subscriptions.count_documents({"plan": "premium"}),
+        "enterprise": await db.subscriptions.count_documents({"plan": "enterprise"}),
+    }
+    
+    paid_conversion_rate = round((len(paid_subs) / total_users * 100), 1) if total_users > 0 else 0.0
+    return {
+        "mrr": mrr,
+        "arr": arr,
+        "arpu": arpu,
+        "ltv": ltv,
+        "active_subscribers": len(paid_subs),
+        "total_users": total_users,
+        "paid_conversion_rate": paid_conversion_rate,
+        "tier_breakdown": plan_counts,
+        "plan_counts": plan_counts,
+    }
 
 @app.get("/admin/blocked-ips")
 async def admin_blocked_ips(_: None = Depends(require_admin)):

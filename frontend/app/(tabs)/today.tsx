@@ -8,6 +8,7 @@ import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { RefillModal } from "@/src/components/RefillModal";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { FlashAnnouncementBanner } from "@/src/components/FlashAnnouncementBanner";
 import { getFeatures } from "@/src/lib/features";
 import { track } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
@@ -330,6 +331,8 @@ export default function Today() {
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AC} />}>
+
+        <FlashAnnouncementBanner />
 
         {/* Overview card */}
         <View style={s.ov}>
