@@ -92,9 +92,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "5fdbf2ce-b12f-44ea-9ea7-83616dbfadc4"
+        "projectId": "41def7f2-1d3f-4b10-b640-ed1ac6cbd776"
       }
     },
-    "owner": "pillcare-reminder"
+    "owner": "pillcare"
   }
 }
