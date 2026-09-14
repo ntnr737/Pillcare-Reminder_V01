@@ -1,4 +1,4 @@
-name: Build Android APK & EAS
+name: Build Android APK
 on:
   workflow_dispatch:
   push:
@@ -31,44 +31,12 @@ jobs:
 
       - name: Build Android Release APK via Gradle
         run: |
-          chmod +x android/gradlew
-          cd android
+          cd frontend/android
+          chmod +x gradlew
           ./gradlew assembleRelease --no-daemon
-        working-directory: frontend
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release
           path: frontend/android/app/build/outputs/apk/release/app-release.apk
-
-  eas-build:
-    name: EAS Cloud Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    env:
-      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        if: env.EXPO_TOKEN != ''
-        with:
-          node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: frontend/package-lock.json
-
-      - run: npm ci
-        if: env.EXPO_TOKEN != ''
-        working-directory: frontend
-
-      - uses: expo/expo-github-action@v8
-        if: env.EXPO_TOKEN != ''
-        with:
-          eas-version: latest
-          token: ${{ secrets.EXPO_TOKEN }}
-
-      - name: Run EAS Build
-        if: env.EXPO_TOKEN != ''
-        run: eas build --platform android --profile preview --non-interactive
-        working-directory: frontend
