@@ -1,0 +1,69 @@
+{
+  "appName": "PillCare",
+  "tagline": "Your Smart Medication Companion",
+  "nav": {
+    "home": "Home",
+    "medications": "Medications",
+    "appointments": "Appointments",
+    "nearby": "Nearby Stores",
+    "vitals": "Health Vitals",
+    "support": "Support & Settings",
+    "yoga": "AI Yoga Care"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "retry": "Retry",
+    "loading": "Loading...",
+    "search": "Search...",
+    "error": "Something went wrong",
+    "openNow": "Open Now",
+    "closed": "Closed",
+    "verifyHours": "Verify Hours",
+    "distance": "away",
+    "rating": "Rating",
+    "call": "Call Store",
+    "whatsapp": "Send WhatsApp",
+    "directions": "Directions",
+    "details": "View Details",
+    "share": "Share",
+    "dismiss": "Dismiss",
+    "confirm": "Confirm"
+  },
+  "home": {
+    "greetingMorning": "Good Morning",
+    "greetingAfternoon": "Good Afternoon",
+    "greetingEvening": "Good Evening",
+    "todayDoses": "Today's Medication Doses",
+    "noDosesToday": "No pending medication doses for today!",
+    "streakDays": "Day Adherence Streak",
+    "quickActions": "Quick Actions",
+    "refillAlert": "Refill Alert",
+    "refillDesc": "Pill supplies running low. Reorder now."
+  },
+  "nearby": {
+    "title": "Nearby Medical Stores",
+    "subtitle": "Find pharmacies, blood banks, diagnostic centers & emergency care near you",
+    "searchPlaceholder": "Search pharmacy, hospital, blood bank...",
+    "pharmacies": "Pharmacies",
+    "bloodBanks": "Blood Banks",
+    "diagnostics": "Diagnostics",
+    "emergency": "Emergency",
+    "noStoresInRadius": "No medical stores found within this radius.",
+    "nearestStoresOutside": "NEAREST STORES OUTSIDE RADIUS",
+    "expandRadius": "Expand search radius",
+    "enterPhone": "Enter WhatsApp / Mobile Number"
+  },
+  "support": {
+    "title": "Support & App Settings",
+    "appearance": "App Theme & Appearance",
+    "darkMode": "Dark Mode (Obsidian)",
+    "lightMode": "Light Mode (Crisp Slate)",
+    "systemMode": "System Auto",
+    "language": "App Language",
+    "selectLanguage": "Select Preferred Language",
+    "emergencyContacts": "Emergency Contacts",
+    "helpCenter": "Help Center & FAQs",
+    "termsPrivacy": "Terms & Privacy Policy"
+  }
+}

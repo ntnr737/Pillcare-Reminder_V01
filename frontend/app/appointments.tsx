@@ -234,7 +234,7 @@ export default function Appointments() {
       <Modal visible={modal} transparent animationType="slide" onRequestClose={() => setModal(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setModal(false)}>
           <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}>
-            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sheet}>
+            <View style={s.sheet}>
               <View style={s.handle} />
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                 <Text style={s.sheetT}>{editing.id ? "Edit Appointment" : "Book Appointment"}</Text>
@@ -327,7 +327,7 @@ export default function Appointments() {
               <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setModal(false)}>
                 <Text style={{ color: TM }}>Cancel</Text>
               </TouchableOpacity>
-            </TouchableOpacity>
+            </View>
           </ScrollView>
         </TouchableOpacity>
       </Modal>
@@ -351,7 +351,7 @@ const s = StyleSheet.create({
   actionTx: { fontSize: 10, color: A3, fontWeight: "600" },
   fab: { position: "absolute", right: 18, bottom: 30, width: 52, height: 52, borderRadius: 26, backgroundColor: AC, alignItems: "center", justifyContent: "center", elevation: 6 },
   ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 10 },
+  sheet: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 10, zIndex: 10, elevation: 10 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 },
   sheetT: { fontSize: 16, fontWeight: "700", color: TX },
   label: { fontSize: 10, color: TM, fontWeight: "600", letterSpacing: 0.5, marginBottom: -4 },

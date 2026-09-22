@@ -20,7 +20,8 @@ async def test_admin_routing_and_endpoints():
         print("✅ /admin route serves Admin Mission Control HTML directly!")
 
         print("\n--- TESTING ADMIN FINANCIAL ANALYTICS ---")
-        res = await client.get("/admin/analytics/financials", headers={"x-admin-secret": "pillcare_admin_secret_key_2026"})
+        headers = {"x-admin-secret": "pillcare_admin_secret_key_2026"}
+        res = await client.get("/admin/analytics/financials", headers=headers)
         assert res.status_code == 200
         data = res.json()
         assert "mrr" in data
@@ -29,6 +30,22 @@ async def test_admin_routing_and_endpoints():
         assert "ltv" in data
         assert "tier_breakdown" in data
         print(f"✅ /admin/analytics/financials returned valid financial data: MRR=₹{data['mrr']}, ARR=₹{data['arr']}")
+
+        print("\n--- TESTING WEBSITE ADMIN.HTML ENDPOINTS (COHORTS, FILTER, COMPREHENSIVE) ---")
+        res_cohorts = await client.get("/admin/analytics/cohorts", headers=headers)
+        assert res_cohorts.status_code == 200
+        assert "cohorts" in res_cohorts.json()
+        print("✅ /admin/analytics/cohorts returned valid cohort retention array!")
+
+        res_filter = await client.get("/admin/analytics/filter?metric=adherence&min_value=0", headers=headers)
+        assert res_filter.status_code == 200
+        assert "users" in res_filter.json()
+        print("✅ /admin/analytics/filter returned filtered users array!")
+
+        res_comp = await client.get("/admin/analytics/users/comprehensive?limit=50&sort_by=engagement_score", headers=headers)
+        assert res_comp.status_code == 200
+        assert "users" in res_comp.json()
+        print("✅ /admin/analytics/users/comprehensive returned comprehensive user insights!")
 
         print("\n--- TESTING FLASH ANNOUNCEMENTS CRUD ---")
         # 1. Create announcement
@@ -39,7 +56,7 @@ async def test_admin_routing_and_endpoints():
             "target_plan": "free",
             "link_url": "https://pillcare.in/upgrade"
         }
-        res = await client.post("/admin/announcements", json=ann_payload, headers={"x-admin-secret": "pillcare_admin_secret_key_2026"})
+        res = await client.post("/admin/announcements", json=ann_payload, headers=headers)
         assert res.status_code == 200
         created = res.json()
         assert created.get("ok") is True
@@ -54,7 +71,7 @@ async def test_admin_routing_and_endpoints():
         print(f"✅ GET /api/announcements/active?plan=free retrieved live flash announcement!")
 
         # 3. Delete announcement
-        res = await client.delete(f"/admin/announcements/{ann_id}", headers={"x-admin-secret": "pillcare_admin_secret_key_2026"})
+        res = await client.delete(f"/admin/announcements/{ann_id}", headers=headers)
         assert res.status_code == 200
         print(f"✅ DELETE /admin/announcements/{ann_id} cleaned up announcement successfully!")
 

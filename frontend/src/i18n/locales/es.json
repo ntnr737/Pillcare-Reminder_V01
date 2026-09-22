@@ -1,0 +1,69 @@
+{
+  "appName": "PillCare",
+  "tagline": "Tu Asistente Inteligente de Medicación",
+  "nav": {
+    "home": "Inicio",
+    "medications": "Medicamentos",
+    "appointments": "Citas",
+    "nearby": "Farmacias Cercanas",
+    "vitals": "Constantes Vitales",
+    "support": "Soporte y Ajustes",
+    "yoga": "Terapia Yoga IA"
+  },
+  "common": {
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "retry": "Reintentar",
+    "loading": "Cargando...",
+    "search": "Buscar...",
+    "error": "Algo salió mal",
+    "openNow": "Abierto Ahora",
+    "closed": "Cerrado",
+    "verifyHours": "Verificar Horario",
+    "distance": "de distancia",
+    "rating": "Calificación",
+    "call": "Llamar a la Tienda",
+    "whatsapp": "Enviar WhatsApp",
+    "directions": "Indicaciones",
+    "details": "Ver Detalles",
+    "share": "Compartir",
+    "dismiss": "Descartar",
+    "confirm": "Confirmar"
+  },
+  "home": {
+    "greetingMorning": "Buenos Días",
+    "greetingAfternoon": "Buenas Tardes",
+    "greetingEvening": "Buenas Noches",
+    "todayDoses": "Dosis de Medicación de Hoy",
+    "noDosesToday": "¡No hay dosis pendientes para hoy!",
+    "streakDays": "Días de Racha de Cumplimiento",
+    "quickActions": "Acciones Rápidas",
+    "refillAlert": "Alerta de Recarga",
+    "refillDesc": "Pocas pastillas restantes. Solicita recarga ahora."
+  },
+  "nearby": {
+    "title": "Farmacias Cercanas",
+    "subtitle": "Encuentra farmacias, bancos de sangre y centros de diagnóstico cerca de ti",
+    "searchPlaceholder": "Buscar farmacia, hospital, laboratorio...",
+    "pharmacies": "Farmacias",
+    "bloodBanks": "Bancos de Sangre",
+    "diagnostics": "Diagnóstico",
+    "emergency": "Urgencias",
+    "noStoresInRadius": "No se encontraron tiendas en este radio.",
+    "nearestStoresOutside": "TIENDAS MÁS CERCANAS FUERA DEL RADIO",
+    "expandRadius": "Ampliar radio de búsqueda",
+    "enterPhone": "Ingresar número de WhatsApp"
+  },
+  "support": {
+    "title": "Soporte y Ajustes",
+    "appearance": "Tema y Apariencia",
+    "darkMode": "Modo Oscuro (Obsidiana)",
+    "lightMode": "Modo Claro (Pizarra)",
+    "systemMode": "Auto del Sistema",
+    "language": "Idioma de la Aplicación",
+    "selectLanguage": "Seleccionar Idioma Preferido",
+    "emergencyContacts": "Contactos de Emergencia",
+    "helpCenter": "Centro de Ayuda y Preguntas",
+    "termsPrivacy": "Términos y Privacidad"
+  }
+}

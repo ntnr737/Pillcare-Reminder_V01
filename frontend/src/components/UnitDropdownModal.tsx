@@ -44,7 +44,7 @@ export function UnitDropdownModal({ visible, selectedUnit, onSelect, onClose }: 
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={styles.content}>
+        <View style={styles.content}>
           <View style={styles.handle} />
           
           <View style={styles.header}>
@@ -98,7 +98,7 @@ export function UnitDropdownModal({ visible, selectedUnit, onSelect, onClose }: 
               })}
             </View>
           </ScrollView>
-        </TouchableOpacity>
+        </View>
       </View>
     </Modal>
   );
@@ -121,6 +121,8 @@ const styles = StyleSheet.create({
     gap: 12,
     borderWidth: 1,
     borderColor: "rgba(255, 255, 255, 0.1)",
+    zIndex: 10,
+    elevation: 10,
   },
   handle: {
     width: 36,

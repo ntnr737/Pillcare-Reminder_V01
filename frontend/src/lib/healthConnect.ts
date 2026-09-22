@@ -1,5 +1,18 @@
 import { Platform } from "react-native";
 import { api } from "./api";
+import { get, set } from "./store";
+
+const HC_KEY = "hc_connected_v1";
+const HC_LAST_SYNC_KEY = "hc_last_auto_sync_ts";
+
+export async function getHealthConnectConnected(): Promise<boolean> {
+  const val = await get<boolean>(HC_KEY);
+  return val === true;
+}
+
+export async function setHealthConnectConnected(connected: boolean): Promise<void> {
+  await set(HC_KEY, connected);
+}
 
 export type HealthSnapshot = {
   steps: number | null;
@@ -218,6 +231,23 @@ export async function syncHealthVitalsToPillCare(snapshot: HealthSnapshot): Prom
     }
   } catch {}
   return { syncedCount: count };
+}
+
+export async function autoSyncVitalsIfNeeded(snapshot: HealthSnapshot): Promise<number> {
+  if (!snapshot || !snapshot.granted) return 0;
+  try {
+    const lastSync = (await get<number>(HC_LAST_SYNC_KEY)) || 0;
+    const now = Date.now();
+    // Throttle silent auto-sync to at most once every 15 minutes
+    if (now - lastSync < 15 * 60 * 1000) {
+      return 0;
+    }
+    const res = await syncHealthVitalsToPillCare(snapshot);
+    await set(HC_LAST_SYNC_KEY, now);
+    return res.syncedCount;
+  } catch {
+    return 0;
+  }
 }
 
 export async function openHealthConnectSettings() {

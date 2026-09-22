@@ -111,6 +111,16 @@ export async function getStoredUser(): Promise<PillcareUser | null> {
   }
 }
 
+export function isGuestUser(user?: PillcareUser | null): boolean {
+  if (!user) return true;
+  return (
+    user.email === "demo@pillcare.app" ||
+    user.email?.endsWith("@pillcare.app") ||
+    user.id?.startsWith("user_") ||
+    !user.email
+  );
+}
+
 export async function signOut(): Promise<void> {
   await storage.secureRemove(TOKEN_KEY);
   await storage.secureRemove(USER_KEY);

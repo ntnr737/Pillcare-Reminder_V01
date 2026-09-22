@@ -7,10 +7,13 @@ import { theme } from "@/src/lib/theme";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
 import { getFeatures } from "@/src/lib/features";
+import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
+
 export default function Caregiver() {
   const router = useRouter();
   const [caregivers, setCaregivers] = useState<string[]>([]);
   const [newPhone, setNewPhone] = useState("");
+  const [selectedDialCode, setSelectedDialCode] = useState("+91");
   const [profile, setProfile] = useState<any>(null);
   const [log, setLog] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
@@ -83,11 +86,16 @@ export default function Caregiver() {
         ))}
         {caregivers.length < limit && (
           <View style={styles.addRow}>
+            <CountryCodePicker
+              selectedDialCode={selectedDialCode}
+              onSelectCountry={(c) => setSelectedDialCode(c.dialCode)}
+              style={{ height: 56 }}
+            />
             <TextInput
               testID="caregiver-phone-input"
               value={newPhone}
               onChangeText={setNewPhone}
-              placeholder="+91 98XXXXXXXX"
+              placeholder="98765 43210"
               placeholderTextColor={theme.colors.textDisabled}
               keyboardType="phone-pad"
               style={[styles.input, { flex: 1 }]}
@@ -95,10 +103,11 @@ export default function Caregiver() {
             <TouchableOpacity
               style={styles.addBtn}
               onPress={() => {
-                const cleaned = newPhone.trim();
-                if (!cleaned) return;
-                if (caregivers.includes(cleaned)) { setNewPhone(""); return; }
-                setCaregivers([...caregivers, cleaned]);
+                const raw = newPhone.trim();
+                if (!raw) return;
+                const fullPhone = formatFullWhatsAppPhone(selectedDialCode, raw);
+                if (caregivers.includes(fullPhone)) { setNewPhone(""); return; }
+                setCaregivers([...caregivers, fullPhone]);
                 setNewPhone("");
               }}
               testID="add-caregiver-btn"

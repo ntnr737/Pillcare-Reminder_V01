@@ -8,16 +8,19 @@ import { RefillModal } from "@/src/components/RefillModal";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
 import { resyncReminders, YOGA_CATEGORY } from "@/src/lib/notifications";
-import { get, set, K } from "@/src/lib/store";
+import { get, set, K, logCourseCompleted } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
+import { DrugFoodGuideModal } from "@/src/components/DrugFoodGuideModal";
+import { ActionSheetModal } from "@/src/components/ActionSheetModal";
+import { HeaderControls } from "@/src/components/HeaderControls";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 
 const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
-  TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
+  TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
   AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)",
   REFILL = "#06B6D4", SUCCESS = "#10B981";
 const TABS = ["Medications", "Measurements", "Activities", "Mood"];
@@ -304,9 +307,12 @@ export default function Treatment() {
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
         <Text style={s.title}>Treatment</Text>
-        <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-treatment-btn">
-          <Ionicons name="refresh" size={20} color={A3} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <HeaderControls />
+          <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-treatment-btn">
+            <Ionicons name="refresh" size={20} color={A3} />
+          </TouchableOpacity>
+        </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
         {TABS.map((t, i) => (<TouchableOpacity key={t} onPress={() => setTab(i)} style={[s.tab, i === tab && s.tabOn]}><Text style={[s.tabT, i === tab && s.tabTOn]}>{t}</Text></TouchableOpacity>))}
@@ -367,66 +373,12 @@ export default function Treatment() {
             </TouchableOpacity>
           )}
 
-          {/* Drug-Food Modal Guide */}
-          <Modal visible={foodGuideOpen} transparent animationType="slide" onRequestClose={() => setFoodGuideOpen(false)}>
-            <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setFoodGuideOpen(false)}>
-              <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                    <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
-                    <Text style={{ fontSize: 17, fontWeight: "700", color: "#fff" }}>Drug-Food Do's & Don'ts Guide</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => setFoodGuideOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                    <Ionicons name="close" size={22} color={TX} />
-                  </TouchableOpacity>
-                </View>
-
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-                  {/* DO's List */}
-                  <View style={{ backgroundColor: "rgba(74,222,128,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", gap: 8 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#4ade80" }}>RECOMMENDED DO'S</Text>
-                    </View>
-                    {(drugFoodGuide?.dos || []).map((doItem: string, idx: number) => (
-                      <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                        <Text style={{ color: "#4ade80", fontWeight: "700" }}>•</Text>
-                        <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{doItem}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {/* DON'TS List */}
-                  <View style={{ backgroundColor: "rgba(239,68,68,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", gap: 8 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Ionicons name="close-circle" size={16} color="#ef4444" />
-                      <Text style={{ fontSize: 13, fontWeight: "700", color: "#ef4444" }}>CRITICAL DON'TS</Text>
-                    </View>
-                    {(drugFoodGuide?.donts || []).map((dontItem: string, idx: number) => (
-                      <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                        <Text style={{ color: "#ef4444", fontWeight: "700" }}>•</Text>
-                        <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{dontItem}</Text>
-                      </View>
-                    ))}
-                  </View>
-
-                  {/* Per-Medication Guides */}
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: A3, marginTop: 4 }}>Medication-Specific Guidance:</Text>
-                  {(drugFoodGuide?.guides || []).map((g: any, idx: number) => (
-                    <View key={idx} style={{ backgroundColor: "#252837", padding: 12, borderRadius: 10, gap: 6 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{g.medication} <Text style={{ fontSize: 11, color: A3, fontWeight: "500" }}>({g.category})</Text></Text>
-                      {g.dos?.map((d: string, i: number) => (
-                        <Text key={i} style={{ fontSize: 11, color: "#4ade80" }}>✓ {d}</Text>
-                      ))}
-                      {g.donts?.map((d: string, i: number) => (
-                        <Text key={i} style={{ fontSize: 11, color: "#ef4444" }}>✗ {d}</Text>
-                      ))}
-                    </View>
-                  ))}
-                </ScrollView>
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </Modal>
+      {/* Drug-Food Modal Guide */}
+      <DrugFoodGuideModal
+        visible={foodGuideOpen}
+        onClose={() => setFoodGuideOpen(false)}
+        guide={drugFoodGuide}
+      />
           {fm.length === 0 ? (
             <View style={s.empty}>
               <Ionicons name="medical-outline" size={26} color={AC} />
@@ -497,7 +449,10 @@ export default function Treatment() {
                             { text: "Cancel", style: "cancel" },
                             { text: "Mark Complete", onPress: async () => {
                               setMeds(prev => prev.map(item => item.id === m.id ? { ...item, active: false, completed: true, completed_at: new Date().toISOString() } : item));
-                              try { await api.completeMedication(m.id); } catch {}
+                              try {
+                                await logCourseCompleted(m.id, m.name, m.generic_name, m.dosage, m.unit);
+                                await api.completeMedication(m.id);
+                              } catch {}
                               await loadServer();
                             }}
                           ]);
@@ -682,25 +637,16 @@ export default function Treatment() {
       <TouchableOpacity style={s.fab} onPress={() => setSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
 
       {/* Action Sheet */}
-      <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)}>
-        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setSheet(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sBox}>
-            <View style={s.hand} />
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <Text style={s.sTitle}>What would you like to do?</Text>
-              <TouchableOpacity onPress={() => setSheet(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
-            {OPTS.map(o => (<TouchableOpacity key={o.title} style={s.sOpt} onPress={o.fn}><View style={s.cI}><Ionicons name={o.icon as any} size={17} color={TX} /></View><View style={{ flex: 1 }}><Text style={s.cT}>{o.title}</Text><Text style={s.cS}>{o.body}</Text></View><Ionicons name="chevron-forward" size={14} color={TM} /></TouchableOpacity>))}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      <ActionSheetModal
+        visible={sheet}
+        onClose={() => setSheet(false)}
+        options={OPTS}
+      />
 
       {/* Yoga Detail Modal */}
       <Modal visible={yogaOpen} transparent animationType="slide" onRequestClose={() => setYogaOpen(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setYogaOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={[s.sBox, { maxHeight: "92%" }]}>
+          <View style={[s.sBox, { maxHeight: "92%" }]}>
             {/* Header row with close X */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -796,7 +742,7 @@ export default function Treatment() {
                 <Text style={s.subT}>Set Daily Reminder</Text>
               </TouchableOpacity>
             )}
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -815,7 +761,7 @@ export default function Treatment() {
       {/* Measurement Modal */}
       <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setMModal({ open: false, type: null })}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sBox}>
+          <View style={s.sBox}>
             <View style={s.hand} />
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.sTitle}>Log {mModal.type?.label}</Text>
@@ -851,14 +797,14 @@ export default function Treatment() {
             <TextInput value={vN} onChangeText={setVN} placeholder="Notes / Observations (optional)" placeholderTextColor={TM} style={s.inp} />
             <TouchableOpacity style={s.subBtn} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
             <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
       {/* Activity Modal */}
       <Modal visible={aModal.open} transparent animationType="slide" onRequestClose={() => setAModal({ open: false, type: null })}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setAModal({ open: false, type: null })}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sBox}>
+          <View style={s.sBox}>
             <View style={s.hand} />
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <Text style={s.sTitle}>Log {aModal.type?.label}</Text>
@@ -881,7 +827,7 @@ export default function Treatment() {
             <TextInput value={vN} onChangeText={setVN} placeholder="Notes (optional)" placeholderTextColor={TM} style={s.inp} />
             <TouchableOpacity style={s.subBtn} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
             <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -924,7 +870,7 @@ const s = StyleSheet.create({
   subBtn: { backgroundColor: AC, borderRadius: 11, padding: 13, alignItems: "center", marginTop: 6 }, subT: { color: "#fff", fontWeight: "700", fontSize: 14 },
   fab: { position: "absolute", right: 18, bottom: 90, width: 52, height: 52, borderRadius: 26, backgroundColor: AC, alignItems: "center", justifyContent: "center", elevation: 6 },
   ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  sBox: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 },
+  sBox: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12, zIndex: 10, elevation: 10 },
   hand: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }, sTitle: { fontSize: 16, fontWeight: "700", color: TX },
   sOpt: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: SF, borderRadius: 14, padding: 13, borderWidth: 1, borderColor: BD },
   empty: { backgroundColor: SF, borderRadius: 14, padding: 32, alignItems: "center", gap: 8, borderWidth: 1, borderColor: BD }, emT: { fontSize: 14, fontWeight: "700", color: TX }, emS: { fontSize: 12, color: TM, textAlign: "center" },

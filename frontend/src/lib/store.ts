@@ -39,6 +39,7 @@ export const K = {
   history: "dose_history_30d",
   aiMsg: "ai_msg",
   yogaTip: "yoga_tip",
+  yogaReminderTime: "yoga_reminder_time",
   appointments: "appointments",
   writeQueue: "write_queue",
 };
@@ -77,5 +78,45 @@ export async function getQueue(): Promise<WriteItem[]> {
     return q.filter((i) => Date.now() - i.ts < 48 * 3600 * 1000);
   } catch {
     return [];
+  }
+}
+
+export async function logCourseCompleted(
+  medId: string,
+  medName: string,
+  genericName: string = "",
+  dosage: string = "",
+  unit: string = "",
+  takenPillsCount: number = 0
+): Promise<void> {
+  try {
+    const d = new Date();
+    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const hStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const historyCache = (await get<any[]>(K.history)) || [];
+
+    let dayItem = historyCache.find((item: any) => item.date === dStr);
+    if (!dayItem) {
+      dayItem = { date: dStr, total: 0, taken: 0, entries: [] };
+      historyCache.unshift(dayItem);
+    }
+
+    const pillsText = takenPillsCount > 0 ? ` • Total ${takenPillsCount} doses taken` : "";
+    const newEntry = {
+      id: `course_completed_${medId}_${Date.now()}`,
+      name: `${medName} — Course Completed 🎓`,
+      generic_name: genericName,
+      dosage: dosage,
+      unit: unit,
+      time: hStr,
+      status: "course_completed",
+      note: `Treatment course completed${pillsText}`,
+    };
+    if (!dayItem.entries.some((e: any) => e.id === newEntry.id)) {
+      dayItem.entries.unshift(newEntry);
+    }
+    await set(K.history, [...historyCache]);
+  } catch (e) {
+    console.warn("Failed to log course completed to history:", e);
   }
 }

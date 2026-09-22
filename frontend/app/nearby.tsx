@@ -9,6 +9,9 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { track } from "@/src/lib/analytics";
 import { get, K } from "@/src/lib/store";
 import * as Location from "expo-location";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
+import { HeaderControls } from "@/src/components/HeaderControls";
 
 const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
   TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
@@ -65,6 +68,8 @@ function fmt(m: number) {
 export default function Nearby() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ type?: string }>();
   const [type, setType] = useState<PlaceType>((params.type as PlaceType) || "pharmacy");
   const [radius, setRadius] = useState(2000);
@@ -182,7 +187,7 @@ export default function Nearby() {
         const token = await (await import("@/src/lib/auth")).getStoredToken().catch(() => null);
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetchWithTimeout(
-          `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${searchRadius}&type=${type}`,
+          `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${radius}&type=${type}`,
           { headers },
           7000
         );
@@ -191,6 +196,7 @@ export default function Nearby() {
           if (data.places?.length) {
             setPlaces(data.places);
             setSource(data.source === "osm" ? "osm" : "google");
+            setLocError("");
             setLoading(false);
             return;
           }
@@ -198,13 +204,14 @@ export default function Nearby() {
       } catch {}
 
       // Fallback: Comprehensive Overpass API (OpenStreetMap)
+      const fetchRadius = Math.max(radius, 2000);
       let query = "";
       if (type === "pharmacy") {
-        query = `[out:json][timeout:8];(node["amenity"="pharmacy"](around:${searchRadius},${loc.lat},${loc.lng});node["shop"="chemist"](around:${searchRadius},${loc.lat},${loc.lng});node["shop"="pharmacy"](around:${searchRadius},${loc.lat},${loc.lng});way["amenity"="pharmacy"](around:${searchRadius},${loc.lat},${loc.lng}););out center 25;`;
+        query = `[out:json][timeout:8];(node["amenity"="pharmacy"](around:${fetchRadius},${loc.lat},${loc.lng});node["shop"="chemist"](around:${fetchRadius},${loc.lat},${loc.lng});node["shop"="pharmacy"](around:${fetchRadius},${loc.lat},${loc.lng});way["amenity"="pharmacy"](around:${fetchRadius},${loc.lat},${loc.lng}););out center 25;`;
       } else if (type === "diagnostic") {
-        query = `[out:json][timeout:8];(node["healthcare"="laboratory"](around:${searchRadius},${loc.lat},${loc.lng});node["healthcare"="pathology"](around:${searchRadius},${loc.lat},${loc.lng});node["amenity"="laboratory"](around:${searchRadius},${loc.lat},${loc.lng});node["shop"="medical_lab"](around:${searchRadius},${loc.lat},${loc.lng});way["healthcare"="laboratory"](around:${searchRadius},${loc.lat},${loc.lng});way["amenity"="clinic"](around:${searchRadius},${loc.lat},${loc.lng}););out center 25;`;
+        query = `[out:json][timeout:8];(node["healthcare"="laboratory"](around:${fetchRadius},${loc.lat},${loc.lng});node["healthcare"="pathology"](around:${fetchRadius},${loc.lat},${loc.lng});node["amenity"="laboratory"](around:${fetchRadius},${loc.lat},${loc.lng});node["shop"="medical_lab"](around:${fetchRadius},${loc.lat},${loc.lng});way["healthcare"="laboratory"](around:${fetchRadius},${loc.lat},${loc.lng});way["amenity"="clinic"](around:${fetchRadius},${loc.lat},${loc.lng}););out center 25;`;
       } else {
-        query = `[out:json][timeout:8];(node["amenity"="hospital"](around:${searchRadius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${searchRadius},${loc.lat},${loc.lng});node["healthcare"="hospital"](around:${searchRadius},${loc.lat},${loc.lng});way["amenity"="hospital"](around:${searchRadius},${loc.lat},${loc.lng}););out center 25;`;
+        query = `[out:json][timeout:8];(node["amenity"="hospital"](around:${fetchRadius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${fetchRadius},${loc.lat},${loc.lng});node["healthcare"="hospital"](around:${fetchRadius},${loc.lat},${loc.lng});way["amenity"="hospital"](around:${fetchRadius},${loc.lat},${loc.lng}););out center 25;`;
       }
 
       const overpassMirrors = [
@@ -234,13 +241,15 @@ export default function Nearby() {
           const tags = el.tags || {};
           const storeName = tags.name || tags["name:en"] || tags.brand || tags.operator || tags.official_name || (type === "pharmacy" ? "Medical Store / Pharmacy" : type === "diagnostic" ? "Diagnostic & Pathology Lab" : "Hospital / Clinic");
           const phone = tags.phone || tags["contact:phone"] || tags["contact:mobile"] || tags.mobile || null;
+          const oh = String(tags.opening_hours || "").toLowerCase();
+          const isOpen = oh.includes("24/7") ? true : undefined;
           return {
             id: String(el.id),
             name: storeName,
             address: [tags["addr:street"], tags["addr:suburb"], tags["addr:city"]].filter(Boolean).join(", ") || tags["addr:full"] || "Location near you",
             phone: phone,
             distance: dist, lat: elLat, lng: elLng,
-            open: undefined, rating: 4.5,
+            open: isOpen, rating: 4.5,
           };
         })
         .filter((p: Place) => {
@@ -257,9 +266,12 @@ export default function Nearby() {
 
       setPlaces(results);
       setSource("osm");
+      setLocError("");
       if (!results.length) setLocError("No results found nearby. Try expanding your search radius.");
     } catch (e) {
-      setLocError("Could not fetch nearby places. Please check your network and try again.");
+      if (!places.length) {
+        setLocError("Could not fetch nearby places. Please check your network and try again.");
+      }
     } finally { setLoading(false); setRefreshing(false); }
   }, [radius, type, coords]);
 
@@ -278,18 +290,79 @@ export default function Nearby() {
     Linking.openURL(`https://www.google.com/maps/search/${q}/@${coords.lat},${coords.lng},15z`);
   };
 
+  const renderPlaceCard = (p: Place, cfg: typeof TYPE_CONFIG[PlaceType]) => (
+    <TouchableOpacity key={p.id} style={s.card} onPress={() => setSelectedPlace(p)}>
+      <View style={s.cardTop}>
+        <View style={[s.placeIco, { backgroundColor: `${cfg.color}18` }]}>
+          <Ionicons name={cfg.icon as any} size={18} color={cfg.color} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.cT} numberOfLines={1}>{p.name}</Text>
+          <Text style={s.cS} numberOfLines={1}>{p.address}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 }}>
+            <View style={s.distBadge}>
+              <Ionicons name="navigate-outline" size={10} color={A3} />
+              <Text style={{ fontSize: 10, color: A3, fontWeight: "600" }}>{fmt(p.distance)}</Text>
+            </View>
+            {p.open === true ? (
+              <View style={[s.distBadge, { backgroundColor: "rgba(74,222,128,0.15)" }]}>
+                <Text style={{ fontSize: 10, color: "#4ade80", fontWeight: "700" }}>Open</Text>
+              </View>
+            ) : p.open === false ? (
+              <View style={[s.distBadge, { backgroundColor: "rgba(248,113,113,0.15)" }]}>
+                <Text style={{ fontSize: 10, color: "#f87171", fontWeight: "700" }}>Closed</Text>
+              </View>
+            ) : (
+              <View style={[s.distBadge, { backgroundColor: "rgba(255,255,255,0.06)" }]}>
+                <Text style={{ fontSize: 10, color: TM, fontWeight: "600" }}>Verify Hours</Text>
+              </View>
+            )}
+            {p.rating && (
+              <View style={s.distBadge}>
+                <Ionicons name="star" size={10} color="#fbbf24" />
+                <Text style={{ fontSize: 10, color: "#fbbf24", fontWeight: "600" }}>{p.rating.toFixed(1)}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <Ionicons name="chevron-forward" size={14} color={TM} />
+      </View>
+
+      <View style={s.cardActions}>
+        {p.phone ? (
+          <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.08)" }]}
+            onPress={e => { e.stopPropagation(); Linking.openURL(`tel:${(p.phone||"").replace(/[\s\-()]/g,"")}`); }}>
+            <Ionicons name="call" size={14} color="#4ade80" />
+            <Text style={[s.actionTx, { color: "#4ade80" }]}>Call now</Text>
+          </TouchableOpacity>
+        ) : null}
+        <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
+          onPress={e => { e.stopPropagation(); sendWhatsAppPrescription(p); }}>
+          <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
+          <Text style={[s.actionTx, { color: "#25D366", fontWeight: "700" }]}>WhatsApp Order</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
+          <Ionicons name="navigate" size={14} color={A3} />
+          <Text style={s.actionTx}>Directions</Text>
+        </TouchableOpacity>
+      </View>
+    </TouchableOpacity>
+  );
   const cfg = TYPE_CONFIG[type];
 
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.hdr}>
+    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="arrow-back" size={20} color={TX} />
+          <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={s.title}>Nearby</Text>
-        <TouchableOpacity onPress={openGoogleMaps} style={s.mapBtn}>
-          <Ionicons name="map-outline" size={18} color={A3} />
-        </TouchableOpacity>
+        <Text style={[s.title, { color: theme.textPrimary }]}>{t("nearby.title", "Nearby Medical Stores")}</Text>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <HeaderControls />
+          <TouchableOpacity onPress={openGoogleMaps} style={[s.mapBtn, { backgroundColor: theme.accentBg }]}>
+            <Ionicons name="map-outline" size={18} color={theme.accent} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Type tabs */}
@@ -337,13 +410,11 @@ export default function Nearby() {
           <View style={s.center}><ActivityIndicator color={A3} size="large" /><Text style={s.cS}>Finding nearby {cfg.label.toLowerCase()}…</Text></View>
         )}
 
-        {locError ? (
+        {!loading && locError && places.length === 0 ? (
           <View style={[s.card, { alignItems: "center", gap: 12, padding: 28 }]}>
             <Ionicons name={locError === "PERMISSION_DENIED" ? "location-outline" : "wifi-outline"} size={36} color={TM} />
             <Text style={[s.cT, { textAlign: "center", lineHeight: 22 }]}>
-              {locError === "PERMISSION_DENIED"
-                ? "Location permission required"
-                : locError}
+              {locError === "PERMISSION_DENIED" ? "Location permission required" : locError}
             </Text>
             {locError === "PERMISSION_DENIED" ? (
               <>
@@ -368,74 +439,60 @@ export default function Nearby() {
           </View>
         ) : null}
 
-        {!loading && !locError && places.filter(p => (!openOnly || p.open !== false) && (!hasPhoneOnly || !!p.phone)).length === 0 && (
-          <View style={[s.card, { alignItems: "center", padding: 32, gap: 10 }]}>
-            <Ionicons name="search-outline" size={32} color={TM} />
-            <Text style={s.cT}>No {cfg.label} found matching filters</Text>
-            <Text style={s.cS}>Try expanding radius or resetting quick filters</Text>
-          </View>
-        )}
+        {!loading && (() => {
+          const filteredPlaces = places.filter(p => p.distance <= radius && (!openOnly || p.open === true) && (!hasPhoneOnly || !!p.phone));
+          const outsidePlaces = places.filter(p => p.distance > radius && (!openOnly || p.open === true) && (!hasPhoneOnly || !!p.phone));
 
-        {places
-          .filter(p => (!openOnly || p.open !== false) && (!hasPhoneOnly || !!p.phone))
-          .map(p => (
-          <TouchableOpacity key={p.id} style={s.card} onPress={() => setSelectedPlace(p)}>
-            <View style={s.cardTop}>
-              <View style={[s.placeIco, { backgroundColor: `${cfg.color}18` }]}>
-                <Ionicons name={cfg.icon as any} size={18} color={cfg.color} />
+          if (filteredPlaces.length === 0 && places.length === 0 && !locError) {
+            return (
+              <View style={[s.card, { alignItems: "center", padding: 32, gap: 10 }]}>
+                <Ionicons name="search-outline" size={32} color={TM} />
+                <Text style={s.cT}>No {cfg.label} found matching filters</Text>
+                <Text style={s.cS}>Try expanding radius or resetting quick filters</Text>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={s.cT} numberOfLines={1}>{p.name}</Text>
-                <Text style={s.cS} numberOfLines={1}>{p.address}</Text>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 }}>
-                  <View style={s.distBadge}>
-                    <Ionicons name="navigate-outline" size={10} color={A3} />
-                    <Text style={{ fontSize: 10, color: A3, fontWeight: "600" }}>{fmt(p.distance)}</Text>
+            );
+          }
+
+          return (
+            <>
+              {filteredPlaces.length === 0 && places.length > 0 && (
+                <View style={[s.card, { alignItems: "center", padding: 24, gap: 10, borderColor: "rgba(168,85,247,0.3)" }]}>
+                  <Ionicons name="location-outline" size={32} color={A3} />
+                  <Text style={[s.cT, { textAlign: "center" }]}>
+                    No {cfg.label.toLowerCase()} within {radius < 1000 ? `${radius}m` : `${radius / 1000}km`}
+                  </Text>
+                  <Text style={[s.cS, { textAlign: "center" }]}>
+                    No stores recorded within {radius < 1000 ? `${radius}m` : `${radius / 1000}km`}. Expand your radius to view nearby options.
+                  </Text>
+                  <View style={{ flexDirection: "row", gap: 8, marginTop: 4, flexWrap: "wrap", justifyContent: "center" }}>
+                    {RADII.filter(r => r.value > radius).map(r => (
+                      <TouchableOpacity key={r.value} style={[s.radBtn, s.radBtnOn]} onPress={() => setRadius(r.value)}>
+                        <Text style={{ color: A3, fontWeight: "700", fontSize: 11 }}>Expand to {r.label}</Text>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  {p.open !== undefined && (
-                    <View style={[s.distBadge, { backgroundColor: p.open ? "rgba(74,222,128,0.1)" : "rgba(229,133,133,0.1)" }]}>
-                      <Text style={{ fontSize: 10, color: p.open ? "#4ade80" : "#e58585", fontWeight: "600" }}>
-                        {p.open ? "Open" : "Closed"}
-                      </Text>
-                    </View>
-                  )}
-                  {p.rating && (
-                    <View style={s.distBadge}>
-                      <Ionicons name="star" size={10} color="#fbbf24" />
-                      <Text style={{ fontSize: 10, color: "#fbbf24", fontWeight: "600" }}>{p.rating.toFixed(1)}</Text>
-                    </View>
-                  )}
                 </View>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={TM} />
-            </View>
+              )}
 
-            <View style={s.cardActions}>
-              {p.phone ? (
-                <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.08)" }]}
-                  onPress={e => { e.stopPropagation(); Linking.openURL(`tel:${(p.phone||"").replace(/[\s\-()]/g,"")}`); }}>
-                  <Ionicons name="call" size={14} color="#4ade80" />
-                  <Text style={[s.actionTx, { color: "#4ade80" }]}>Call now</Text>
-                </TouchableOpacity>
-              ) : null}
-              <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
-                onPress={e => { e.stopPropagation(); sendWhatsAppPrescription(p); }}>
-                <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
-                <Text style={[s.actionTx, { color: "#25D366", fontWeight: "700" }]}>WhatsApp Order</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
-                <Ionicons name="navigate" size={14} color={A3} />
-                <Text style={s.actionTx}>Directions</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        ))}
+              {filteredPlaces.length > 0 && (
+                filteredPlaces.map(p => renderPlaceCard(p, cfg))
+              )}
+
+              {filteredPlaces.length === 0 && outsidePlaces.length > 0 && (
+                <View style={{ gap: 8, marginTop: 12 }}>
+                  <Text style={s.secL}>NEAREST STORES OUTSIDE {radius < 1000 ? `${radius}M` : `${radius / 1000}KM`} RADIUS</Text>
+                  {outsidePlaces.slice(0, 5).map(p => renderPlaceCard(p, cfg))}
+                </View>
+              )}
+            </>
+          );
+        })()}
 
         {places.length > 0 && (
           <View style={{ paddingVertical: 8, alignItems: "center", gap: 4 }}>
             <Text style={s.cS}>{source === "osm" ? "Data from OpenStreetMap contributors" : "Data from Google"}</Text>
             <TouchableOpacity onPress={openGoogleMaps}>
-              <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>See all on Google Maps →</Text>
+          <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>See all on Google Maps →</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -445,7 +502,7 @@ export default function Nearby() {
       {/* Place detail sheet — shown inside app, no redirect */}
       <Modal visible={!!selectedPlace} transparent animationType="slide" onRequestClose={() => setSelectedPlace(null)}>
         <TouchableOpacity style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }} activeOpacity={1} onPress={() => setSelectedPlace(null)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: BD }}>
+          <View style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: BD, zIndex: 10, elevation: 10 }}>
             {selectedPlace && (<>
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <View style={{ flex: 1, gap: 4 }}>
@@ -508,14 +565,14 @@ export default function Nearby() {
               </View>
               <View style={{ height: 8 }} />
             </>)}
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
       {/* Phone prompt modal when location has no phone registered */}
       <Modal visible={!!phonePromptPlace} transparent animationType="fade" onRequestClose={() => setPhonePromptPlace(null)}>
         <TouchableOpacity style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "rgba(0,0,0,0.7)", padding: 20 }} activeOpacity={1} onPress={() => setPhonePromptPlace(null)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ width: "100%", maxWidth: 400, backgroundColor: SF, borderRadius: 16, padding: 20, gap: 14, borderWidth: 1, borderColor: BD }}>
+          <View style={{ width: "100%", maxWidth: 400, backgroundColor: SF, borderRadius: 16, padding: 20, gap: 14, borderWidth: 1, borderColor: BD, zIndex: 10, elevation: 10 }}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
@@ -564,7 +621,7 @@ export default function Nearby() {
               <Ionicons name="search-outline" size={14} color={A3} />
               <Text style={{ color: A3, fontSize: 12, fontWeight: "600" }}>Search Store Phone on Google</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>
@@ -600,4 +657,5 @@ const s = StyleSheet.create({
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 12, height: 32, borderRadius: 9, backgroundColor: "rgba(233,233,237,0.06)", borderWidth: 1, borderColor: BD },
   actionTx: { fontSize: 11, color: A3, fontWeight: "600" },
   retryBtn: { paddingHorizontal: 20, height: 36, borderRadius: 10, backgroundColor: AB, borderWidth: 1, borderColor: AC, alignItems: "center", justifyContent: "center" },
+  secL: { fontSize: 10, letterSpacing: 1, color: A3, fontWeight: "700", marginVertical: 6 },
 });

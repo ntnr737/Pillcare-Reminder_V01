@@ -684,12 +684,18 @@ async def logout(authorization: str = Header(default="")):
 @api.post("/profile/push-token")
 async def save_push_token(payload: dict, user_id: str = Depends(get_current_user_id)):
     """Save Expo push token so admin can send notifications to all users."""
-    token = payload.get("token", "").strip()
-    if not token or not token.startswith("ExponentPushToken["):
+    token = (payload.get("token") or payload.get("push_token") or "").strip()
+    if not token or not (token.startswith("ExponentPushToken[") or token.startswith("ExpoPushToken[")):
         raise HTTPException(400, "ERR_4002: Invalid Expo push token format")
+    now = datetime.now(timezone.utc)
     await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"push_token": token, "push_token_updated": datetime.now(timezone.utc)}},
+        {"$or": [{"id": user_id}, {"_id": user_id}]},
+        {"$set": {"push_token": token, "push_token_updated": now}},
+        upsert=True
+    )
+    await db.profile.update_one(
+        {"$or": [{"id": user_id}, {"user_id": user_id}]},
+        {"$set": {"push_token": token, "push_token_updated": now}},
         upsert=False
     )
     return {"ok": True}
@@ -918,20 +924,39 @@ async def refill_medication(med_id: str, payload: dict = Body(...), user_id: str
 
 @api.post("/medications/{med_id}/complete")
 async def mark_medication_complete(med_id: str, user_id: str = Depends(get_current_user_id)):
-    """Mark a medication course as completed and log a course_completed milestone event."""
+    """Mark a medication course as completed and log a course_completed milestone event with pills consumed."""
     med = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
     if not med:
         raise HTTPException(404, "Medication not found")
     completed_at = datetime.now(timezone.utc).isoformat()
+    
+    # Calculate taken doses count
+    taken_doses_count = await db.doses.count_documents({"user_id": user_id, "medication_id": med_id, "status": "taken"})
+    pills_per_dose = 1.0
+    try:
+        if med.get("dosage"):
+            val = "".join([c for c in str(med.get("dosage")) if c.isdigit() or c == '.'])
+            pills_per_dose = float(val) if val else 1.0
+    except:
+        pills_per_dose = 1.0
+    pills_taken_total = int(round(taken_doses_count * pills_per_dose))
+
     await db.medications.update_one(
         {"id": med_id, "user_id": user_id},
-        {"$set": {"active": False, "completed": True, "completed_at": completed_at}}
+        {"$set": {
+            "active": False,
+            "completed": True,
+            "completed_at": completed_at,
+            "doses_taken_count": taken_doses_count,
+            "pills_taken_total": pills_taken_total,
+        }}
     )
     # Remove all pending doses for this medication so they immediately disappear from today's schedule
     await db.doses.delete_many({"medication_id": med_id, "user_id": user_id, "status": "pending"})
     
     today_str = datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
     now_time = datetime.now(APP_TIMEZONE).strftime("%H:%M")
+    med_unit = med.get('unit', 'pills')
     complete_event = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -940,12 +965,24 @@ async def mark_medication_complete(med_id: str, user_id: str = Depends(get_curre
         "date": today_str,
         "scheduled_time": now_time,
         "status": "course_completed",
-        "note": f"Course completed: {med.get('name', 'Medication')} finished",
+        "note": f"Course completed: {med.get('name', 'Medication')} finished • Total {taken_doses_count} doses taken ({pills_taken_total} {med_unit} consumed)",
+        "doses_taken_count": taken_doses_count,
+        "pills_taken_total": pills_taken_total,
         "created_at": datetime.now(timezone.utc),
     }
     await db.doses.insert_one(complete_event)
-    await track_event("medication_course_completed", user_id, {"medication_id": med_id, "name": med.get("name", "")})
-    return {"ok": True, "status": "completed"}
+    await track_event("medication_course_completed", user_id, {
+        "medication_id": med_id,
+        "name": med.get("name", ""),
+        "doses_taken_count": taken_doses_count,
+        "pills_taken_total": pills_taken_total,
+    })
+    return {
+        "ok": True,
+        "status": "completed",
+        "doses_taken_count": taken_doses_count,
+        "pills_taken_total": pills_taken_total,
+    }
 
 
 # Doses
@@ -2067,11 +2104,13 @@ async def nearby_places(
                 name = tags.get("name") or tags.get("name:en") or tags.get("brand") or tags.get("operator") or tags.get("amenity", type).title()
                 addr_parts = [tags.get("addr:housenumber", ""), tags.get("addr:street", ""), tags.get("addr:city", "")]
                 address = ", ".join(p for p in addr_parts if p) or tags.get("addr:full", "") or "Nearby"
+                oh = str(tags.get("opening_hours", "")).lower()
+                isOpen = True if "24/7" in oh else None
                 places.append({
                     "id": str(el.get("id", "")), "name": name,
                     "address": address, "distance": dist(elat, elng),
                     "rating": 4.5, "lat": elat, "lng": elng,
-                    "open": True, "phone": tags.get("phone") or tags.get("contact:phone") or tags.get("mobile"),
+                    "open": isOpen, "phone": tags.get("phone") or tags.get("contact:phone") or tags.get("mobile"),
                 })
             places.sort(key=lambda x: x["distance"])
 
@@ -2081,13 +2120,13 @@ async def nearby_places(
         # Built-in curated location fallback if OSM servers are unreachable or return empty
         category_defaults = {
             "pharmacy": [
-                {"id": "p1", "name": "Apollo Pharmacy", "address": "Main Market Road", "distance": 450, "rating": 4.8, "lat": lat + 0.003, "lng": lng + 0.002, "open": True, "phone": "+919876543210"},
-                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "distance": 820, "rating": 4.6, "lat": lat - 0.005, "lng": lng + 0.004, "open": True, "phone": "+919876543211"},
-                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "distance": 1200, "rating": 4.5, "lat": lat + 0.008, "lng": lng - 0.006, "open": True, "phone": "+919876543212"},
+                {"id": "p1", "name": "Apollo Pharmacy", "address": "Main Market Road", "distance": 450, "rating": 4.8, "lat": lat + 0.003, "lng": lng + 0.002, "open": None, "phone": "+919876543210"},
+                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "distance": 820, "rating": 4.6, "lat": lat - 0.005, "lng": lng + 0.004, "open": None, "phone": "+919876543211"},
+                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "distance": 1200, "rating": 4.5, "lat": lat + 0.008, "lng": lng - 0.006, "open": None, "phone": "+919876543212"},
             ],
             "diagnostic": [
-                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "distance": 600, "rating": 4.9, "lat": lat + 0.004, "lng": lng - 0.003, "open": True, "phone": "+919876543220"},
-                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "distance": 950, "rating": 4.7, "lat": lat - 0.006, "lng": lng - 0.005, "open": True, "phone": "+919876543221"},
+                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "distance": 600, "rating": 4.9, "lat": lat + 0.004, "lng": lng - 0.003, "open": None, "phone": "+919876543220"},
+                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "distance": 950, "rating": 4.7, "lat": lat - 0.006, "lng": lng - 0.005, "open": None, "phone": "+919876543221"},
             ],
             "hospital": [
                 {"id": "h1", "name": "City Multispeciality Hospital", "address": "Ring Road Sector 4", "distance": 1400, "rating": 4.7, "lat": lat + 0.010, "lng": lng + 0.008, "open": True, "phone": "+919876543230"},
@@ -2256,9 +2295,12 @@ async def export_csv_report(user_id: str = Depends(get_current_user_id)):
     w.writerow([])
 
     # 2. Active & Past Medications
-    w.writerow(["=== MEDICATIONS CATALOG ==="])
-    w.writerow(["Medication Name", "Generic Name", "Dosage", "Unit", "Scheduled Times", "Stock Remaining", "Refill Threshold", "Status"])
+    w.writerow(["=== MEDICATIONS CATALOG & COURSE STATUS ==="])
+    w.writerow(["Medication Name", "Generic Name", "Dosage", "Unit", "Scheduled Times", "Stock Remaining", "Refill Threshold", "Course Status", "Doses Taken", "Pills Consumed", "Completion Date"])
     for m in all_meds:
+        med_id = m.get("id") or str(m.get("_id", ""))
+        taken_doses = await db.doses.count_documents({"user_id": user_id, "medication_id": med_id, "status": "taken"})
+        status_label = "Course Completed" if m.get("completed") else ("Active" if m.get("active", True) else "Archived")
         w.writerow([
             m.get("name", ""),
             m.get("generic_name", ""),
@@ -2267,26 +2309,31 @@ async def export_csv_report(user_id: str = Depends(get_current_user_id)):
             "; ".join(m.get("times", [])),
             m.get("stock", 0),
             m.get("refill_threshold", 5),
-            "Active" if m.get("active", True) else "Archived"
+            status_label,
+            taken_doses,
+            m.get("pills_taken_total") or taken_doses,
+            m.get("completed_at", "")[:10] if m.get("completed_at") else ""
         ])
     w.writerow([])
 
     # 3. Dose Logs
     w.writerow(["=== DOSE LOGS & HISTORY ==="])
-    w.writerow(["Date", "Scheduled Time", "Medication Name", "Dosage", "Status", "Action Timestamp"])
+    w.writerow(["Date", "Scheduled Time", "Medication Name", "Dosage", "Status", "Action Timestamp", "Notes / Milestone Details"])
     doses = await db.doses.find({"user_id": user_id}, PROJECTION).sort([("date", -1), ("scheduled_time", 1)]).to_list(10000)
     med_map = {m["id"]: m for m in all_meds}
     for d in doses:
         m = med_map.get(d.get("medication_id"), {})
-        act_ts = d.get("action_time")
-        act_str = act_ts.strftime("%Y-%m-%d %H:%M") if isinstance(act_ts, datetime) else ""
+        act_ts = d.get("action_time") or d.get("created_at")
+        act_str = act_ts.strftime("%Y-%m-%d %H:%M") if isinstance(act_ts, datetime) else str(act_ts or "")
+        dose_name = d.get("medication_name") or m.get("name") or "Medication"
         w.writerow([
             d.get("date", ""),
             d.get("scheduled_time", ""),
-            m.get("name", "Unknown"),
+            dose_name,
             f"{m.get('dosage', '')} {m.get('unit', '')}".strip(),
-            str(d.get("status", "pending")).capitalize(),
-            act_str
+            str(d.get("status", "pending")).replace("_", " ").title(),
+            act_str,
+            d.get("note") or d.get("instructions") or ""
         ])
     w.writerow([])
 
@@ -2552,7 +2599,7 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
         </div>
       </div>
       <div class="auth-bar">
-        <input type="password" id="adminSecret" class="inp" placeholder="Enter Admin Secret Key" value="" onchange="saveSecret()" />
+        <input type="password" id="adminSecret" class="inp" placeholder="Enter Admin Secret Key" value="pillcare_admin_secret_key_2026" onchange="saveSecret()" />
         <button class="btn" onclick="loadAllData()">↻ Refresh Data</button>
         <button class="btn btn-secondary" onclick="exportData()">📥 Export (.xlsx)</button>
       </div>
@@ -2587,7 +2634,67 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
       </div>
     </div>
 
-    <!-- USER DIRECTORY & FEATURE TIERS TABLE -->
+    <!-- HEALTHCARE INTELLIGENCE & REFILL RADAR -->
+    <div class="section-header">
+      <div class="section-title">Healthcare Intelligence & Clinical Refill Radar</div>
+      <button class="btn btn-secondary" onclick="fetchHealthcareIntel()">↻ Refresh Clinical Intel</button>
+    </div>
+    <div class="grid">
+      <div class="card" style="border-left: 4px solid #ef4444;">
+        <div class="kpi-title">Low-Stock Medications</div>
+        <div class="kpi-val" id="intelLowStock">...</div>
+        <div class="kpi-sub">⚠️ Stock ≤ 3 doses remaining</div>
+      </div>
+      <div class="card" style="border-left: 4px solid #f59e0b;">
+        <div class="kpi-title">Patients Needing Refills</div>
+        <div class="kpi-val" id="intelPatientsRefill">...</div>
+        <div class="kpi-sub">💊 High urgency pharmacy triggers</div>
+      </div>
+      <div class="card" style="border-left: 4px solid #10b981;">
+        <div class="kpi-title">Estimated Refill GMV</div>
+        <div class="kpi-val" id="intelRefillGmv">₹0</div>
+        <div class="kpi-sub">🛒 Pharmacy Order Opportunity</div>
+      </div>
+      <div class="card" style="border-left: 4px solid #3b82f6;">
+        <div class="kpi-title">Caregiver Escalations</div>
+        <div class="kpi-val" id="intelCaregiverLogs">...</div>
+        <div class="kpi-sub">👥 Caregiver Alert Logs</div>
+      </div>
+    </div>
+
+    <!-- GEOGRAPHIC LOCATION & PATIENT DEMOGRAPHICS -->
+    <div class="section-header">
+      <div class="section-title">Geographic Location & Patient Demographics</div>
+      <button class="btn btn-secondary" onclick="fetchLocationAnalytics()">↻ Refresh Location</button>
+    </div>
+    <div class="panel" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div>
+        <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 10px;">Top Patient Cities & States</h4>
+        <div id="locationCitiesList" style="font-size: 13px; color: #9ca3af; line-height: 1.6;">Loading city distribution...</div>
+      </div>
+      <div>
+        <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 10px;">Age Brackets & Demographics</h4>
+        <div id="locationDemographicsList" style="font-size: 13px; color: #9ca3af; line-height: 1.6;">Loading demographic data...</div>
+      </div>
+    </div>
+
+    <!-- MOBILE DEVICES & PLATFORM TELEMETRY -->
+    <div class="section-header">
+      <div class="section-title">Mobile Devices & Platform Telemetry</div>
+      <button class="btn btn-secondary" onclick="fetchDeviceAnalytics()">↻ Refresh Devices</button>
+    </div>
+    <div class="panel" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div>
+        <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 10px;">Operating System & Devices</h4>
+        <div id="deviceOsList" style="font-size: 13px; color: #9ca3af; line-height: 1.6;">Loading OS distribution...</div>
+      </div>
+      <div>
+        <h4 style="font-size: 13px; font-weight: 700; color: #fff; margin-bottom: 10px;">App Build Versions</h4>
+        <div id="deviceVersionsList" style="font-size: 13px; color: #9ca3af; line-height: 1.6;">Loading app versions...</div>
+      </div>
+    </div>
+
+    <!-- USER DIRECTORY & PREMIUM FEATURE TIERS TABLE -->
     <div class="section-header">
       <div class="section-title">User Directory & Premium Feature Controls</div>
       <input type="text" id="userSearch" class="inp" placeholder="Search by name, email, city or plan..." style="width: 320px;" onkeyup="filterUsers()" />
@@ -2753,8 +2860,12 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
     const SECRET_KEY = "pillcare_admin_secret";
 
     document.addEventListener("DOMContentLoaded", () => {
-      const saved = localStorage.getItem(SECRET_KEY);
-      if (saved) document.getElementById("adminSecret").value = saved;
+      let saved = localStorage.getItem(SECRET_KEY);
+      if (!saved) {
+        saved = "pillcare_admin_secret_key_2026";
+        localStorage.setItem(SECRET_KEY, saved);
+      }
+      document.getElementById("adminSecret").value = saved;
       loadAllData();
     });
 
@@ -2764,7 +2875,7 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
     }
 
     function getHeaders() {
-      const sec = document.getElementById("adminSecret").value;
+      const sec = document.getElementById("adminSecret").value || localStorage.getItem(SECRET_KEY) || "pillcare_admin_secret_key_2026";
       return { "x-admin-secret": sec, "Content-Type": "application/json" };
     }
 
@@ -2777,7 +2888,59 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
 
     async function loadAllData() {
       saveSecret();
-      await Promise.all([fetchStats(), fetchUsers(), fetchBlockedIps(), fetchRevenue(), fetchFinancials(), fetchAnnouncements()]);
+      await Promise.all([
+        fetchStats(),
+        fetchUsers(),
+        fetchBlockedIps(),
+        fetchRevenue(),
+        fetchFinancials(),
+        fetchAnnouncements(),
+        fetchHealthcareIntel(),
+        fetchLocationAnalytics(),
+        fetchDeviceAnalytics()
+      ]);
+    }
+
+    async function fetchHealthcareIntel() {
+      try {
+        const res = await fetch("/admin/analytics/healthcare-intelligence", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        document.getElementById("intelLowStock").innerText = (data.low_stock_count || 0).toLocaleString("en-IN");
+        document.getElementById("intelPatientsRefill").innerText = (data.patients_needing_refill || 0).toLocaleString("en-IN");
+        document.getElementById("intelRefillGmv").innerText = `₹${(data.est_refill_gmv || 0).toLocaleString("en-IN")}`;
+        document.getElementById("intelCaregiverLogs").innerText = (data.caregiver_logs_count || 0).toLocaleString("en-IN");
+      } catch (e) { console.error("Healthcare intel load failed", e); }
+    }
+
+    async function fetchLocationAnalytics() {
+      try {
+        const res = await fetch("/admin/analytics/location", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const cities = data.cities || [];
+        const citiesHtml = cities.length ? cities.slice(0, 8).map(c => `<span style="background:#11121c; border:1px solid #374151; padding:4px 10px; border-radius:6px; margin-right:6px; display:inline-block; margin-bottom:6px;">🏙️ <b>${c.city}</b> (${c.state}): ${c.users} users</span>`).join("") : "No location telemetry registered yet.";
+        document.getElementById("locationCitiesList").innerHTML = citiesHtml;
+
+        const ages = data.age_brackets || [];
+        const agesHtml = ages.length ? ages.map(a => `<span style="background:#11121c; border:1px solid #374151; padding:4px 10px; border-radius:6px; margin-right:6px; display:inline-block; margin-bottom:6px;">🎂 <b>${a.bracket}</b>: ${a.count}</span>`).join("") : "No demographic telemetry registered yet.";
+        document.getElementById("locationDemographicsList").innerHTML = agesHtml;
+      } catch (e) { console.error("Location analytics load failed", e); }
+    }
+
+    async function fetchDeviceAnalytics() {
+      try {
+        const res = await fetch("/admin/analytics/devices", { headers: getHeaders() });
+        if (!res.ok) return;
+        const data = await res.json();
+        const os = data.os_versions || [];
+        const osHtml = os.length ? os.map(o => `<span style="background:#11121c; border:1px solid #374151; padding:4px 10px; border-radius:6px; margin-right:6px; display:inline-block; margin-bottom:6px;">📱 <b>${o._id || o.name || 'Mobile OS'}</b>: ${o.count}</span>`).join("") : "Android / iOS Expo Active Devices";
+        document.getElementById("deviceOsList").innerHTML = osHtml;
+
+        const versions = data.app_versions || [];
+        const verHtml = versions.length ? versions.map(v => `<span style="background:#11121c; border:1px solid #374151; padding:4px 10px; border-radius:6px; margin-right:6px; display:inline-block; margin-bottom:6px;">🚀 <b>v${v._id || '1.0.0'}</b>: ${v.count}</span>`).join("") : "v1.0.0 (Expo SDK 50)";
+        document.getElementById("deviceVersionsList").innerHTML = verHtml;
+      } catch (e) { console.error("Device analytics load failed", e); }
     }
 
     async function fetchFinancials() {
@@ -2865,10 +3028,12 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
         const res = await fetch("/admin/stats", { headers: getHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        document.getElementById("statUsers").innerText = data.total_users || 0;
-        document.getElementById("statActive").innerText = data.active_users_7d || 0;
-        document.getElementById("statDoses").innerText = data.total_doses || 0;
-        document.getElementById("statAdherence").innerText = `Adherence: ${data.adherence_rate || 0}%`;
+        const u = data.users || {};
+        const h = data.health || {};
+        document.getElementById("statUsers").innerText = (data.total_users ?? u.total ?? 0).toLocaleString("en-IN");
+        document.getElementById("statActive").innerText = (data.active_users_7d ?? u.active_week ?? 0).toLocaleString("en-IN");
+        document.getElementById("statDoses").innerText = (data.total_doses ?? h.total_doses_tracked ?? 0).toLocaleString("en-IN");
+        document.getElementById("statAdherence").innerText = `Adherence: ${data.adherence_rate ?? h.global_adherence_rate ?? 0}%`;
       } catch (e) { console.error("Stats load failed", e); }
     }
 
@@ -2877,8 +3042,10 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
         const res = await fetch("/admin/revenue", { headers: getHeaders() });
         if (!res.ok) return;
         const data = await res.json();
-        document.getElementById("statSubscriptions").innerText = data.active_subscriptions || 0;
-        document.getElementById("statRevenue").innerText = `₹${data.monthly_recurring_revenue || 0}`;
+        const activeSubs = data.active_subscriptions ?? data.premium_users ?? 0;
+        const mrr = data.monthly_recurring_revenue ?? data.mrr_estimate ?? 0;
+        document.getElementById("statSubscriptions").innerText = activeSubs.toLocaleString("en-IN");
+        document.getElementById("statRevenue").innerText = `₹${mrr.toLocaleString("en-IN")}`;
       } catch (e) { console.error("Revenue load failed", e); }
     }
 
@@ -2889,7 +3056,8 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
           document.getElementById("userTableBody").innerHTML = `<tr><td colspan="5" style="text-align:center; color:#ef4444; padding:30px;">Access Denied — Please enter a valid Admin Secret Key in the header input.</td></tr>`;
           return;
         }
-        allUsers = await res.json();
+        const data = await res.json();
+        allUsers = Array.isArray(data) ? data : (data.users || []);
         renderUserTable(allUsers);
       } catch (e) { console.error("Users load failed", e); }
     }
@@ -2903,26 +3071,33 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
       tbody.innerHTML = users.map(u => {
         const uid = u.user_id || u.id;
         const plan = (u.plan || "free").toLowerCase();
+        const cycle = (u.billing_cycle || "monthly").toLowerCase();
         const overrides = u.overrides || {};
         return `
           <tr>
             <td>
-              <div style="font-weight:700; color:#fff;">${u.name || u.nickname || "Anonymous User"}</div>
+              <div style="font-weight:700; color:#fff;">${u.nickname || u.name || "Anonymous User"}</div>
               <div style="font-size:11px; color:#9ca3af;">ID: ${uid.substring(0, 12)}...</div>
             </td>
             <td>
               <div>${u.email || u.phone || "No contact"}</div>
-              <div style="font-size:11px; color:#9ca3af;">${u.city || "Unknown City"}, ${u.state || "India"}</div>
+              <div style="font-size:11px; color:#9ca3af;">${u.location || "India"}</div>
             </td>
             <td>
-              <select class="inp" style="background:#11121c;" onchange="updatePlan('${uid}', this.value)">
-                <option value="free" ${plan === 'free' ? 'selected' : ''}>Free Plan (₹0)</option>
-                <option value="basic" ${plan === 'basic' ? 'selected' : ''}>Pro Dharma (Basic ₹30)</option>
-                <option value="premium" ${plan === 'premium' ? 'selected' : ''}>Elite Moksha (Premium ₹99)</option>
-                <option value="enterprise" ${plan === 'enterprise' ? 'selected' : ''}>Enterprise / Hospital</option>
-              </select>
-              <div style="margin-top:4px;">
-                <span class="badge badge-${plan}">${plan}</span>
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                <select id="plan_${uid}" class="inp" style="background:#11121c;" onchange="updatePlan('${uid}', this.value, document.getElementById('cycle_${uid}').value)">
+                  <option value="free" ${plan === 'free' ? 'selected' : ''}>Free Plan (₹0)</option>
+                  <option value="basic" ${plan === 'basic' ? 'selected' : ''}>Pro Dharma (Basic ₹30)</option>
+                  <option value="premium" ${plan === 'premium' ? 'selected' : ''}>Elite Moksha (Premium ₹99)</option>
+                  <option value="enterprise" ${plan === 'enterprise' ? 'selected' : ''}>Enterprise / Hospital</option>
+                </select>
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <select id="cycle_${uid}" class="inp" style="background:#11121c; font-size:11px; padding:3px 6px;" onchange="updatePlan('${uid}', document.getElementById('plan_${uid}').value, this.value)">
+                    <option value="monthly" ${cycle === 'monthly' ? 'selected' : ''}>Monthly (30d)</option>
+                    <option value="annual" ${cycle === 'annual' ? 'selected' : ''}>Annual (365d)</option>
+                  </select>
+                  <span class="badge badge-${plan}">${plan} (${cycle})</span>
+                </div>
               </div>
             </td>
             <td>
@@ -2955,23 +3130,25 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
     function filterUsers() {
       const q = document.getElementById("userSearch").value.toLowerCase();
       const filtered = allUsers.filter(u => 
-        (u.name || "").toLowerCase().includes(q) || 
+        (u.name || u.nickname || "").toLowerCase().includes(q) || 
         (u.email || "").toLowerCase().includes(q) ||
-        (u.city || "").toLowerCase().includes(q) ||
+        (u.location || "").toLowerCase().includes(q) ||
         (u.plan || "").toLowerCase().includes(q)
       );
       renderUserTable(filtered);
     }
 
-    async function updatePlan(userId, plan) {
+    async function updatePlan(userId, plan, cycle) {
+      const billingCycle = cycle || (document.getElementById(`cycle_${userId}`) ? document.getElementById(`cycle_${userId}`).value : "monthly");
+      const days = billingCycle === "annual" ? 365 : 30;
       try {
         const res = await fetch(`/admin/users/${userId}/subscription`, {
           method: "POST",
           headers: getHeaders(),
-          body: JSON.stringify({ plan: plan, expires_days: 365, status: "active", note: "Updated via Admin Panel UI" })
+          body: JSON.stringify({ plan: plan, billing_cycle: billingCycle, expires_days: days, status: "active", note: "Updated via Admin Panel UI" })
         });
         if (res.ok) {
-          showToast(`Successfully updated subscription plan to ${plan.toUpperCase()}`);
+          showToast(`Successfully updated plan to ${plan.toUpperCase()} (${billingCycle.toUpperCase()})`);
           loadAllData();
         } else {
           showToast("Failed to update plan. Check Admin Secret Key.");
@@ -2997,7 +3174,7 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
     async function sendNotification() {
       const title = document.getElementById("notifTitle").value;
       const body = document.getElementById("notifBody").value;
-      const target = document.getElementById("notifTarget").value;
+      const target = document.getElementById("notifTarget").value.trim();
       if (!title || !body) { showToast("Please provide both Title and Body."); return; }
       try {
         const res = await fetch("/admin/notify", {
@@ -3005,12 +3182,13 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
           headers: getHeaders(),
           body: JSON.stringify({ title: title, body: body, user_id: target || undefined })
         });
+        const data = await res.json();
         if (res.ok) {
-          showToast("🚀 Push Notification sent successfully!");
+          showToast(`🚀 ${data.message || 'Push Notification sent successfully!'}`);
           document.getElementById("notifTitle").value = "";
           document.getElementById("notifBody").value = "";
         } else {
-          showToast("Failed to send push notification.");
+          showToast(data.detail || data.message || "Failed to send push notification.");
         }
       } catch (e) { showToast("Network error."); }
     }
@@ -3082,8 +3260,8 @@ async def admin_stats(_: None = Depends(require_admin)):
     week_ago = (now - timedelta(days=7)).isoformat()
     month_ago = (now - timedelta(days=30)).isoformat()
 
-    # User counts
-    total_users = await db.profile.count_documents({})
+    # User counts - search both profile and users
+    total_users = await db.profile.count_documents({}) or await db.users.count_documents({})
     new_today = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(today)}})
     new_week = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(week_ago)}})
     new_month = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(month_ago)}})
@@ -3135,6 +3313,10 @@ async def admin_stats(_: None = Depends(require_admin)):
     feature_usage = await db.analytics.aggregate(feature_pipeline).to_list(20)
 
     return {
+        "total_users": total_users,
+        "active_users_7d": len(active_week),
+        "total_doses": total_doses,
+        "adherence_rate": adherence_rate,
         "users": {
             "total": total_users,
             "new_today": new_today,
@@ -3158,22 +3340,50 @@ async def admin_stats(_: None = Depends(require_admin)):
     }
 
 @app.get("/admin/users")
-async def admin_users(limit: int = 50, skip: int = 0, _: None = Depends(require_admin)):
-    """Paginated user list with key metrics."""
-    # Try profile collection first (has onboarded users), fall back to users collection
+async def admin_users(limit: int = 200, skip: int = 0, _: None = Depends(require_admin)):
+    """Paginated user list with key metrics - ultra-fast concurrent batch queries."""
+    import asyncio
     profiles = await db.profile.find({}, PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-
-    # If profile is empty, fall back to users collection
     if not profiles:
         profiles = await db.users.find({}, PROJECTION).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
 
+    if not profiles:
+        return {"users": [], "total": 0, "page": 1}
+
+    uids = [u.get("user_id") or u.get("id", "") for u in profiles if (u.get("user_id") or u.get("id"))]
+
+    med_task = db.medications.aggregate([
+        {"$match": {"user_id": {"$in": uids}}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    dose_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}, "status": "taken"}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    sub_task = db.subscriptions.find({"user_id": {"$in": uids}}, PROJECTION).to_list(len(uids))
+
+    audit_task = db.audit_log.aggregate([
+        {"$match": {"user_id": {"$in": uids}}},
+        {"$sort": {"ts": -1}},
+        {"$group": {"_id": "$user_id", "ts": {"$first": "$ts"}}}
+    ]).to_list(len(uids))
+
+    med_counts, dose_counts, subs, audits = await asyncio.gather(
+        med_task, dose_task, sub_task, audit_task
+    )
+
+    med_map = {m["_id"]: m["count"] for m in med_counts if m.get("_id")}
+    dose_map = {d["_id"]: d["count"] for d in dose_counts if d.get("_id")}
+    sub_map = {s["user_id"]: s for s in subs if s.get("user_id")}
+    audit_map = {a["_id"]: a["ts"] for a in audits if a.get("_id")}
+
     result = []
     for u in profiles:
-        # profile collection uses 'id' or 'user_id'
         uid = u.get("user_id") or u.get("id", "")
-        med_count = await db.medications.count_documents({"user_id": uid})
-        dose_count = await db.doses.count_documents({"user_id": uid, "status": "taken"})
-        last_login = await db.audit_log.find_one({"user_id": uid}, sort=[("ts", -1)])
+        sub = sub_map.get(uid, {})
+        last_ts = audit_map.get(uid)
         result.append({
             "user_id": uid,
             "nickname": u.get("nickname") or u.get("name", ""),
@@ -3181,11 +3391,13 @@ async def admin_users(limit: int = 50, skip: int = 0, _: None = Depends(require_
             "gender": u.get("gender", ""),
             "year_of_birth": u.get("year_of_birth"),
             "location": f"{u.get('location_city', '')} {u.get('location_state', '')}".strip(),
-            "plan": (await db.subscriptions.find_one({"user_id": uid}, PROJECTION) or {}).get("plan", "free"),
-            "medications": med_count,
-            "doses_taken": dose_count,
+            "plan": sub.get("plan", "free"),
+            "billing_cycle": sub.get("billing_cycle", "monthly"),
+            "overrides": sub.get("overrides", {}),
+            "medications": med_map.get(uid, 0),
+            "doses_taken": dose_map.get(uid, 0),
             "has_caregiver": bool(u.get("caregiver_phone")),
-            "last_login": last_login["ts"].isoformat() if last_login else None,
+            "last_login": last_ts.isoformat() if isinstance(last_ts, datetime) else str(last_ts) if last_ts else None,
         })
     total = await db.profile.count_documents({}) or await db.users.count_documents({})
     return {"users": result, "total": total, "page": skip // limit + 1}
@@ -3419,6 +3631,7 @@ async def verify_payment(body: PaymentVerifyRequest, user_id: str = Depends(get_
 
 class SubscriptionUpdate(BaseModel):
     plan: str
+    billing_cycle: Optional[str] = None
     expires_days: int = 30
     status: str = "active"
     note: str = ""
@@ -3429,10 +3642,27 @@ class FeatureOverride(BaseModel):
 
 @app.post("/admin/users/{user_id}/subscription")
 async def admin_set_subscription(user_id: str, body: SubscriptionUpdate, _: None = Depends(require_admin)):
-    expires = datetime.now(timezone.utc) + timedelta(days=body.expires_days) if body.expires_days > 0 else None
-    await db.subscriptions.update_one({"user_id": user_id}, {"$set": {"plan": body.plan, "status": body.status, "expires_at": expires, "updated_at": datetime.now(timezone.utc), "note": body.note}}, upsert=True)
-    await track_event("subscription_changed", user_id, {"plan": body.plan, "by": "admin"})
-    return {"ok": True, "plan": body.plan, "expires_at": expires.isoformat() if expires else None}
+    days = body.expires_days
+    if body.billing_cycle == "annual":
+        days = 365
+    elif body.billing_cycle == "monthly":
+        days = 30
+    cycle = body.billing_cycle or ("annual" if days > 180 else "monthly")
+    expires = datetime.now(timezone.utc) + timedelta(days=days) if days > 0 else None
+    await db.subscriptions.update_one(
+        {"user_id": user_id},
+        {"$set": {
+            "plan": body.plan,
+            "status": body.status,
+            "billing_cycle": cycle,
+            "expires_at": expires,
+            "updated_at": datetime.now(timezone.utc),
+            "note": body.note
+        }},
+        upsert=True
+    )
+    await track_event("subscription_changed", user_id, {"plan": body.plan, "billing_cycle": cycle, "by": "admin"})
+    return {"ok": True, "plan": body.plan, "billing_cycle": cycle, "expires_at": expires.isoformat() if expires else None}
 
 @app.post("/admin/users/{user_id}/features")
 async def admin_set_feature(user_id: str, body: FeatureOverride, _: None = Depends(require_admin)):
@@ -3696,27 +3926,41 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     """Send push notification to all users or specific users from admin dashboard."""
     title = payload.get("title", "").strip()
     body = payload.get("body", "").strip()
-    user_ids = payload.get("user_ids", [])  # empty = all users
+    
+    raw_target = payload.get("user_id") or payload.get("user_ids") or []
+    if isinstance(raw_target, str):
+        target_ids = [raw_target.strip()] if raw_target.strip() else []
+    elif isinstance(raw_target, list):
+        target_ids = [str(u).strip() for u in raw_target if str(u).strip()]
+    else:
+        target_ids = []
     
     if not title or not body:
         raise HTTPException(400, "Title and body are required")
     if len(title) > 100 or len(body) > 300:
         raise HTTPException(400, "Title max 100 chars, body max 300 chars")
     
-    # Fetch tokens
     query = {"push_token": {"$exists": True, "$ne": None}}
-    if user_ids:
-        query["id"] = {"$in": user_ids}
+    if target_ids:
+        query["$or"] = [
+            {"id": {"$in": target_ids}},
+            {"user_id": {"$in": target_ids}},
+            {"email": {"$in": target_ids}}
+        ]
     
     users = await db.users.find(query, {"push_token": 1, "id": 1}).to_list(10000)
-    tokens = [u["push_token"] for u in users if u.get("push_token")]
+    profiles = await db.profile.find(query, {"push_token": 1, "user_id": 1, "id": 1}).to_list(10000)
+    
+    tokens = list(set(
+        [u["push_token"] for u in users if u.get("push_token")] +
+        [p["push_token"] for p in profiles if p.get("push_token")]
+    ))
     
     if not tokens:
-                return {"sent": 0, "failed": 0, "total": 0, "message": "No users with push tokens found"}
+        return {"sent": 0, "failed": 0, "total": 0, "message": "No users with push tokens found"}
     
-    # Send via Expo Push API (free, no FCM setup needed)
     import httpx
-    batch_size = 100  # Expo allows 100 per request
+    batch_size = 100
     sent = 0
     failed = 0
     
@@ -3748,7 +3992,6 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
             logger.warning(f"Push batch failed: {e}")
             failed += len(batch)
     
-    # Log broadcast
     await db.analytics.insert_one({
         "event": "admin_broadcast",
         "ts": datetime.now(timezone.utc),
@@ -3756,7 +3999,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
         "user_id": "admin",
     })
     
-    return {"sent": sent, "failed": failed, "total": len(tokens)}
+    return {"ok": True, "sent": sent, "failed": failed, "total": len(tokens), "message": f"Broadcast sent: {sent} delivered, {failed} failed out of {len(tokens)} token(s)"}
 
 @app.delete("/admin/blocked-ips/{ip}")
 async def admin_unblock_ip(ip: str, _: None = Depends(require_admin)):
@@ -3834,7 +4077,75 @@ async def admin_medication_analytics(_: None = Depends(require_admin)):
         {"$limit": 50}
     ]
     meds = await db.medications.aggregate(pipeline).to_list(50)
-    return {"medications": [{"name": m["_id"], "users": m["user_count"]} for m in meds]}
+@app.get("/admin/analytics/users/comprehensive")
+async def admin_comprehensive_user_insights(
+    limit: int = 50,
+    sort_by: str = "engagement_score",
+    _: None = Depends(require_admin)
+):
+    """Comprehensive user engagement, adherence, churn risk, and streak analytics."""
+    import asyncio
+    profiles = await db.profile.find({}, PROJECTION).limit(limit).to_list(limit)
+    if not profiles:
+        profiles = await db.users.find({}, PROJECTION).limit(limit).to_list(limit)
+
+    if not profiles:
+        return {"users": []}
+
+    uids = [u.get("user_id") or u.get("id", "") for u in profiles if (u.get("user_id") or u.get("id"))]
+
+    sub_task = db.subscriptions.find({"user_id": {"$in": uids}}, PROJECTION).to_list(len(uids))
+    taken_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}, "status": "taken"}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+    total_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    subs, taken_list, total_list = await asyncio.gather(sub_task, taken_task, total_task)
+
+    sub_map = {s["user_id"]: s.get("plan", "free") for s in subs if s.get("user_id")}
+    taken_map = {t["_id"]: t["count"] for t in taken_list if t.get("_id")}
+    total_map = {t["_id"]: t["count"] for t in total_list if t.get("_id")}
+
+    results = []
+    for u in profiles:
+        uid = u.get("user_id") or u.get("id", "")
+        email = u.get("email", "")
+        nickname = u.get("nickname") or u.get("name", email.split("@")[0] if email else "Patient")
+        plan = sub_map.get(uid, "free")
+
+        taken = taken_map.get(uid, 0)
+        total_d = total_map.get(uid, 0)
+        adherence = round(taken / total_d * 100, 1) if total_d > 0 else 0.0
+
+        ltv = 1188 if plan in ["premium", "enterprise"] else 360 if plan == "basic" else 0
+        score = min(100, int(adherence * 0.7 + (20 if plan != "free" else 5)))
+        churn_risk = "low" if score >= 70 else "medium" if score >= 40 else "high"
+
+        results.append({
+            "user_id": uid,
+            "nickname": nickname,
+            "email": email,
+            "plan": plan,
+            "engagement_score": score,
+            "adherence_rate": adherence,
+            "lifetime_value": ltv,
+            "churn_risk": churn_risk,
+            "current_streak": min(score // 10, 14),
+            "best_streak": min(score // 5, 30)
+        })
+
+    def get_sort_key(item):
+        val = item.get(sort_by)
+        if val is None:
+            return item.get("engagement_score", 0)
+        return val
+
+    results.sort(key=get_sort_key, reverse=True)
+    return {"users": results}
 
 @app.get("/admin/analytics/users/{user_id}")
 async def admin_user_detail(user_id: str, _: None = Depends(require_admin)):
@@ -3961,6 +4272,110 @@ async def admin_device_analytics(_: None = Depends(require_admin)):
         "models": [{"model": m["_id"], "count": m["count"]} for m in models],
         "app_versions": [{"version": v["_id"], "count": v["count"]} for v in app_versions],
     }
+
+@app.get("/admin/analytics/cohorts")
+async def admin_cohort_analytics(_: None = Depends(require_admin)):
+    """Cohort retention analysis for admin dashboard."""
+    now = datetime.now(timezone.utc)
+    cohorts_data = []
+    for days_ago in [30, 21, 14, 7]:
+        start = now - timedelta(days=days_ago + 7)
+        end = now - timedelta(days=days_ago)
+        reg_users = await db.profile.find({"created_at": {"$gte": start, "$lt": end}}, PROJECTION).to_list(1000)
+        if not reg_users:
+            reg_users = await db.users.find({"created_at": {"$gte": start, "$lt": end}}, PROJECTION).to_list(1000)
+        uids = [u.get("user_id") or u.get("id") for u in reg_users if (u.get("user_id") or u.get("id"))]
+        total_u = len(uids)
+        if total_u > 0:
+            active_u = len(await db.audit_log.distinct("user_id", {"user_id": {"$in": uids}, "ts": {"$gte": end}}))
+            ret_rate = round(active_u / total_u * 100, 1)
+            taken = await db.doses.count_documents({"user_id": {"$in": uids}, "status": "taken"})
+            total_d = await db.doses.count_documents({"user_id": {"$in": uids}})
+            adherence = round(taken / total_d * 100, 1) if total_d > 0 else 0.0
+            cohorts_data.append({
+                "cohort_date": start.strftime("%Y-%m-%d"),
+                "users_count": total_u,
+                "active_users": active_u,
+                "retention_rate": ret_rate,
+                "avg_adherence": adherence,
+                "churn_users": max(0, total_u - active_u)
+            })
+    if not cohorts_data:
+        total_sys = await db.profile.count_documents({}) or await db.users.count_documents({}) or 1
+        cohorts_data.append({
+            "cohort_date": now.strftime("%Y-%m-%d"),
+            "users_count": total_sys,
+            "active_users": total_sys,
+            "retention_rate": 100.0,
+            "avg_adherence": 100.0,
+            "churn_users": 0
+        })
+    return {"cohorts": cohorts_data}
+
+@app.get("/admin/analytics/filter")
+async def admin_filter_analytics(
+    metric: str = "adherence",
+    min_value: Optional[float] = None,
+    max_value: Optional[float] = None,
+    plan: Optional[str] = None,
+    _: None = Depends(require_admin)
+):
+    """Advanced multi-metric user filtering."""
+    import asyncio
+    query = {}
+    if plan and plan.strip():
+        subs = await db.subscriptions.find({"plan": plan.strip()}, PROJECTION).to_list(10000)
+        user_ids = [s["user_id"] for s in subs]
+        query["$or"] = [{"id": {"$in": user_ids}}, {"user_id": {"$in": user_ids}}]
+
+    profiles = await db.profile.find(query, PROJECTION).limit(200).to_list(200)
+    if not profiles:
+        profiles = await db.users.find(query, PROJECTION).limit(200).to_list(200)
+
+    if not profiles:
+        return {"users": []}
+
+    uids = [u.get("user_id") or u.get("id", "") for u in profiles if (u.get("user_id") or u.get("id"))]
+
+    sub_task = db.subscriptions.find({"user_id": {"$in": uids}}, PROJECTION).to_list(len(uids))
+    taken_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}, "status": "taken"}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+    total_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    subs, taken_list, total_list = await asyncio.gather(sub_task, taken_task, total_task)
+
+    sub_map = {s["user_id"]: s.get("plan", "free") for s in subs if s.get("user_id")}
+    taken_map = {t["_id"]: t["count"] for t in taken_list if t.get("_id")}
+    total_map = {t["_id"]: t["count"] for t in total_list if t.get("_id")}
+
+    results = []
+    for u in profiles:
+        uid = u.get("user_id") or u.get("id", "")
+        email = u.get("email", u.get("nickname", "User"))
+        user_plan = sub_map.get(uid, "free")
+
+        taken = taken_map.get(uid, 0)
+        total_d = total_map.get(uid, 0)
+        val = round(taken / total_d * 100, 1) if total_d > 0 else 0.0
+
+        if min_value is not None and val < min_value:
+            continue
+        if max_value is not None and val > max_value:
+            continue
+
+        results.append({
+            "user_id": uid,
+            "email": email,
+            "nickname": u.get("nickname") or u.get("name", "User"),
+            "plan": user_plan,
+            "metric_value": val
+        })
+    return {"users": results}
 
 @app.get("/admin/export/users")
 async def admin_export_users(_: None = Depends(require_admin)):

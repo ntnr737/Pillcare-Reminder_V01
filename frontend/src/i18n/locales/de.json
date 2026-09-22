@@ -1,0 +1,69 @@
+{
+  "appName": "PillCare",
+  "tagline": "Ihr Intelligenter Medikamentenbegleiter",
+  "nav": {
+    "home": "Startseite",
+    "medications": "Medikamente",
+    "appointments": "Termine",
+    "nearby": "Apotheken in der Nähe",
+    "vitals": "Vitalwerte",
+    "support": "Hilfe & Einstellungen",
+    "yoga": "KI-Yoga-Therapie"
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "retry": "Wiederholen",
+    "loading": "Laden...",
+    "search": "Suchen...",
+    "error": "Etwas ist schiefgelaufen",
+    "openNow": "Jetzt Geöffnet",
+    "closed": "Geschlossen",
+    "verifyHours": "Zeiten Prüfen",
+    "distance": "entfernt",
+    "rating": "Bewertung",
+    "call": "Anrufen",
+    "whatsapp": "WhatsApp Senden",
+    "directions": "Route",
+    "details": "Details Anzeigen",
+    "share": "Teilen",
+    "dismiss": "Schließen",
+    "confirm": "Bestätigen"
+  },
+  "home": {
+    "greetingMorning": "Guten Morgen",
+    "greetingAfternoon": "Guten Tag",
+    "greetingEvening": "Guten Abend",
+    "todayDoses": "Heutige Medikamenteneinnahmen",
+    "noDosesToday": "Keine ausstehenden Einnahmen für heute!",
+    "streakDays": "Tage Einnahmeserie",
+    "quickActions": "Schnellaktionen",
+    "refillAlert": "Nachfüllwarnung",
+    "refillDesc": "Vorrat geht zur Neige. Jetzt nachbestellen."
+  },
+  "nearby": {
+    "title": "Apotheken in der Nähe",
+    "subtitle": "Finden Sie Apotheken, Blutbanken und Diagnostikzentren in Ihrer Nähe",
+    "searchPlaceholder": "Apotheke, Krankenhaus suchen...",
+    "pharmacies": "Apotheken",
+    "bloodBanks": "Blutbanken",
+    "diagnostics": "Diagnostik",
+    "emergency": "Notfall",
+    "noStoresInRadius": "Keine Apotheken in diesem Radius gefunden.",
+    "nearestStoresOutside": "NÄCHSTE APOTHEKEN AUSSERHALB DES RADIUS",
+    "expandRadius": "Suchradius erweitern",
+    "enterPhone": "WhatsApp- / Handynummer eingeben"
+  },
+  "support": {
+    "title": "Hilfe & Einstellungen",
+    "appearance": "Erscheinungsbild",
+    "darkMode": "Dunkelmodus (Obsidian)",
+    "lightMode": "Hellmodus (Schiefer)",
+    "systemMode": "System-Automatisch",
+    "language": "App-Sprache",
+    "selectLanguage": "Bevorzugte Sprache Wählen",
+    "emergencyContacts": "Notfallkontakte",
+    "helpCenter": "Hilfe-Center & FAQ",
+    "termsPrivacy": "AGB & Datenschutz"
+  }
+}

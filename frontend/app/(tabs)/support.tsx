@@ -1,17 +1,17 @@
-import { useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, Alert, Modal, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
-import { signOut } from "@/src/lib/auth";
+import { signOut, getStoredUser, isGuestUser, PillcareUser } from "@/src/lib/auth";
+import { HeaderControls } from "@/src/components/HeaderControls";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
 import { resyncReminders, sendTestNotificationNow } from "@/src/lib/notifications";
-import { useEffect } from "react";
 
 const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
-  TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
+  TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
   AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)";
 
 const EMERGENCY: Record<string, { number: string; label: string }> = {
@@ -80,6 +80,8 @@ type EmStatus = "idle" | "locating" | "ready" | "error";
 export default function Support() {
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const [user, setUser] = useState<PillcareUser | null>(null);
+  const [isGuest, setIsGuest] = useState(true);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [emStatus, setEmStatus] = useState<EmStatus>("idle");
   const [emPlace, setEmPlace] = useState("");
@@ -97,7 +99,28 @@ export default function Support() {
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
 
+  const loadAuthUser = async () => {
+    try {
+      const u = await getStoredUser();
+      if (isMounted.current) {
+        setUser(u);
+        setIsGuest(isGuestUser(u));
+      }
+    } catch {
+      if (isMounted.current) {
+        setIsGuest(true);
+      }
+    }
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAuthUser();
+    }, [])
+  );
+
   useEffect(() => {
+    loadAuthUser();
     api.getProfile().then(p => {
       if (p?.caregiver_phone) {
         setCaregiverConnected(true);
@@ -105,7 +128,6 @@ export default function Support() {
         setConnectedNumber(num);
         setCaregiverPhone(num);
       }
-      // Also populate email if needed
     }).catch(() => {});
   }, []);
 
@@ -182,7 +204,10 @@ export default function Support() {
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
-      <Text style={s.title}>Support</Text>
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 }}>
+        <Text style={s.title}>Support</Text>
+        <HeaderControls />
+      </View>
       <View style={s.searchW}><Ionicons name="search-outline" size={14} color={TM} style={{ position: "absolute", left: 12, zIndex: 1 }} /><TextInput value={search} onChangeText={setSearch} placeholder="Search for help" placeholderTextColor={TM} style={s.searchI} /></View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
@@ -352,13 +377,39 @@ export default function Support() {
           </TouchableOpacity>
         ))}
 
-        {/* Sign out */}
-        <TouchableOpacity style={[s.card, { borderColor: "rgba(229,133,133,0.2)" }]} onPress={handleSO}>
-          <View style={s.cRow}>
-            <View style={[s.cIco, { backgroundColor: "rgba(229,133,133,0.1)" }]}><Ionicons name="log-out-outline" size={16} color="#e58585" /></View>
-            <Text style={[s.cT, { color: "#e58585" }]}>{so ? "Signing out…" : "Sign Out"}</Text>
-          </View>
-        </TouchableOpacity>
+        {/* Account / Sign In / Sign Out */}
+        <Text style={s.secL}>ACCOUNT STATUS</Text>
+        {isGuest ? (
+          <TouchableOpacity
+            style={[s.card, { borderColor: "rgba(139,92,246,0.35)", backgroundColor: "rgba(139,92,246,0.08)" }]}
+            onPress={() => router.push("/sign-in")}
+            activeOpacity={0.8}
+          >
+            <View style={s.cRow}>
+              <View style={[s.cIco, { backgroundColor: "rgba(139,92,246,0.2)" }]}>
+                <Ionicons name="log-in-outline" size={17} color={A3} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.cT, { color: A3, fontWeight: "700" }]}>Sign In to PillCare</Text>
+                <Text style={s.cS}>Connect your Google Account to back up health data and sync across devices</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={14} color={A3} />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={[s.card, { borderColor: "rgba(229,133,133,0.2)" }]} onPress={handleSO}>
+            <View style={s.cRow}>
+              <View style={[s.cIco, { backgroundColor: "rgba(229,133,133,0.1)" }]}>
+                <Ionicons name="log-out-outline" size={16} color="#e58585" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.cT, { color: "#e58585" }]}>{so ? "Signing out…" : "Sign Out"}</Text>
+                {user?.email ? <Text style={s.cS}>Logged in as {user.email}</Text> : null}
+              </View>
+              <Ionicons name="chevron-forward" size={14} color="#e58585" />
+            </View>
+          </TouchableOpacity>
+        )}
 
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 8 }}>
           <Ionicons name="lock-closed-outline" size={11} color={TM} />
@@ -369,7 +420,7 @@ export default function Support() {
       {/* Emergency Modal */}
       <Modal visible={emergencyOpen} transparent animationType="slide" onRequestClose={() => setEmergencyOpen(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setEmergencyOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sheet}>
+          <View style={s.sheet}>
             <View style={s.handle} />
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
@@ -397,14 +448,14 @@ export default function Support() {
             )}
             <Text style={s.cS}>This number routes to your region's emergency dispatch based on your GPS location.</Text>
             <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setEmergencyOpen(false)}><Text style={{ color: TM }}>Close</Text></TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
       {/* Caregiver WhatsApp Modal */}
       <Modal visible={caregiverOpen} transparent animationType="slide" onRequestClose={() => { setCaregiverOpen(false); setJustConnected(false); }}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.sheet}>
+          <View style={s.sheet}>
             <View style={s.handle} />
             {justConnected ? (<>
               <View style={{ alignItems: "center", gap: 8, paddingVertical: 4 }}>
@@ -446,7 +497,7 @@ export default function Support() {
             )}
             <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
             </>)}
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>
@@ -465,8 +516,51 @@ const s = StyleSheet.create({
   cT: { fontSize: 13, fontWeight: "600", color: TX }, cS: { fontSize: 10, color: TM, marginTop: 1, lineHeight: 15 },
   connectBtn: { paddingHorizontal: 12, height: 30, borderRadius: 8, backgroundColor: SF, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" }, connectTx: { fontSize: 11, color: TX, fontWeight: "600" },
   ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 },
+  sheet: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12, zIndex: 10, elevation: 10 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }, sheetT: { fontSize: 16, fontWeight: "700", color: TX },
   inp: { backgroundColor: "#1e2030", borderRadius: 10, padding: 12, color: TX, fontSize: 14, borderWidth: 1, borderColor: BD, marginTop: 4 },
   subBtn: { backgroundColor: AC, borderRadius: 11, padding: 13, alignItems: "center", marginTop: 6 }, subT: { color: "#fff", fontWeight: "700", fontSize: 14 },
+  guestBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "rgba(139,92,246,0.12)",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(139,92,246,0.3)",
+    marginBottom: 4,
+  },
+  guestBannerIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: AB,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestBannerTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: TX,
+  },
+  guestBannerSub: {
+    fontSize: 10,
+    color: TM,
+    marginTop: 1,
+  },
+  guestBannerBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: AC,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  guestBannerBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#FFF",
+  },
 });

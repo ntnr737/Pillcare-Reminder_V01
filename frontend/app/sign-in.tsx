@@ -3,11 +3,11 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from "react-na
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { signInWithGoogle, signInAsGuest } from "@/src/lib/auth";
+import { signInWithGoogle } from "@/src/lib/auth";
 
 const BG = "#0B0D14", SF = "#161926", TX = "#F9FAFB",
-  TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
-  AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)";
+  TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
+  AB = "rgba(99, 102, 241, 0.14)", BD = "rgba(255, 255, 255, 0.08)";
 
 const FEATURES = [
   { icon: "notifications-outline", title: "Smart Reminders", body: "Never miss a dose" },
@@ -32,23 +32,7 @@ export default function SignIn() {
       await signInWithGoogle();
       router.replace("/");
     } catch (e: any) {
-      // Fallback to guest sign in if Google Sign-In is unconfigured / fails in dev
-      try {
-        await signInAsGuest();
-        router.replace("/");
-      } catch {
-        Alert.alert("Sign-in failed", e?.message || "Something went wrong. Please try again.");
-      }
-    } finally { setLoading(false); }
-  };
-
-  const handleGuestSignIn = async () => {
-    setLoading(true);
-    try {
-      await signInAsGuest();
-      router.replace("/");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message || "Could not sign in as guest");
+      Alert.alert("Sign-In Failed", e?.message || "Could not sign in with Google. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -125,11 +109,6 @@ export default function SignIn() {
       <TouchableOpacity style={[s.gBtn, loading && { opacity: 0.7 }]} onPress={handleSignIn} disabled={loading}>
         <Ionicons name="logo-google" size={16} color="#fff" />
         <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Continue with Google"}</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={[s.guestBtn, loading && { opacity: 0.7 }]} onPress={handleGuestSignIn} disabled={loading}>
-        <Ionicons name="person-outline" size={15} color={A3} />
-        <Text style={s.guestBtnTx}>Quick Demo / Continue as Guest</Text>
       </TouchableOpacity>
 
       {/* Trust badges */}

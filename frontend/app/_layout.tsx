@@ -11,6 +11,9 @@ import { resyncReminders, registerForPushNotifications, setupNotificationListene
 import { loadCachedFeatures, fetchFeatures } from "@/src/lib/features";
 import { getStoredToken } from "@/src/lib/auth";
 
+import { ThemeProvider } from "@/src/context/ThemeContext";
+import { LanguageProvider } from "@/src/context/LanguageContext";
+
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
 
@@ -56,9 +59,13 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#121413" }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0B0D14" }}>
       <SafeAreaProvider>
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#121413" } }} />
+        <ThemeProvider>
+          <LanguageProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </LanguageProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

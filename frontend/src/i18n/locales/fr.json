@@ -1,0 +1,69 @@
+{
+  "appName": "PillCare",
+  "tagline": "Votre Compagnon Intelligent de Médication",
+  "nav": {
+    "home": "Accueil",
+    "medications": "Médicaments",
+    "appointments": "Rendez-vous",
+    "nearby": "Pharmacies Proches",
+    "vitals": "Constantes de Santé",
+    "support": "Support & Réglages",
+    "yoga": "Soin Yoga IA"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "retry": "Réessayer",
+    "loading": "Chargement...",
+    "search": "Rechercher...",
+    "error": "Une erreur est survenue",
+    "openNow": "Ouvert",
+    "closed": "Fermé",
+    "verifyHours": "Vérifier Horaires",
+    "distance": "de distance",
+    "rating": "Note",
+    "call": "Appeler",
+    "whatsapp": "Envoyer WhatsApp",
+    "directions": "Itinéraire",
+    "details": "Voir Détails",
+    "share": "Partager",
+    "dismiss": "Fermer",
+    "confirm": "Confirmer"
+  },
+  "home": {
+    "greetingMorning": "Bonjour",
+    "greetingAfternoon": "Bon Après-midi",
+    "greetingEvening": "Bonsoir",
+    "todayDoses": "Doses de Médicaments d'Aujourd'hui",
+    "noDosesToday": "Aucune dose en attente pour aujourd'hui !",
+    "streakDays": "Jours de Suivi Consécutifs",
+    "quickActions": "Actions Rapides",
+    "refillAlert": "Alerte de Rechargement",
+    "refillDesc": "Stock de pilules faible. Recommandez maintenant."
+  },
+  "nearby": {
+    "title": "Pharmacies à Proximité",
+    "subtitle": "Trouvez pharmacies, banques de sang et laboratoires près de chez vous",
+    "searchPlaceholder": "Rechercher pharmacie, hôpital...",
+    "pharmacies": "Pharmacies",
+    "bloodBanks": "Banques de Sang",
+    "diagnostics": "Diagnostics",
+    "emergency": "Urgences",
+    "noStoresInRadius": "Aucune pharmacie trouvée dans ce rayon.",
+    "nearestStoresOutside": "STORES LES PLUS PROCHES HORS RAYON",
+    "expandRadius": "Élargir le rayon de recherche",
+    "enterPhone": "Entrer le numéro WhatsApp"
+  },
+  "support": {
+    "title": "Support & Réglages",
+    "appearance": "Thème et Apparence",
+    "darkMode": "Mode Sombre (Obsidienne)",
+    "lightMode": "Mode Clair (Ardoise)",
+    "systemMode": "Auto Système",
+    "language": "Langue de l'Application",
+    "selectLanguage": "Choisir la Langue Préférée",
+    "emergencyContacts": "Contacts d'Urgence",
+    "helpCenter": "Centre d'Aide & FAQ",
+    "termsPrivacy": "Conditions & Confidentialité"
+  }
+}

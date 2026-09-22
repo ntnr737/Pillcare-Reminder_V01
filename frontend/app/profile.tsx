@@ -6,6 +6,11 @@ import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { useFocusEffect } from "expo-router";
 import { get, set, K } from "@/src/lib/store";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation, SUPPORTED_LANGUAGES, SupportedLocale } from "@/src/context/LanguageContext";
+import { HeaderControls } from "@/src/components/HeaderControls";
+import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
+import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -13,7 +18,10 @@ const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
 
 export default function Profile() {
   const router = useRouter();
+  const { theme, isDark, themeMode, setThemeMode } = useTheme();
+  const { locale, setLocale, t } = useTranslation();
   const [profile, setProfile] = useState<any>({});
+  const [dialCode, setDialCode] = useState("+91");
   const [saving, setSaving] = useState(false);
   const [changed, setChanged] = useState(false);
 
@@ -53,20 +61,66 @@ export default function Profile() {
   ];
 
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.hdr}>
+    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="arrow-back" size={20} color={TX} />
+          <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
-        <Text style={s.title}>My Profile</Text>
-        {changed ? (
-          <TouchableOpacity onPress={save} disabled={saving}>
-            <Text style={{ color: A3, fontWeight: "700", fontSize: 14 }}>{saving ? "Saving…" : "Save"}</Text>
-          </TouchableOpacity>
-        ) : <View style={{ width: 48 }} />}
+        <Text style={[s.title, { color: theme.textPrimary }]}>{t("nav.support", "Profile & Settings")}</Text>
+        <HeaderControls />
       </View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+
+        {/* Appearance & Language */}
+        <Text style={[s.secL, { color: theme.accent }]}>APPEARANCE & LANGUAGE</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={s.field}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <Text style={[s.label, { color: theme.textSecondary }]}>Theme Mode</Text>
+              <ThemeToggleSwitch size="md" />
+            </View>
+            <View style={{ flexDirection: "row", gap: 8 }}>
+              {[
+                { mode: "dark", label: "Dark", icon: "moon-outline" },
+                { mode: "light", label: "Light", icon: "sunny-outline" },
+                { mode: "system", label: "System", icon: "options-outline" },
+              ].map((item) => (
+                <TouchableOpacity
+                  key={item.mode}
+                  onPress={() => setThemeMode(item.mode as any)}
+                  style={[
+                    s.chip,
+                    { borderColor: theme.surfaceBorder },
+                    themeMode === item.mode && { backgroundColor: theme.accentBg, borderColor: theme.accent },
+                  ]}
+                >
+                  <Ionicons name={item.icon as any} size={12} color={themeMode === item.mode ? theme.accent : theme.textSecondary} />
+                  <Text style={[s.chipT, { color: themeMode === item.mode ? theme.accent : theme.textSecondary }]}>{item.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={[s.field, { marginTop: 4 }]}>
+            <Text style={[s.label, { color: theme.textSecondary }]}>App Language</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <TouchableOpacity
+                  key={lang.code}
+                  onPress={() => setLocale(lang.code as SupportedLocale)}
+                  style={[
+                    s.chip,
+                    { flexDirection: "row", gap: 4, borderColor: theme.surfaceBorder },
+                    locale === lang.code && { backgroundColor: theme.accentBg, borderColor: theme.accent },
+                  ]}
+                >
+                  <Text style={[s.chipT, { color: locale === lang.code ? theme.accent : theme.textSecondary }]}>{lang.nativeName}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
 
         {/* Identity */}
         <Text style={s.secL}>IDENTITY</Text>
@@ -76,8 +130,10 @@ export default function Profile() {
             <TextInput value={profile.nickname || ""} onChangeText={v => update("nickname", v)} placeholder="Your name" placeholderTextColor={TM} style={s.inp} />
           </View>
           <View style={s.field}>
-            <Text style={s.label}>Email</Text>
-            <Text style={[s.inp, { color: TM }]}>{profile.email || "—"}</Text>
+            <Text style={s.label}>Email Account</Text>
+            <Text style={[s.inp, { color: TM }]}>
+              {profile.email || "Registered Google Account"}
+            </Text>
           </View>
           <View style={s.field}>
             <Text style={s.label}>Gender</Text>
@@ -114,11 +170,39 @@ export default function Profile() {
         <View style={s.card}>
           <View style={s.field}>
             <Text style={s.label}>Phone Number</Text>
-            <TextInput value={profile.phone || ""} onChangeText={v => update("phone", v)} placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM} style={s.inp} keyboardType="phone-pad" />
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <CountryCodePicker
+                selectedDialCode={dialCode}
+                onSelectCountry={(c) => setDialCode(c.dialCode)}
+                style={{ height: 46 }}
+              />
+              <TextInput
+                value={profile.phone || ""}
+                onChangeText={v => update("phone", formatFullWhatsAppPhone(dialCode, v))}
+                placeholder="98765 43210"
+                placeholderTextColor={TM}
+                style={[s.inp, { flex: 1 }]}
+                keyboardType="phone-pad"
+              />
+            </View>
           </View>
           <View style={s.field}>
             <Text style={s.label}>Caregiver WhatsApp</Text>
-            <TextInput value={profile.caregiver_phone || ""} onChangeText={v => update("caregiver_phone", v)} placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM} style={s.inp} keyboardType="phone-pad" />
+            <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
+              <CountryCodePicker
+                selectedDialCode={dialCode}
+                onSelectCountry={(c) => setDialCode(c.dialCode)}
+                style={{ height: 46 }}
+              />
+              <TextInput
+                value={profile.caregiver_phone || ""}
+                onChangeText={v => update("caregiver_phone", formatFullWhatsAppPhone(dialCode, v))}
+                placeholder="98765 43210"
+                placeholderTextColor={TM}
+                style={[s.inp, { flex: 1 }]}
+                keyboardType="phone-pad"
+              />
+            </View>
             <Text style={[s.label, { marginTop: 4, fontStyle: "italic" }]}>Receives missed-dose alerts via WhatsApp</Text>
             <TouchableOpacity onPress={() => router.push("/caregiver")} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
               <Ionicons name="people-outline" size={13} color={A3} />

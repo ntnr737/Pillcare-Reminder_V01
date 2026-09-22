@@ -9,16 +9,21 @@ import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { RefillModal } from "@/src/components/RefillModal";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { FlashAnnouncementBanner } from "@/src/components/FlashAnnouncementBanner";
+import { YogaRoutineModal } from "@/src/components/YogaRoutineModal";
+import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
+import { DrugFoodGuideModal } from "@/src/components/DrugFoodGuideModal";
+import { ActionSheetModal } from "@/src/components/ActionSheetModal";
+import { HeaderControls } from "@/src/components/HeaderControls";
 import { getFeatures } from "@/src/lib/features";
 import { track } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
-import { get, set, K } from "@/src/lib/store";
+import { get, set, K, logCourseCompleted } from "@/src/lib/store";
 import { flushQueue, backgroundRefresh, recordTaken, mergeDoses, enqueueWrite } from "@/src/lib/sync";
 
 const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
   TM = "rgba(249, 250, 251, 0.65)", TD = "rgba(249, 250, 251, 0.35)",
-  AC = "#8B5CF6", A3 = "#A78BFA", AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)",
+  AC = "#6366F1", A3 = "#818CF8", AB = "rgba(99, 102, 241, 0.14)", BD = "rgba(255, 255, 255, 0.08)",
   REFILL = "#06B6D4", SUCCESS = "#10B981";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -121,10 +126,29 @@ export default function Today() {
 
   const addWater = async (amountMl: number) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (waterLogged >= 5000) {
+      Alert.alert(
+        "Maximum Daily Limit Reached",
+        "You have reached the maximum daily limit of 5,000 mL (5 Liters).\n\nWorld Health Organization (WHO) and clinical guidelines recommend 2,000–2,500 mL of water daily under normal conditions. Excessive fluid consumption beyond 4,000–5,000 mL is not recommended unless advised by a physician."
+      );
+      return;
+    }
     const newTotal = Math.min(5000, waterLogged + amountMl);
     setWaterLogged(newTotal);
     await set("water_logged_" + date, newTotal);
     track("water_intake_logged", { amountMl, date, totalMl: newTotal });
+
+    if (newTotal >= 5000) {
+      Alert.alert(
+        "Hydration Cap (5,000 mL)",
+        "Daily hydration logged at maximum limit (5,000 mL). Reached recommended WHO upper safety threshold."
+      );
+    } else if (newTotal >= waterGoal && waterLogged < waterGoal) {
+      Alert.alert(
+        "Goal Achieved! 🎉",
+        "Congratulations! You've met your daily hydration goal of 2,500 mL (10 glasses)."
+      );
+    }
   };
 
   const resetWater = async () => {
@@ -134,6 +158,8 @@ export default function Today() {
 
   const [addMed, setAddMed] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [yogaModalOpen, setYogaModalOpen] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string; step?: any } | null>(null);
 
   const handleAddMedication = () => {
     const features = getFeatures();
@@ -145,7 +171,7 @@ export default function Today() {
     setAddMed(true);
   };
   const [actionSheet, setActionSheet] = useState(false);
-  const [stockModal, setStockModal] = useState<{ id: string; name: string; stock: number } | null>(null);
+  const [stockModal, setStockModal] = useState<{ id: string; name: string; stock: number; generic_name?: string; dosage?: string; unit?: string } | null>(null);
   const [refillMed, setRefillMed] = useState<{ id: string; name: string; stock?: number } | null>(null);
   const [dismissedStockBanner, setDismissedStockBanner] = useState(false);
   const [stockListOpen, setStockListOpen] = useState(false);
@@ -324,6 +350,7 @@ export default function Today() {
       <View style={s.hdr}>
         <Text style={s.appNm}>PillCare</Text>
         <View style={s.hdrR}>
+          <HeaderControls />
           <TouchableOpacity style={s.iBtn} onPress={() => setCalOpen(true)}><Ionicons name="calendar-outline" size={15} color={TX} /></TouchableOpacity>
           <View style={s.sTag}><Ionicons name="flame" size={13} color={A3} /><Text style={s.sTx}>{streak}</Text></View>
         </View>
@@ -362,11 +389,11 @@ export default function Today() {
         </ScrollView>
 
         {/* Water Intake & Hydration Tracker Card */}
-        <View style={[s.aiCard, { borderColor: "rgba(56,189,248,0.3)", backgroundColor: "rgba(14,165,233,0.06)", marginTop: 10 }]}>
+        <View style={[s.aiCard, { borderColor: waterLogged >= 5000 ? "rgba(248,113,113,0.4)" : waterLogged >= waterGoal ? "rgba(74,222,128,0.4)" : "rgba(56,189,248,0.3)", backgroundColor: waterLogged >= 5000 ? "rgba(239,68,68,0.06)" : waterLogged >= waterGoal ? "rgba(16,185,129,0.06)" : "rgba(14,165,233,0.06)", marginTop: 10 }]}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={s.aiH}>
-              <Ionicons name="water" size={13} color="#38bdf8" />
-              <Text style={[s.aiK, { color: "#38bdf8" }]}>HYDRATION & WATER TRACKER</Text>
+              <Ionicons name="water" size={13} color={waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8"} />
+              <Text style={[s.aiK, { color: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8" }]}>HYDRATION & WATER TRACKER</Text>
             </View>
             <TouchableOpacity onPress={resetWater}>
               <Text style={{ fontSize: 10, color: TM, fontWeight: "600" }}>Reset</Text>
@@ -374,37 +401,51 @@ export default function Today() {
           </View>
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 8 }}>
-            <View style={{ gap: 2 }}>
+            <View style={{ gap: 2, flex: 1, paddingRight: 8 }}>
               <Text style={{ fontSize: 18, fontWeight: "800", color: TX }}>
                 {waterLogged} <Text style={{ fontSize: 12, fontWeight: "500", color: TM }}>/ {waterGoal} mL</Text>
               </Text>
-              <Text style={{ fontSize: 11, color: "#38bdf8", fontWeight: "600" }}>
-                {Math.round(waterLogged / 250)} of {Math.round(waterGoal / 250)} glasses consumed today
-              </Text>
+              {waterLogged >= 5000 ? (
+                <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700" }}>
+                  🛑 Max Limit Reached (5,000 mL). WHO standard: 2,500 mL/day.
+                </Text>
+              ) : waterLogged >= 3500 ? (
+                <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "700" }}>
+                  ⚠️ High Hydration ({waterLogged} mL). Avoid fluid overload (&gt;4L).
+                </Text>
+              ) : waterLogged >= waterGoal ? (
+                <Text style={{ fontSize: 11, color: "#4ade80", fontWeight: "700" }}>
+                  🎉 Daily Goal Met! ({Math.round(waterLogged / 250)} glasses logged)
+                </Text>
+              ) : (
+                <Text style={{ fontSize: 11, color: "#38bdf8", fontWeight: "600" }}>
+                  {Math.round(waterLogged / 250)} of {Math.round(waterGoal / 250)} glasses consumed today
+                </Text>
+              )}
             </View>
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "rgba(56,189,248,0.15)", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="water" size={22} color="#38bdf8" />
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: waterLogged >= 5000 ? "rgba(248,113,113,0.15)" : waterLogged >= waterGoal ? "rgba(74,222,128,0.15)" : "rgba(56,189,248,0.15)", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="water" size={22} color={waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8"} />
             </View>
           </View>
 
           {/* Progress bar */}
           <View style={{ height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden", marginBottom: 10 }}>
-            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: "#38bdf8", borderRadius: 3 }} />
+            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
           </View>
 
           {/* Action buttons */}
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.15)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+              style={{ flex: 1, backgroundColor: waterLogged >= 5000 ? "rgba(255,255,255,0.05)" : "rgba(56,189,248,0.15)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
               onPress={() => addWater(250)}>
-              <Ionicons name="add-circle-outline" size={14} color="#38bdf8" />
-              <Text style={{ fontSize: 12, color: "#38bdf8", fontWeight: "700" }}>+ Glass (250ml)</Text>
+              <Ionicons name="add-circle-outline" size={14} color={waterLogged >= 5000 ? TM : "#38bdf8"} />
+              <Text style={{ fontSize: 12, color: waterLogged >= 5000 ? TM : "#38bdf8", fontWeight: "700" }}>+ Glass (250ml)</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.22)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5 }}
+              style={{ flex: 1, backgroundColor: waterLogged >= 5000 ? "rgba(255,255,255,0.05)" : "rgba(56,189,248,0.22)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
               onPress={() => addWater(500)}>
-              <Ionicons name="add" size={14} color="#38bdf8" />
-              <Text style={{ fontSize: 12, color: "#38bdf8", fontWeight: "700" }}>+ Bottle (500ml)</Text>
+              <Ionicons name="add" size={14} color={waterLogged >= 5000 ? TM : "#38bdf8"} />
+              <Text style={{ fontSize: 12, color: waterLogged >= 5000 ? TM : "#38bdf8", fontWeight: "700" }}>+ Bottle (500ml)</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -421,10 +462,10 @@ export default function Today() {
         <TouchableOpacity
           activeOpacity={0.85}
           style={[s.aiCard, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)" }]}
-          onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
+          onPress={() => setYogaModalOpen(true)}>
           <View style={s.aiH}>
-            <Ionicons name="leaf-outline" size={12} color="#A855F7" />
-            <Text style={[s.aiK, { color: "#A855F7" }]}>
+            <Ionicons name="leaf-outline" size={12} color="#14B8A6" />
+            <Text style={[s.aiK, { color: "#14B8A6" }]}>
               AI YOGA THERAPY — {(() => {
                 if (!yogaReminderTime) return "08:00 AM daily";
                 const [h, m] = yogaReminderTime.split(":").map(Number);
@@ -441,45 +482,12 @@ export default function Today() {
           <Text style={{ fontSize: 11, color: TM, marginBottom: 8 }}>
             {yogaTipMeta || "12 min • Verified Ministry of AYUSH & Swami Ramdev"}
           </Text>
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 6 }}>
+          <View style={{ marginTop: 6 }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: "rgba(168,85,247,0.18)", borderRadius: 8, paddingVertical: 9, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, borderWidth: 1, borderColor: "rgba(168,85,247,0.3)" }}
-              onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
-              <Ionicons name="play-circle-outline" size={14} color="#A855F7" />
-              <Text style={{ fontSize: 12, color: "#A855F7", fontWeight: "700" }}>View routine</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={{ flex: 1, backgroundColor: "rgba(74,222,128,0.12)", borderRadius: 8, paddingVertical: 9, alignItems: "center", borderWidth: 1, borderColor: "rgba(74,222,128,0.3)" }}
-              onPress={async (e) => {
-                e.stopPropagation?.();
-                const { set, get, K } = await import("@/src/lib/store");
-                await set("yoga_done_" + date, [1, 2, 3, 4, 5]);
-                const historyCache = (await get<any[]>(K.history)) || [];
-                let dayItem = historyCache.find((item: any) => item.date === date);
-                if (!dayItem) {
-                  dayItem = { date, total: 0, taken: 0, entries: [] };
-                  historyCache.unshift(dayItem);
-                }
-                const newEntry = {
-                  id: `yoga_session_${Date.now()}`,
-                  name: "Yoga: Daily Therapy Session",
-                  generic_name: "AI Yoga Therapy",
-                  dosage: "",
-                  unit: "",
-                  time: yogaReminderTime || "08:00",
-                  status: "yoga_completed",
-                  note: "Completed full daily routine"
-                };
-                if (!dayItem.entries.some((entry: any) => entry.name === newEntry.name)) {
-                  dayItem.entries.push(newEntry);
-                }
-                await set(K.history, [...historyCache]);
-                const { api } = await import("@/src/lib/api");
-                api.yogaComplete(1, "Daily Yoga Therapy Flow", "https://www.youtube.com/watch?v=QPjwawKxuLw").catch(() => {});
-                track("yoga_done");
-                Alert.alert("Yoga Completed", "Great job! Daily yoga logged for today.");
-              }}>
-              <Text style={{ fontSize: 12, color: "#4ade80", fontWeight: "700" }}>Mark done</Text>
+              style={{ width: "100%", backgroundColor: "rgba(20,184,166,0.12)", borderRadius: 10, paddingVertical: 10, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6, borderWidth: 1, borderColor: "rgba(20,184,166,0.3)" }}
+              onPress={() => setYogaModalOpen(true)}>
+              <Ionicons name="play-circle-outline" size={16} color="#14B8A6" />
+              <Text style={{ fontSize: 13, color: "#14B8A6", fontWeight: "700" }}>View Routine & Guided Poses</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -689,7 +697,7 @@ export default function Today() {
       {/* Calendar modal with green/red coloring */}
       <Modal visible={calOpen} transparent animationType="fade" onRequestClose={() => setCalOpen(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setCalOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={s.cal}>
+          <View style={[s.cal, { zIndex: 10, elevation: 10 }]}>
             <View style={s.hand} />
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: 4 }}>
               <Text style={s.calT}>{new Date().toLocaleString("default", { month: "long", year: "numeric" })}</Text>
@@ -723,47 +731,26 @@ export default function Today() {
               <View style={[s.dI, { borderRadius: 19 }]}><Ionicons name="flame" size={19} color={A3} /></View>
               <View><Text style={s.dN}>{streak} day streak</Text><Text style={s.dM}>Keep it going!</Text></View>
             </View>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* Action sheet — same as Treatment tab */}
-      <Modal visible={actionSheet} transparent animationType="slide" onRequestClose={() => setActionSheet(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setActionSheet(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>What would you like to do?</Text>
-              <TouchableOpacity onPress={() => setActionSheet(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
-            {[
-              { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); handleAddMedication(); } },
-              { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
-              { icon: "leaf-outline", title: "AI Yoga Recommendation", body: "View your personalised yoga routine", fn: () => { setActionSheet(false); router.push("/(tabs)/treatment"); } },
-              { icon: "storefront-outline", title: "Nearby Pharmacy", body: "Find medical stores and diagnostic labs", fn: () => { setActionSheet(false); router.push("/nearby"); } },
-            ].map(o => (
-              <TouchableOpacity key={o.title} onPress={o.fn}
-                style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
-                <View style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: "rgba(145,132,217,0.14)", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name={o.icon as any} size={17} color={A3} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: TX }}>{o.title}</Text>
-                  <Text style={{ fontSize: 10, color: TM, marginTop: 1 }}>{o.body}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={14} color={TM} />
-              </TouchableOpacity>
-            ))}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      {/* Action sheet */}
+      <ActionSheetModal
+        visible={actionSheet}
+        onClose={() => setActionSheet(false)}
+        options={[
+          { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); handleAddMedication(); } },
+          { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
+          { icon: "leaf-outline", title: "AI Yoga Recommendation", body: "View your personalised yoga routine", fn: () => { setActionSheet(false); router.push("/(tabs)/yoga" as any); } },
+          { icon: "storefront-outline", title: "Nearby Pharmacy", body: "Find medical stores and diagnostic labs", fn: () => { setActionSheet(false); router.push("/nearby"); } },
+        ]}
+      />
 
       {/* Out of stock modal */}
       <Modal visible={!!stockModal} transparent animationType="slide" onRequestClose={() => setStockModal(null)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockModal(null)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12 }}>
+          <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12, zIndex: 10, elevation: 10 }}>
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
@@ -811,13 +798,19 @@ export default function Today() {
             <TouchableOpacity onPress={() => {
               const id = stockModal?.id;
               const name = stockModal?.name;
+              const generic = stockModal?.generic_name;
+              const dosage = stockModal?.dosage;
+              const unit = stockModal?.unit;
               Alert.alert("Mark Course Complete?", `Mark treatment for ${name || "this medication"} as completed? It will be archived in your course history.`, [
                 { text: "Cancel", style: "cancel" },
                 { text: "Mark Complete", style: "default", onPress: async () => {
                   setStockModal(null);
                   if (id) {
                     setDoses(prev => prev.filter(d => d.medication_id !== id));
-                    try { await api.completeMedication(id); } catch {}
+                    try {
+                      await logCourseCompleted(id, name || "Medication", generic, dosage, unit);
+                      await api.completeMedication(id);
+                    } catch {}
                     await fetchServer();
                   }
                 }}
@@ -830,75 +823,21 @@ export default function Today() {
             <TouchableOpacity onPress={() => setStockModal(null)} style={{ alignItems: "center", paddingVertical: 8 }}>
               <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Remind me later</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
       {/* Drug-Food Modal Guide */}
-      <Modal visible={foodGuideOpen} transparent animationType="slide" onRequestClose={() => setFoodGuideOpen(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setFoodGuideOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 16 }}>
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name="restaurant-outline" size={20} color="#4ade80" />
-                <Text style={{ fontSize: 17, fontWeight: "700", color: "#fff" }}>Drug-Food Do's & Don'ts Guide</Text>
-              </View>
-              <TouchableOpacity onPress={() => setFoodGuideOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={22} color={TX} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-              {/* DO's List */}
-              <View style={{ backgroundColor: "rgba(74,222,128,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", gap: 8 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#4ade80" }}>RECOMMENDED DO'S</Text>
-                </View>
-                {(drugFoodGuide?.dos || []).map((doItem: string, idx: number) => (
-                  <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                    <Text style={{ color: "#4ade80", fontWeight: "700" }}>•</Text>
-                    <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{doItem}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* DON'TS List */}
-              <View style={{ backgroundColor: "rgba(239,68,68,0.08)", padding: 14, borderRadius: 12, borderWidth: 1, borderColor: "rgba(239,68,68,0.25)", gap: 8 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="close-circle" size={16} color="#ef4444" />
-                  <Text style={{ fontSize: 13, fontWeight: "700", color: "#ef4444" }}>CRITICAL DON'TS</Text>
-                </View>
-                {(drugFoodGuide?.donts || []).map((dontItem: string, idx: number) => (
-                  <View key={idx} style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
-                    <Text style={{ color: "#ef4444", fontWeight: "700" }}>•</Text>
-                    <Text style={{ fontSize: 12, color: TX, flex: 1, lineHeight: 17 }}>{dontItem}</Text>
-                  </View>
-                ))}
-              </View>
-
-              {/* Per-Medication Guides */}
-              <Text style={{ fontSize: 13, fontWeight: "700", color: A3, marginTop: 4 }}>Medication-Specific Guidance:</Text>
-              {(drugFoodGuide?.guides || []).map((g: any, idx: number) => (
-                <View key={idx} style={{ backgroundColor: "#252837", padding: 12, borderRadius: 10, gap: 6 }}>
-                  <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{g.medication} <Text style={{ fontSize: 11, color: A3, fontWeight: "500" }}>({g.category})</Text></Text>
-                  {g.dos?.map((d: string, i: number) => (
-                    <Text key={i} style={{ fontSize: 11, color: "#4ade80" }}>✓ {d}</Text>
-                  ))}
-                  {g.donts?.map((d: string, i: number) => (
-                    <Text key={i} style={{ fontSize: 11, color: "#ef4444" }}>✗ {d}</Text>
-                  ))}
-                </View>
-              ))}
-            </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
+      <DrugFoodGuideModal
+        visible={foodGuideOpen}
+        onClose={() => setFoodGuideOpen(false)}
+        guide={drugFoodGuide}
+      />
 
       {/* Consolidated Low & Out of Stock Management Modal Sheet */}
       <Modal visible={stockListOpen} transparent animationType="slide" onRequestClose={() => setStockListOpen(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockListOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1e212d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "80%", gap: 14 }}>
+          <View style={{ backgroundColor: "#1e212d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "80%", gap: 14, zIndex: 10, elevation: 10 }}>
             <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 2 }} />
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
@@ -978,7 +917,7 @@ export default function Today() {
               onPress={() => { setStockListOpen(false); setDismissedStockBanner(true); }}>
               <Text style={{ fontSize: 12, fontWeight: "600", color: TM }}>Dismiss banner for today</Text>
             </TouchableOpacity>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -990,6 +929,19 @@ export default function Today() {
       />
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); backgroundRefresh(fetchServer); resyncReminders().catch(() => {}); }} />
       <RefillModal visible={!!refillMed} medication={refillMed} onClose={() => setRefillMed(null)} onRefilled={async () => { await fetchServer(); }} />
+      <YogaRoutineModal
+        visible={yogaModalOpen}
+        onClose={() => setYogaModalOpen(false)}
+        onOpenVideo={(v) => setActiveVideo(v)}
+      />
+      <VideoPlayerModal
+        visible={!!activeVideo}
+        onClose={() => setActiveVideo(null)}
+        videoUrl={activeVideo?.url}
+        title={activeVideo?.title}
+        channel={activeVideo?.channel}
+        benefit={activeVideo?.benefit}
+      />
     </SafeAreaView>
   );
 }

@@ -254,16 +254,39 @@ export async function requestNotificationPermission(): Promise<boolean> {
   return status === "granted";
 }
 
-function parseTime(t: string): { hour: number; minute: number } | null {
-  const m = /^(\d{1,2}):(\d{2})$/.exec((t || "").trim());
-  if (!m) return null;
-  const hour = parseInt(m[1], 10), minute = parseInt(m[2], 10);
-  if (hour > 23 || minute > 59) return null;
-  return { hour, minute };
+export function parseTime(t: string): { hour: number; minute: number } | null {
+  if (!t || typeof t !== "string") return null;
+  const cleaned = t.trim().toLowerCase();
+
+  // 12-Hour format with AM/PM (e.g. "8:30 am", "08:30 pm")
+  const ampmMatch = /^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/.exec(cleaned);
+  if (ampmMatch) {
+    let hour = parseInt(ampmMatch[1], 10);
+    const minute = parseInt(ampmMatch[2], 10);
+    const period = ampmMatch[3];
+    if (period === "pm" && hour < 12) hour += 12;
+    if (period === "am" && hour === 12) hour = 0;
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return { hour, minute };
+    }
+  }
+
+  // 24-Hour format (e.g. "08:30", "8:30", "18:30", "18:30:00")
+  const match24 = /^(\d{1,2}):(\d{2})(?::\d{2})?/.exec(cleaned);
+  if (match24) {
+    const hour = parseInt(match24[1], 10);
+    const minute = parseInt(match24[2], 10);
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) {
+      return { hour, minute };
+    }
+  }
+
+  return null;
 }
 
 export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
   try {
+    await ensureChannels();
     const granted = await requestNotificationPermission();
     if (!granted) return;
 
@@ -345,15 +368,25 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
 
 export async function scheduleYogaReminderFromStore(): Promise<void> {
   try {
-    const timeStr = await get<string>("yoga_reminder_time");
+    await ensureChannels();
+    const timeStr = (await get<string>("yoga_reminder_time")) || (await get<string>(K.yogaReminderTime));
     if (!timeStr) return;
     const parsed = parseTime(timeStr);
     if (!parsed) return;
     const yogaTip = await get<any>(K.yogaTip);
-    const title = yogaTip?.title || "Daily Medication Yoga Therapy";
+    const title = yogaTip?.title || "Daily Medication Yoga Therapy Flow";
+
+    // Cancel existing yoga reminders before scheduling new one
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const notif of scheduled) {
+      if (notif.content.categoryIdentifier === YOGA_CATEGORY || notif.content.data?.isYogaReminder) {
+        await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+      }
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "Time for your Yoga Therapy Routine",
+        title: "🧘 Time for Your AI Yoga Therapy",
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,
@@ -366,9 +399,9 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
         hour: parsed.hour,
         minute: parsed.minute,
         channelId: "yoga-reminders",
-      },
+      } as any,
     });
-    console.log(`Scheduled daily yoga reminder at ${timeStr}`);
+    console.log(`Scheduled daily yoga reminder at ${parsed.hour}:${String(parsed.minute).padStart(2, "0")}`);
   } catch (e) {
     console.warn("Yoga reminder schedule failed:", e);
   }
@@ -376,6 +409,7 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
 
 export async function scheduleWaterReminders(): Promise<void> {
   try {
+    await ensureChannels();
     const granted = await requestNotificationPermission();
     if (!granted) return;
     const waterTimes = [

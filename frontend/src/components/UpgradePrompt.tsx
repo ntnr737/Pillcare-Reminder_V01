@@ -36,11 +36,7 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity
-          activeOpacity={1}
-          onPress={(e) => e.stopPropagation?.()}
-          style={s.box}
-        >
+        <View style={s.box}>
           <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 2 }}>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={20} color={TM} />
@@ -100,7 +96,7 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
           <TouchableOpacity style={s.closeBtn} onPress={onClose}>
             <Text style={s.closeTx}>Maybe later</Text>
           </TouchableOpacity>
-        </TouchableOpacity>
+        </View>
       </TouchableOpacity>
     </Modal>
   );
@@ -108,7 +104,7 @@ export function UpgradePrompt({ visible, onClose, feature, description }: Props)
 
 const s = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.8)", alignItems: "center", justifyContent: "center", padding: 16 },
-  box: { backgroundColor: SF, borderRadius: 20, padding: 20, width: "100%", maxWidth: 380, borderWidth: 1, borderColor: BD },
+  box: { backgroundColor: SF, borderRadius: 20, padding: 20, width: "100%", maxWidth: 380, borderWidth: 1, borderColor: BD, zIndex: 10, elevation: 10 },
   iconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: "rgba(145,132,217,0.15)", alignItems: "center", justifyContent: "center", marginBottom: 12, alignSelf: "center" },
   title: { fontSize: 10, fontWeight: "700", color: AC, textTransform: "uppercase", letterSpacing: 0.1, textAlign: "center", marginBottom: 4 },
   feature: { fontSize: 17, fontWeight: "700", color: TX, textAlign: "center", marginBottom: 4 },

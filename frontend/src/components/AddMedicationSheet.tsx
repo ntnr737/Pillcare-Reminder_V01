@@ -123,7 +123,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={styles.sheet}
         >
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ flex: 1 }}>
+          <View style={{ flex: 1 }}>
             <View style={styles.handle} />
             <View style={styles.header}>
               <Text style={styles.title}>Add Medication</Text>
@@ -277,7 +277,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             onSelect={setUnit}
             onClose={() => setShowUnitModal(false)}
           />
-          </TouchableOpacity>
+          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -287,7 +287,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: theme.colors.overlay },
-  sheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%" },
+  sheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%", zIndex: 10, elevation: 10 },
   handle: { width: 48, height: 4, backgroundColor: theme.colors.borderStrong, borderRadius: 2, alignSelf: "center", marginTop: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },
   title: { color: theme.colors.textPrimary, fontSize: 20, fontWeight: "700" },

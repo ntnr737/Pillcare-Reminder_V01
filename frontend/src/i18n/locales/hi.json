@@ -1,0 +1,69 @@
+{
+  "appName": "पिलकेयर (PillCare)",
+  "tagline": "आपका स्मार्ट दवा साथी",
+  "nav": {
+    "home": "होम",
+    "medications": "दवाएं",
+    "appointments": "अपॉइंटमेंट",
+    "nearby": "नजदीकी मेडिकल स्टोर",
+    "vitals": "स्वास्थ्य डेटा",
+    "support": "सहायता और सेटिंग्स",
+    "yoga": "एआई योग केयर"
+  },
+  "common": {
+    "save": "सहेजें",
+    "cancel": "रद्द करें",
+    "retry": "पुनः प्रयास करें",
+    "loading": "लोड हो रहा है...",
+    "search": "खोजें...",
+    "error": "कुछ गलत हो गया",
+    "openNow": "अभी खुला है",
+    "closed": "बंद है",
+    "verifyHours": "समय जांचें",
+    "distance": "दूरी",
+    "rating": "रेटिंग",
+    "call": "कॉल करें",
+    "whatsapp": "व्हाट्सएप भेजें",
+    "directions": "दिशा-निर्देश",
+    "details": "विवरण देखें",
+    "share": "साझा करें",
+    "dismiss": "बंद करें",
+    "confirm": "पुष्टि करें"
+  },
+  "home": {
+    "greetingMorning": "शुभ प्रभात",
+    "greetingAfternoon": "नमस्कार",
+    "greetingEvening": "शुभ संध्या",
+    "todayDoses": "आज की दवा की खुराक",
+    "noDosesToday": "आज के लिए कोई पेंडिंग दवा नहीं है!",
+    "streakDays": "दिनों का स्ट्रीक रिकॉर्ड",
+    "quickActions": "त्वरित विकल्प",
+    "refillAlert": "रीफिल अलर्ट",
+    "refillDesc": "दवा का स्टॉक कम हो रहा है। अभी ऑर्डर करें।"
+  },
+  "nearby": {
+    "title": "नजदीकी मेडिकल स्टोर",
+    "subtitle": "अपने पास के मेडिकल स्टोर, ब्लड बैंक, पैथोलॉजी और आपातकालीन सेवाएं खोजें",
+    "searchPlaceholder": "मेडिकल स्टोर, अस्पताल, ब्लड बैंक खोजें...",
+    "pharmacies": "मेडिकल स्टोर",
+    "bloodBanks": "ब्लड बैंक",
+    "diagnostics": "जांच केंद्र",
+    "emergency": "इमरजेंसी",
+    "noStoresInRadius": "इस रेडियस में कोई मेडिकल स्टोर नहीं मिला।",
+    "nearestStoresOutside": "रेडियस के बाहर नजदीकी स्टोर",
+    "expandRadius": "खोज दायरा बढ़ाएं",
+    "enterPhone": "व्हाट्सएप / मोबाइल नंबर दर्ज करें"
+  },
+  "support": {
+    "title": "सहायता और सेटिंग्स",
+    "appearance": "ऐप थीम और लुक",
+    "darkMode": "डार्क मोड (डार्क)",
+    "lightMode": "लाइट मोड (सफेद)",
+    "systemMode": "सिस्टम ऑटो",
+    "language": "ऐप भाषा",
+    "selectLanguage": "अपनी पसंदीदा भाषा चुनें",
+    "emergencyContacts": "आपातकालीन संपर्क",
+    "helpCenter": "सहायता केंद्र और प्रश्न",
+    "termsPrivacy": "नियम एवं गोपनीयता नीति"
+  }
+}

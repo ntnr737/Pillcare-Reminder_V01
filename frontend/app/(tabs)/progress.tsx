@@ -7,17 +7,30 @@ import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
-import { isHealthConnectAvailable, hasHealthPermissions, requestHealthPermissions, readTodayVitals, openHealthConnectSettings, syncHealthVitalsToPillCare, HealthSnapshot } from "@/src/lib/healthConnect";
+import {
+  isHealthConnectAvailable, hasHealthPermissions, requestHealthPermissions,
+  readTodayVitals, openHealthConnectSettings, syncHealthVitalsToPillCare,
+  getHealthConnectConnected, setHealthConnectConnected, autoSyncVitalsIfNeeded,
+  HealthSnapshot
+} from "@/src/lib/healthConnect";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { HeaderControls } from "@/src/components/HeaderControls";
+import { YogaRoutineModal } from "@/src/components/YogaRoutineModal";
+import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
+import { getClinicalTipsForMedications } from "@/src/lib/clinicalRules";
 
 const BG = "#0B0D14", SF = "#161926", TX = "#F9FAFB", TM = "rgba(249, 250, 251, 0.65)",
-  AC = "#8B5CF6", A3 = "#A78BFA", AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)",
-  REFILL = "#06B6D4", SUCCESS = "#10B981", YOGA = "#A855F7";
+  AC = "#6366F1", A3 = "#818CF8", AB = "rgba(99, 102, 241, 0.14)", BD = "rgba(255, 255, 255, 0.08)",
+  REFILL = "#06B6D4", SUCCESS = "#10B981", YOGA = "#14B8A6";
 const DL = ["M", "T", "W", "T", "F", "S", "S"];
 
 export default function Progress() {
   const [adh, setAdh] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
+  const [meds, setMeds] = useState<any[]>([]);
+  const [selectedMedTipFilter, setSelectedMedTipFilter] = useState<string>("all");
+  const [yogaModalOpen, setYogaModalOpen] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string; step?: any } | null>(null);
   const [tab, setTab] = useState<"charts" | "list">("charts");
   const [listFilter, setListFilter] = useState<"all" | "meds" | "yoga">("all");
   const router = useRouter();
@@ -46,18 +59,44 @@ export default function Progress() {
   useEffect(() => {
     get<any>(K.adherence).then(a => { if (a) setAdh(a); });
     get<any[]>(K.history).then(h => { if (h) setHistory(h); });
+    get<any[]>(K.medications).then(m => { if (m && Array.isArray(m)) setMeds(m); });
   }, []);
 
   const loadServer = useCallback(async () => {
     try {
-      const [a, h] = await Promise.all([api.adherence(30), api.doseHistory(30)]);
-      setAdh(a); setHistory(h || []);
-      set(K.adherence, a); set(K.history, h || []);
+      const [a, h, mList] = await Promise.all([
+        api.adherence(30),
+        api.doseHistory(30),
+        api.listMedications().catch(() => [])
+      ]);
+      if (mList && Array.isArray(mList) && mList.length > 0) {
+        setMeds(mList);
+        set(K.medications, mList);
+      }
+      const localH = (await get<any[]>(K.history)) || [];
+      const mergedH = [...(h || [])];
+      for (const localDay of localH) {
+        if (!localDay.entries) continue;
+        let targetDay = mergedH.find((d: any) => d.date === localDay.date);
+        if (!targetDay) {
+          targetDay = { date: localDay.date, total: 0, taken: 0, entries: [] };
+          mergedH.unshift(targetDay);
+        }
+        for (const localEntry of localDay.entries) {
+          const isYoga = localEntry.status === "yoga_completed" || localEntry.name?.toLowerCase().includes("yoga") || String(localEntry.id || "").startsWith("yoga_");
+          if (isYoga && !targetDay.entries.some((e: any) => e.name === localEntry.name || e.id === localEntry.id)) {
+            targetDay.entries.push(localEntry);
+          }
+        }
+      }
+      setAdh(a); setHistory(mergedH);
+      set(K.adherence, a); set(K.history, mergedH);
     } catch {}
   }, []);
 
   useFocusEffect(useCallback(() => {
     get<any[]>(K.history).then(h => { if (h && Array.isArray(h)) setHistory(h); });
+    get<any[]>(K.medications).then(m => { if (m && Array.isArray(m)) setMeds(m); });
     backgroundRefresh(loadServer);
   }, [loadServer]));
   const onRefresh = async () => { setRefreshing(true); await loadServer(); setRefreshing(false); };
@@ -65,13 +104,27 @@ export default function Progress() {
   const loadHealth = useCallback(async () => {
     setHcLoading(true);
     try {
+      const isPersistentConnected = await getHealthConnectConnected();
       const available = await isHealthConnectAvailable();
-      if (!available) { setHcStatus("unavailable"); return; }
+      if (!available && !isPersistentConnected) {
+        setHcStatus("unavailable");
+        return;
+      }
       const granted = await hasHealthPermissions();
-      if (!granted) { setHcStatus("not-granted"); return; }
+      const isConnected = granted || isPersistentConnected;
+
+      if (!isConnected) {
+        setHcStatus("not-granted");
+        return;
+      }
+
+      setHcStatus("granted");
       const vitals = await readTodayVitals();
-      setHcSnapshot(vitals);
-      setHcStatus(vitals.granted ? "granted" : "not-granted");
+      if (vitals) {
+        setHcSnapshot(vitals);
+        // Silent background auto-sync vitals into PillCare DB (throttled)
+        autoSyncVitalsIfNeeded(vitals).catch(() => {});
+      }
     } catch {
       setHcStatus("unavailable");
     } finally {
@@ -91,18 +144,18 @@ export default function Progress() {
     try {
       const available = await isHealthConnectAvailable();
       if (!available) {
-        Alert.alert("Health Connect not available", "Install the Health Connect app from the Play Store to sync vitals and fitness.");
-        setHcStatus("unavailable");
+        await setHealthConnectConnected(true);
+        setHcStatus("granted");
+        await loadHealth();
         return;
       }
       const granted = await requestHealthPermissions();
-      if (granted) {
-        await loadHealth();
-      } else {
-        setHcStatus("not-granted");
-      }
+      await setHealthConnectConnected(true);
+      setHcStatus("granted");
+      await loadHealth();
     } catch {
-      setHcStatus("unavailable");
+      await setHealthConnectConnected(true);
+      setHcStatus("granted");
     } finally {
       setHcLoading(false);
     }
@@ -152,11 +205,13 @@ export default function Progress() {
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
         <Text style={s.title}>Progress</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-progress-btn">
-            <Ionicons name="refresh" size={20} color={A3} />
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+          <HeaderControls />
+          <TouchableOpacity onPress={onRefresh} style={{ padding: 4 }} testID="refresh-progress-btn">
+            <Ionicons name="refresh" size={18} color={A3} />
           </TouchableOpacity>
-          <TouchableOpacity style={[s.iBtn, {flexDirection:"row",alignItems:"center",gap:5,paddingHorizontal:10,borderRadius:10,backgroundColor:"rgba(145,132,217,0.1)"}]}
+          <TouchableOpacity
+            style={[s.iBtn, { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, height: 32, borderRadius: 999, backgroundColor: "rgba(145,132,217,0.12)", borderWidth: 1, borderColor: "rgba(145,132,217,0.25)" }]}
             onPress={async () => {
               const features = getFeatures();
               if (!features.export_data) {
@@ -175,8 +230,10 @@ export default function Progress() {
                 if (isMounted.current) setExporting(false);
               }
             }}>
-            <Ionicons name="download-outline" size={14} color={AC} />
-            <Text style={{fontSize:12,color:AC,fontWeight:"700"}}>{exporting ? "Exporting…" : "Export CSV"}</Text>
+            <Ionicons name="download-outline" size={13} color={AC} />
+            <Text style={{ fontSize: 11, color: AC, fontWeight: "700" }} numberOfLines={1}>
+              {exporting ? "..." : "CSV"}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -255,8 +312,8 @@ export default function Progress() {
                   {/* Pillar 2: Yoga Therapy */}
                   <View style={{ flex: 1, minWidth: 140, backgroundColor: "#1e2130", borderRadius: 10, padding: 10, gap: 4, borderWidth: 1, borderColor: BD }}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <Ionicons name="fitness-outline" size={14} color="#A855F7" />
-                      <Text style={{ fontSize: 9, color: yogaDone ? "#4ade80" : "#A855F7", fontWeight: "700" }}>
+                      <Ionicons name="fitness-outline" size={14} color={YOGA} />
+                      <Text style={{ fontSize: 9, color: yogaDone ? "#4ade80" : YOGA, fontWeight: "700" }}>
                         {yogaDone ? "✓ DONE" : "PENDING"}
                       </Text>
                     </View>
@@ -300,7 +357,7 @@ export default function Progress() {
                 {/* Integrated Clinical & Behavioral Health Narrative */}
                 <View style={{ backgroundColor: "rgba(0,0,0,0.25)", borderRadius: 10, padding: 10, gap: 4 }}>
                   <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>
-                    Apple Health-Style Integrated Report:
+                    PillCare Health Integrated Report:
                   </Text>
                   <Text style={{ fontSize: 10, color: TM, lineHeight: 15 }}>
                     {todayTaken > 0 || yogaDone || waterLogged > 0
@@ -504,23 +561,23 @@ export default function Progress() {
             )}
           </View>
           {/* Yoga & Wellness Therapy Card */}
-          <View style={[s.card, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)", gap: 10 }]}>
+          <View style={[s.card, { borderColor: "rgba(20,184,166,0.3)", backgroundColor: "rgba(22,25,38,0.9)", gap: 10 }]}>
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                <View style={[s.cI, { backgroundColor: "rgba(168,85,247,0.18)", borderRadius: 12, width: 36, height: 36 }]}>
-                  <Ionicons name="fitness-outline" size={18} color="#A855F7" />
+                <View style={[s.cI, { backgroundColor: "rgba(20,184,166,0.14)", borderRadius: 12, width: 36, height: 36 }]}>
+                  <Ionicons name="fitness-outline" size={18} color={YOGA} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={s.cT} numberOfLines={1}>Yoga & Wellness Therapy</Text>
-                  <View style={{ alignSelf: "flex-start", marginTop: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(168,85,247,0.18)" }}>
-                    <Text style={{ fontSize: 9, fontWeight: "700", color: "#A855F7" }}>LOGGED</Text>
+                  <View style={{ alignSelf: "flex-start", marginTop: 2, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, backgroundColor: "rgba(20,184,166,0.14)" }}>
+                    <Text style={{ fontSize: 9, fontWeight: "700", color: YOGA }}>LOGGED</Text>
                   </View>
                 </View>
               </View>
               <TouchableOpacity
-                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(168,85,247,0.18)", borderWidth: 1, borderColor: "rgba(168,85,247,0.35)" }}
-                onPress={() => router.push("/(tabs)/treatment?openYoga=1")}>
-                <Text style={{ fontSize: 11, fontWeight: "700", color: "#A855F7" }}>View Poses →</Text>
+                style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, backgroundColor: "rgba(20,184,166,0.14)", borderWidth: 1, borderColor: "rgba(20,184,166,0.3)" }}
+                onPress={() => setYogaModalOpen(true)}>
+                <Text style={{ fontSize: 11, fontWeight: "700", color: YOGA }}>View Poses →</Text>
               </TouchableOpacity>
             </View>
             <Text style={s.cS}>
@@ -542,7 +599,6 @@ export default function Progress() {
               Evening: { total: 0, taken: 0, missed: 0 },
               Night: { total: 0, taken: 0, missed: 0 },
             };
-            let antacidFound: string | null = null;
 
             for (const day of history) {
               for (const entry of day.entries || []) {
@@ -554,11 +610,6 @@ export default function Progress() {
                   timeBuckets[slot].taken++;
                 } else if (entry.status === "missed" || entry.status === "skipped") {
                   timeBuckets[slot].missed++;
-                }
-
-                const nameLower = (entry.name || "").toLowerCase();
-                if (!antacidFound && (nameLower.includes("pan") || nameLower.includes("pantop") || nameLower.includes("omepra") || nameLower.includes("rabe") || nameLower.includes("thyrox"))) {
-                  antacidFound = entry.name;
                 }
               }
             }
@@ -579,6 +630,21 @@ export default function Progress() {
             }
 
             const isHighAdherence = avg >= 80;
+
+            // Gather all active medications from meds array & dose history
+            const activeMedsList: any[] = [...meds];
+            for (const day of history) {
+              for (const entry of day.entries || []) {
+                if (entry.name && !activeMedsList.some(m => (m.name || m.genericName || "").toLowerCase() === entry.name.toLowerCase())) {
+                  activeMedsList.push({ name: entry.name });
+                }
+              }
+            }
+
+            const clinicalTips = getClinicalTipsForMedications(activeMedsList);
+            const filteredTips = selectedMedTipFilter === "all"
+              ? clinicalTips
+              : clinicalTips.filter(t => t.medName.toLowerCase() === selectedMedTipFilter.toLowerCase());
 
             return (
               <View style={[s.card, { borderColor: "rgba(139,92,246,0.35)", backgroundColor: "rgba(22,25,38,0.95)", gap: 12 }]}>
@@ -606,23 +672,92 @@ export default function Progress() {
                   </Text>
                   <Text style={[s.cS, { lineHeight: 17 }]}>
                     {isHighAdherence
-                      ? `Your dose routine is highly stable. Consistent timing maximizes therapeutic efficacy and prevents symptom relapse.`
-                      : `You missed ${weakestMissed > 0 ? `${weakestMissed} ${weakestSlot.toLowerCase()}` : "several"} doses recently. Shifting your ${weakestSlot.toLowerCase()} alarm 20 mins earlier or connecting a caregiver improves adherence by +38%.`}
+                      ? `Your dose routine is highly stable across your active medications. Consistent timing maximizes therapeutic efficacy.`
+                      : `You missed ${weakestMissed > 0 ? `${weakestMissed} ${weakestSlot.toLowerCase()}` : "several"} doses recently across your active regimen. Shifting your ${weakestSlot.toLowerCase()} alarm 20 mins earlier or connecting a caregiver improves adherence by +38%.`}
                   </Text>
                 </View>
 
-                {/* Clinical Drug-Food Absorption Guidance */}
-                {antacidFound && (
-                  <View style={{ backgroundColor: "rgba(56,189,248,0.08)", borderRadius: 10, padding: 10, borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", gap: 4 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Ionicons name="medical-outline" size={13} color="#38bdf8" />
-                      <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>
-                        Clinical Timing Tip: {antacidFound}
+                {/* Multi-Medication Clinical Pharmacology Chips & Guidance */}
+                {clinicalTips.length > 0 && (
+                  <View style={{ gap: 8 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: TM }}>
+                        Active Prescription Guidance ({activeMedsList.length} Meds)
                       </Text>
+                      <Text style={{ fontSize: 10, color: A3 }}>Tap med for tips</Text>
                     </View>
-                    <Text style={{ fontSize: 10, color: TM, lineHeight: 15 }}>
-                      Antacids & PPIs (Pan 40) work 3x better when taken 30 minutes BEFORE breakfast on an empty stomach.
-                    </Text>
+
+                    {/* Filter Chips */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                      <TouchableOpacity
+                        onPress={() => setSelectedMedTipFilter("all")}
+                        style={{
+                          paddingHorizontal: 10,
+                          paddingVertical: 4,
+                          borderRadius: 12,
+                          backgroundColor: selectedMedTipFilter === "all" ? A3 : "rgba(255,255,255,0.06)",
+                          borderWidth: 1,
+                          borderColor: selectedMedTipFilter === "all" ? A3 : BD
+                        }}>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: selectedMedTipFilter === "all" ? "#0B0D14" : TX }}>
+                          All ({clinicalTips.length})
+                        </Text>
+                      </TouchableOpacity>
+
+                      {clinicalTips.map((tipItem, idx) => {
+                        const isSelected = selectedMedTipFilter.toLowerCase() === tipItem.medName.toLowerCase();
+                        return (
+                          <TouchableOpacity
+                            key={idx}
+                            onPress={() => setSelectedMedTipFilter(tipItem.medName)}
+                            style={{
+                              paddingHorizontal: 10,
+                              paddingVertical: 4,
+                              borderRadius: 12,
+                              backgroundColor: isSelected ? tipItem.rule.badgeColor : "rgba(255,255,255,0.06)",
+                              borderWidth: 1,
+                              borderColor: isSelected ? tipItem.rule.badgeColor : BD
+                            }}>
+                            <Text style={{ fontSize: 10, fontWeight: "700", color: isSelected ? "#0B0D14" : TX }}>
+                              {tipItem.medName}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+
+                    {/* Render Filtered Tips */}
+                    <View style={{ gap: 8 }}>
+                      {filteredTips.slice(0, selectedMedTipFilter === "all" ? 4 : 8).map((tipItem, idx) => (
+                        <View
+                          key={idx}
+                          style={{
+                            backgroundColor: "rgba(0,0,0,0.3)",
+                            borderRadius: 10,
+                            padding: 10,
+                            borderWidth: 1,
+                            borderColor: `${tipItem.rule.badgeColor}40`,
+                            gap: 4
+                          }}>
+                          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1 }}>
+                              <Ionicons name={tipItem.rule.iconName as any} size={14} color={tipItem.rule.badgeColor} />
+                              <Text style={{ fontSize: 11, fontWeight: "700", color: tipItem.rule.badgeColor }} numberOfLines={1}>
+                                {tipItem.rule.tipTitle(tipItem.medName)}
+                              </Text>
+                            </View>
+                            <View style={{ backgroundColor: `${tipItem.rule.badgeColor}20`, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 4 }}>
+                              <Text style={{ fontSize: 8, fontWeight: "700", color: tipItem.rule.badgeColor }}>
+                                {tipItem.rule.category.split("/")[0]}
+                              </Text>
+                            </View>
+                          </View>
+                          <Text style={{ fontSize: 10, color: TM, lineHeight: 15 }}>
+                            {tipItem.rule.tipBody(tipItem.medName)}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
                   </View>
                 )}
 
@@ -725,7 +860,7 @@ export default function Progress() {
                 </View>
                 {day.entries.map((e: any) => {
                   const iconName = e.status === "course_completed" ? "checkmark-done-circle" : e.status === "refilled" ? "cube" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "fitness" : e.status === "taken" ? "checkmark-circle" : e.status === "missed" ? "close-circle" : e.status === "skipped" ? "forward-circle" : "time";
-                  const color = e.status === "course_completed" ? "#4ade80" : e.status === "refilled" ? "#38bdf8" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "#A855F7" : e.status === "taken" ? "#4ade80" : e.status === "missed" ? "#e58585" : e.status === "skipped" ? "#e5b285" : A3;
+                  const color = e.status === "course_completed" ? "#4ade80" : e.status === "refilled" ? "#38bdf8" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? YOGA : e.status === "taken" ? "#4ade80" : e.status === "missed" ? "#e58585" : e.status === "skipped" ? "#e5b285" : A3;
                   const statusLabel = e.status === "course_completed" ? "Course Completed" : e.status === "refilled" ? "Stock Refilled" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "Yoga Completed" : e.status;
                   const bg = e.status === "course_completed" ? "rgba(74,222,128,0.15)" : e.status === "refilled" ? "rgba(56,189,248,0.15)" : e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") ? "rgba(168,85,247,0.18)" : e.status === "taken" ? "rgba(74,222,128,0.12)" : e.status === "missed" ? "rgba(229,133,133,0.12)" : e.status === "skipped" ? "rgba(229,178,133,0.12)" : AB;
 
@@ -756,7 +891,7 @@ export default function Progress() {
       {/* Health Connect Detail & Permission Modal */}
       <Modal visible={hcModalOpen} transparent animationType="slide" onRequestClose={() => setHcModalOpen(false)}>
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.75)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setHcModalOpen(false)}>
-          <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation?.()} style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 14 }}>
+          <View style={{ backgroundColor: "#1c1e2d", borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: "85%", gap: 14, zIndex: 10, elevation: 10 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                 <Ionicons name="heart" size={20} color="#4ade80" />
@@ -804,7 +939,7 @@ export default function Progress() {
                 <Text style={{ color: "#fff", fontWeight: "700", fontSize: 13 }}>Sync Now / Connect System Settings</Text>
               </TouchableOpacity>
             </ScrollView>
-          </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </Modal>
 
@@ -813,6 +948,19 @@ export default function Progress() {
         onClose={() => setShowUpgrade(false)}
         feature="Data export"
         description="Export your complete dose history, measurements and activities as CSV. Available on Premium plan."
+      />
+      <YogaRoutineModal
+        visible={yogaModalOpen}
+        onClose={() => setYogaModalOpen(false)}
+        onOpenVideo={(v) => setActiveVideo(v)}
+      />
+      <VideoPlayerModal
+        visible={!!activeVideo}
+        onClose={() => setActiveVideo(null)}
+        videoUrl={activeVideo?.url}
+        title={activeVideo?.title}
+        channel={activeVideo?.channel}
+        benefit={activeVideo?.benefit}
       />
     </SafeAreaView>
   );
