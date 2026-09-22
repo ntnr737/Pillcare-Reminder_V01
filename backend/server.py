@@ -3254,63 +3254,62 @@ async def admin_dashboard_ui():
 # ── Admin Analytics Endpoints ────────────────────────────────
 @app.get("/admin/stats")
 async def admin_stats(_: None = Depends(require_admin)):
-    """Business KPIs for the admin dashboard."""
+    """Business KPIs for the admin dashboard — ultra-fast concurrent execution."""
+    import asyncio
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
     week_ago = (now - timedelta(days=7)).isoformat()
     month_ago = (now - timedelta(days=30)).isoformat()
 
-    # User counts - search both profile and users
-    total_users = await db.profile.count_documents({}) or await db.users.count_documents({})
-    new_today = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(today)}})
-    new_week = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(week_ago)}})
-    new_month = await db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(month_ago)}})
+    t_prof = db.profile.count_documents({})
+    t_users = db.users.count_documents({})
+    n_today = db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(today)}})
+    n_week = db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(week_ago)}})
+    n_month = db.analytics.count_documents({"event": "signup", "ts": {"$gte": datetime.fromisoformat(month_ago)}})
+    act_week = db.audit_log.distinct("user_id", {"ts": {"$gte": datetime.fromisoformat(week_ago)}})
+    t_doses = db.doses.count_documents({})
+    tk_doses = db.doses.count_documents({"status": "taken"})
+    ms_doses = db.doses.count_documents({"status": "missed"})
 
-    # Active users (logged in last 7 days)
-    active_week = await db.audit_log.distinct("user_id", {"ts": {"$gte": datetime.fromisoformat(week_ago)}})
-
-    # Dose stats
-    total_doses = await db.doses.count_documents({})
-    taken_doses = await db.doses.count_documents({"status": "taken"})
-    missed_doses = await db.doses.count_documents({"status": "missed"})
-    adherence_rate = round(taken_doses / total_doses * 100, 1) if total_doses > 0 else 0
-
-    # Top medications
-    pipeline = [
+    top_meds_task = db.medications.aggregate([
         {"$group": {"_id": "$name", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10}
-    ]
-    top_meds = await db.medications.aggregate(pipeline).to_list(10)
+    ]).to_list(10)
 
-    # Geographic distribution
-    geo_pipeline = [
+    top_cities_task = db.profile.aggregate([
         {"$group": {"_id": "$location_city", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 10}
-    ]
-    top_cities = await db.profile.aggregate(geo_pipeline).to_list(10)
+    ]).to_list(10)
 
-    # Gender distribution
-    gender_pipeline = [
+    gender_dist_task = db.profile.aggregate([
         {"$group": {"_id": "$gender", "count": {"$sum": 1}}},
-    ]
-    gender_dist = await db.profile.aggregate(gender_pipeline).to_list(10)
+    ]).to_list(10)
 
-    # Daily signups last 30 days
-    daily_pipeline = [
+    daily_signups_task = db.analytics.aggregate([
         {"$match": {"event": "signup", "ts": {"$gte": datetime.fromisoformat(month_ago)}}},
         {"$group": {"_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$ts"}}, "count": {"$sum": 1}}},
         {"$sort": {"_id": 1}}
-    ]
-    daily_signups = await db.analytics.aggregate(daily_pipeline).to_list(30)
+    ]).to_list(30)
 
-    # Feature usage
-    feature_pipeline = [
+    feature_usage_task = db.analytics.aggregate([
         {"$match": {"event": {"$in": ["yoga_viewed", "nearby_searched", "appointment_booked", "caregiver_connected"]}}},
         {"$group": {"_id": "$event", "count": {"$sum": 1}}},
-    ]
-    feature_usage = await db.analytics.aggregate(feature_pipeline).to_list(20)
+    ]).to_list(20)
+
+    (
+        prof_cnt, users_cnt, new_today, new_week, new_month,
+        active_week, total_doses, taken_doses, missed_doses,
+        top_meds, top_cities, gender_dist, daily_signups, feature_usage
+    ) = await asyncio.gather(
+        t_prof, t_users, n_today, n_week, n_month,
+        act_week, t_doses, tk_doses, ms_doses,
+        top_meds_task, top_cities_task, gender_dist_task, daily_signups_task, feature_usage_task
+    )
+
+    total_users = prof_cnt or users_cnt or 0
+    adherence_rate = round(taken_doses / total_doses * 100, 1) if total_doses > 0 else 0
 
     return {
         "total_users": total_users,
@@ -3676,21 +3675,47 @@ async def admin_remove_feature(user_id: str, feature: str, _: None = Depends(req
 
 @app.get("/admin/revenue")
 async def admin_revenue(_: None = Depends(require_admin)):
-    premium_count = await db.subscriptions.count_documents({"plan": {"$in": ["premium", "enterprise"]}, "status": "active"})
-    total_users = await db.users.count_documents({})
-    pipeline = [{"$group": {"_id": "$plan", "count": {"$sum": 1}, "revenue": {"$sum": "$total_paid"}}}]
-    by_plan = await db.subscriptions.aggregate(pipeline).to_list(10)
-    return {"premium_users": premium_count, "conversion_rate": round(premium_count / total_users * 100, 1) if total_users else 0, "by_plan": [{"plan": p["_id"], "users": p["count"], "revenue": p.get("revenue", 0)} for p in by_plan], "mrr_estimate": premium_count * 99}
+    import asyncio
+    p_task = db.subscriptions.count_documents({"plan": {"$in": ["premium", "enterprise"]}, "status": "active"})
+    u_task = db.users.count_documents({})
+    b_task = db.subscriptions.aggregate([{"$group": {"_id": "$plan", "count": {"$sum": 1}, "revenue": {"$sum": "$total_paid"}}}]).to_list(10)
+    premium_count, total_users, by_plan = await asyncio.gather(p_task, u_task, b_task)
+    return {
+        "premium_users": premium_count,
+        "conversion_rate": round(premium_count / total_users * 100, 1) if total_users else 0,
+        "by_plan": [{"plan": p["_id"], "users": p["count"], "revenue": p.get("revenue", 0)} for p in by_plan],
+        "mrr_estimate": premium_count * 99
+    }
 
 @app.get("/admin/subscriptions")
 async def admin_subscriptions(limit: int = 50, skip: int = 0, plan: str = "", _: None = Depends(require_admin)):
+    import asyncio
     q = {"plan": plan} if plan else {}
-    subs = await db.subscriptions.find(q, PROJECTION).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
+    subs_task = db.subscriptions.find(q, PROJECTION).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
+    total_task = db.subscriptions.count_documents(q)
+    subs, total = await asyncio.gather(subs_task, total_task)
+
+    uids = [s["user_id"] for s in subs if s.get("user_id")]
+    if uids:
+        users = await db.users.find({"id": {"$in": uids}}, PROJECTION).to_list(len(uids))
+        user_map = {u.get("id"): u for u in users if u.get("id")}
+    else:
+        user_map = {}
+
     result = []
     for s in subs:
-        user = await db.users.find_one({"id": s["user_id"]}, PROJECTION)
-        result.append({"user_id": s["user_id"], "name": user.get("name", "") if user else "", "email": user.get("email", "") if user else "", "plan": s.get("plan", "free"), "status": s.get("status", "active"), "expires_at": s.get("expires_at").isoformat() if s.get("expires_at") else None, "overrides": s.get("overrides", {})})
-    return {"subscriptions": result, "total": await db.subscriptions.count_documents(q)}
+        user = user_map.get(s["user_id"])
+        result.append({
+            "user_id": s["user_id"],
+            "name": user.get("name", "") if user else "",
+            "email": user.get("email", "") if user else "",
+            "plan": s.get("plan", "free"),
+            "billing_cycle": s.get("billing_cycle", "monthly"),
+            "status": s.get("status", "active"),
+            "expires_at": s.get("expires_at").isoformat() if s.get("expires_at") else None,
+            "overrides": s.get("overrides", {})
+        })
+    return {"subscriptions": result, "total": total}
 
 
 # ── Admin IP Rate Limiting & Brute Force Protection ───────
@@ -4537,15 +4562,10 @@ async def security_headers(request, call_next):
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=[
-        "https://pillcare.in",
-        "https://www.pillcare.in",
-        # Expo dev — remove before production
-        "http://localhost:8081",
-        "http://localhost:19006",
-    ],
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "x-admin-secret"],
+    allow_origin_regex=r".*",
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
