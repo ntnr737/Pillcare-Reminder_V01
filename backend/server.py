@@ -4081,8 +4081,10 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                 "to": token,
                 "title": title,
                 "body": body,
-                "sound": "pillcare_reminder",
+                "sound": "default",
+                "priority": "high",
                 "channelId": "broadcasts",
+                "_displayInForeground": True,
                 "data": {"type": "broadcast"},
             } for token in batch]
             
