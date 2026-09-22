@@ -3815,16 +3815,26 @@ class AnnouncementCreate(BaseModel):
     expires_hours: int = 72
 
 @app.post("/admin/announcements")
-async def create_announcement(payload: AnnouncementCreate, _: None = Depends(require_admin)):
-    exp = datetime.now(timezone.utc) + timedelta(hours=payload.expires_hours)
+async def create_announcement(payload: dict = Body(...), _: None = Depends(require_admin)):
+    title = (payload.get("title") or "").strip()
+    body = (payload.get("body") or "").strip()
+    type_val = payload.get("type") or "offer"
+    target_plan = payload.get("target_plan") or payload.get("target") or "all"
+    action_link = payload.get("action_link") or payload.get("link_url") or payload.get("link")
+    expires_hours = int(payload.get("expires_hours") or 72)
+    
+    if not title or not body:
+        raise HTTPException(400, "Title and body are required")
+        
+    exp = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
     doc = {
         "id": f"ann_{uuid.uuid4().hex[:12]}",
-        "title": payload.title,
-        "body": payload.body,
-        "action_text": payload.action_text,
-        "action_link": payload.action_link,
-        "type": payload.type,
-        "target_plan": payload.target_plan,
+        "title": title,
+        "body": body,
+        "action_text": payload.get("action_text") or "Explore Now",
+        "action_link": action_link,
+        "type": type_val,
+        "target_plan": target_plan,
         "active": True,
         "created_at": datetime.now(timezone.utc),
         "expires_at": exp,
