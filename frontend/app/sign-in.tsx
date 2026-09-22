@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, Alert } from "react-na
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { signInWithGoogle } from "@/src/lib/auth";
+import { signInWithGoogle, signInAsGuest } from "@/src/lib/auth";
 
 const BG = "#0B0D14", SF = "#161926", TX = "#F9FAFB",
   TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
@@ -32,7 +32,39 @@ export default function SignIn() {
       await signInWithGoogle();
       router.replace("/");
     } catch (e: any) {
-      Alert.alert("Sign-In Failed", e?.message || "Could not sign in with Google. Please try again.");
+      Alert.alert(
+        "Google Sign-In",
+        e?.message ? `${e.message}
+
+Would you like to continue as a Guest Patient?` : "Could not sign in with Google. Continue as Guest Patient?",
+        [
+          { text: "Try Again", style: "cancel" },
+          {
+            text: "Continue as Guest Patient",
+            style: "default",
+            onPress: async () => {
+              try {
+                await signInAsGuest();
+                router.replace("/");
+              } catch (err: any) {
+                Alert.alert("Error", err?.message || "Failed to start guest session.");
+              }
+            }
+          }
+        ]
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestSignIn = async () => {
+    setLoading(true);
+    try {
+      await signInAsGuest();
+      router.replace("/");
+    } catch (e: any) {
+      Alert.alert("Guest Login Failed", e?.message || "Could not start guest session.");
     } finally {
       setLoading(false);
     }
@@ -105,11 +137,17 @@ export default function SignIn() {
         </View>
       </View>
 
-      {/* Google Sign-In button */}
-      <TouchableOpacity style={[s.gBtn, loading && { opacity: 0.7 }]} onPress={handleSignIn} disabled={loading}>
-        <Ionicons name="logo-google" size={16} color="#fff" />
-        <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Continue with Google"}</Text>
-      </TouchableOpacity>
+      {/* Sign-In options */}
+      <View style={{ gap: 8 }}>
+        <TouchableOpacity style={[s.gBtn, loading && { opacity: 0.7 }]} onPress={handleSignIn} disabled={loading}>
+          <Ionicons name="logo-google" size={16} color="#fff" />
+          <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Continue with Google"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[s.guestBtn, loading && { opacity: 0.7 }]} onPress={handleGuestSignIn} disabled={loading}>
+          <Ionicons name="person-outline" size={15} color={A3} />
+          <Text style={s.guestBtnTx}>Continue as Guest Patient</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Trust badges */}
       <View style={s.badges}>
@@ -155,6 +193,11 @@ const s = StyleSheet.create({
   statIco: { width: 26, height: 26, borderRadius: 13, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
   statMain: { fontSize: 11, color: TX },
   statSub: { fontSize: 10, color: TM },
+  guestBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8,
+    backgroundColor: SF, borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: BD
+  },
+  guestBtnTx: { fontSize: 13, fontWeight: "600", color: TX },
   avatarRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatars: { flexDirection: "row" },
   avatar: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: BG, alignItems: "center", justifyContent: "center" },

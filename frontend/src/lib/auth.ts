@@ -5,8 +5,15 @@ import { set, remove, K } from "./store";
 const TOKEN_KEY = "pillcare_auth_token";
 const USER_KEY = "pillcare_auth_user";
 
-const WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || "";
-const IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || "";
+const DEFAULT_WEB_ID = "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com";
+const DEFAULT_IOS_ID = "1082668880575-og9vm3sduk1g7dlj8g17in3r1cicnbt6.apps.googleusercontent.com";
+
+const WEB_CLIENT_ID = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID && process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.trim().length > 5)
+  ? process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.trim()
+  : DEFAULT_WEB_ID;
+const IOS_CLIENT_ID = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID && process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.trim().length > 5)
+  ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.trim()
+  : DEFAULT_IOS_ID;
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
 try {
@@ -130,3 +137,4 @@ export async function signOut(): Promise<void> {
   } catch {
   }
 }
+
