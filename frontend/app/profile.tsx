@@ -8,7 +8,6 @@ import { useFocusEffect } from "expo-router";
 import { get, set, K } from "@/src/lib/store";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation, SUPPORTED_LANGUAGES, SupportedLocale } from "@/src/context/LanguageContext";
-import { HeaderControls } from "@/src/components/HeaderControls";
 import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
 import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 
@@ -67,7 +66,6 @@ export default function Profile() {
           <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={[s.title, { color: theme.textPrimary }]}>{t("nav.support", "Profile & Settings")}</Text>
-        <HeaderControls />
       </View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>

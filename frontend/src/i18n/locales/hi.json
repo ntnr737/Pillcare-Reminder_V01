@@ -2,13 +2,12 @@
   "appName": "पिलकेयर (PillCare)",
   "tagline": "आपका स्मार्ट दवा साथी",
   "nav": {
-    "home": "होम",
-    "medications": "दवाएं",
-    "appointments": "अपॉइंटमेंट",
-    "nearby": "नजदीकी मेडिकल स्टोर",
-    "vitals": "स्वास्थ्य डेटा",
-    "support": "सहायता और सेटिंग्स",
-    "yoga": "एआई योग केयर"
+    "today": "आज",
+    "treatment": "दवाएं",
+    "yoga": "योग",
+    "progress": "प्रगति",
+    "support": "सहायता",
+    "profile": "प्रोफाइल"
   },
   "common": {
     "save": "सहेजें",
@@ -28,9 +27,13 @@
     "details": "विवरण देखें",
     "share": "साझा करें",
     "dismiss": "बंद करें",
-    "confirm": "पुष्टि करें"
+    "confirm": "पुष्टि करें",
+    "active": "सक्रिय",
+    "paused": "रुका हुआ",
+    "completed": "पूरा हुआ"
   },
-  "home": {
+  "today": {
+    "title": "आज की दवाएं",
     "greetingMorning": "शुभ प्रभात",
     "greetingAfternoon": "नमस्कार",
     "greetingEvening": "शुभ संध्या",
@@ -39,31 +42,57 @@
     "streakDays": "दिनों का स्ट्रीक रिकॉर्ड",
     "quickActions": "त्वरित विकल्प",
     "refillAlert": "रीफिल अलर्ट",
-    "refillDesc": "दवा का स्टॉक कम हो रहा है। अभी ऑर्डर करें।"
+    "refillDesc": "दवा का स्टॉक कम हो रहा है। अभी ऑर्डर करें।",
+    "markTaken": "ली गई",
+    "taken": "ली गई",
+    "skipped": "छोड़ दी",
+    "snooze": "15 मिनट टालें"
   },
-  "nearby": {
-    "title": "नजदीकी मेडिकल स्टोर",
-    "subtitle": "अपने पास के मेडिकल स्टोर, ब्लड बैंक, पैथोलॉजी और आपातकालीन सेवाएं खोजें",
-    "searchPlaceholder": "मेडिकल स्टोर, अस्पताल, ब्लड बैंक खोजें...",
-    "pharmacies": "मेडिकल स्टोर",
-    "bloodBanks": "ब्लड बैंक",
-    "diagnostics": "जांच केंद्र",
-    "emergency": "इमरजेंसी",
-    "noStoresInRadius": "इस रेडियस में कोई मेडिकल स्टोर नहीं मिला।",
-    "nearestStoresOutside": "रेडियस के बाहर नजदीकी स्टोर",
-    "expandRadius": "खोज दायरा बढ़ाएं",
-    "enterPhone": "व्हाट्सएप / मोबाइल नंबर दर्ज करें"
+  "treatment": {
+    "title": "मेरी दवाएं",
+    "subtitle": "दवा के पर्चे, समय और रीफिल अलर्ट प्रबंधित करें",
+    "addMedication": "दवा जोड़ें",
+    "searchPlaceholder": "दवाएं खोजें...",
+    "activeMeds": "चल रही दवाएं",
+    "pausedMeds": "रोकी गई दवाएं",
+    "noMeds": "अभी तक कोई दवा नहीं जोड़ी गई।"
+  },
+  "yoga": {
+    "title": "एआई योग और स्वास्थ्य",
+    "subtitle": "स्वास्थ्य के लिए योग आसन और निर्देशित सत्र",
+    "aiTherapy": "एआई व्यक्तिगत थेरेपी",
+    "searchPlaceholder": "योग आसन या बीमारी खोजें...",
+    "allPoses": "सभी आसन",
+    "breathing": "प्राणायाम",
+    "meditation": "ध्यान",
+    "duration": "मिनट"
+  },
+  "progress": {
+    "title": "स्वास्थ्य प्रगति",
+    "subtitle": "दवा पालन, स्ट्रीक और स्वास्थ्य डेटा ट्रैक करें",
+    "overallAdherence": "कुल दवा पालन",
+    "currentStreak": "वर्तमान स्ट्रीक",
+    "dosesTaken": "ली गई खुराक",
+    "missedDoses": "छूटी खुराक",
+    "weeklyReport": "साप्ताहिक रिपोर्ट",
+    "logVitals": "वाइटल्स दर्ज करें"
   },
   "support": {
     "title": "सहायता और सेटिंग्स",
+    "subtitle": "सहायता प्राप्त करें, थीम और ऐप भाषा बदलें",
     "appearance": "ऐप थीम और लुक",
     "darkMode": "डार्क मोड (डार्क)",
     "lightMode": "लाइट मोड (सफेद)",
     "systemMode": "सिस्टम ऑटो",
     "language": "ऐप भाषा",
-    "selectLanguage": "अपनी पसंदीदा भाषा चुनें",
+    "selectLanguage": "पसंदीदा भाषा चुनें",
     "emergencyContacts": "आपातकालीन संपर्क",
+    "callDoctor": "डॉक्टर को कॉल करें",
+    "bookAppointment": "अपॉइंटमेंट बुक करें",
+    "emergency": "इमरजेंसी",
+    "myProfile": "मेरी प्रोफाइल",
     "helpCenter": "सहायता केंद्र और प्रश्न",
-    "termsPrivacy": "नियम एवं गोपनीयता नीति"
+    "privacyPolicy": "गोपनीयता नीति और सुरक्षा",
+    "terms": "सेवा की शर्तें"
   }
 }

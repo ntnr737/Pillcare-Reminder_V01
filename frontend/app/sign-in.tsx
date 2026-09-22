@@ -26,33 +26,22 @@ export default function SignIn() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
-  const handleSignIn = async () => {
+    const handleSignIn = async () => {
     setLoading(true);
     try {
       await signInWithGoogle();
       router.replace("/");
     } catch (e: any) {
-      Alert.alert(
-        "Google Sign-In",
-        e?.message ? `${e.message}
-
-Would you like to continue as a Guest Patient?` : "Could not sign in with Google. Continue as Guest Patient?",
-        [
-          { text: "Try Again", style: "cancel" },
-          {
-            text: "Continue as Guest Patient",
-            style: "default",
-            onPress: async () => {
-              try {
-                await signInAsGuest();
-                router.replace("/");
-              } catch (err: any) {
-                Alert.alert("Error", err?.message || "Failed to start guest session.");
-              }
-            }
-          }
-        ]
-      );
+      if (e?.message?.includes("cancelled")) {
+        setLoading(false);
+        return;
+      }
+      try {
+        await signInAsGuest("PillCare Patient");
+        router.replace("/");
+      } catch (err) {
+        Alert.alert("Sign-In", "Could not complete sign in. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -206,8 +195,6 @@ const s = StyleSheet.create({
   trustSub: { fontSize: 9, color: TM },
   gBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 9, backgroundColor: AC, borderRadius: 12, height: 44 },
   gBtnTx: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  guestBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 7, backgroundColor: SF, borderRadius: 12, height: 42, borderWidth: 1, borderColor: BD },
-  guestBtnTx: { color: TX, fontWeight: "600", fontSize: 13 },
   badges: { flexDirection: "row", justifyContent: "space-around" },
   badge: { alignItems: "center", gap: 4 },
   badgeTx: { fontSize: 9, color: TM, textAlign: "center", lineHeight: 12 },

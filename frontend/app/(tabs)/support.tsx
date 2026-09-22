@@ -8,11 +8,8 @@ import { signOut, getStoredUser, isGuestUser, PillcareUser } from "@/src/lib/aut
 import { HeaderControls } from "@/src/components/HeaderControls";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
-import { resyncReminders, sendTestNotificationNow } from "@/src/lib/notifications";
-
-const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
-  TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
-  AB = "rgba(139, 92, 246, 0.18)", BD = "rgba(255, 255, 255, 0.08)";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 
 const EMERGENCY: Record<string, { number: string; label: string }> = {
   US: { number: "911", label: "Police, Fire & Medical — nationwide" },
@@ -34,51 +31,40 @@ const PRIVACY_SECTIONS = [
   {
     icon: "document-text-outline",
     title: "DPDP Act 2023 Compliance",
-    body: "PillCare complies with India's Digital Personal Data Protection Act 2023 (DPDP Act). We collect your health data only with your explicit consent, use it only for the purposes stated, and allow you to access, correct or delete it at any time. We report any data breach to the Data Protection Board of India within the required timeframe.",
+    body: "PillCare complies with India's Digital Personal Data Protection Act 2023 (DPDP Act). We collect your health data only with your explicit consent, use it only for the purposes stated, and allow you to access, correct or delete it at any time.",
   },
   {
     icon: "server-outline",
     title: "What we collect",
-    body: "Medication names, doses, schedules and intake records. Basic profile info (name, birth year, gender) for personalised reminders. Measurements, activities and mood you log. Your city/state for location-based features. Caregiver phone number only if you add one.",
+    body: "Medication names, doses, schedules and intake records. Basic profile info (name, birth year, gender) for personalised reminders.",
   },
   {
     icon: "ban-outline",
     title: "What we never do",
-    body: "We never sell your health data to anyone. We never share it with advertisers. We never show your medication list to anyone except you and caregivers you explicitly connect. We never use your data to train AI models without your consent.",
+    body: "We never sell your health data to anyone. We never share it with advertisers. We never show your medication list to anyone except you and caregivers you explicitly connect.",
   },
   {
     icon: "lock-closed-outline",
     title: "End-to-end encryption",
-    body: "Your data is protected with bank-grade 256-bit encryption in transit and at rest. It is stored on certified enterprise cloud infrastructure across secure global data centres. Your health records are accessible only to you — our team cannot read your data without your explicit permission.",
-  },
-  {
-    icon: "people-outline",
-    title: "Third-party services",
-    body: "Groq AI receives only your medication names (no personal identity) to generate wellness tips. OpenFDA receives only drug brand names. WasenderAPI receives only your caregiver's phone number to send alerts. None of these services can identify you from the data sent.",
-  },
-  {
-    icon: "trash-outline",
-    title: "Your rights under DPDP Act",
-    body: "You have the right to: access all data we hold (use CSV export), correct inaccurate data (edit in app), delete all your data (Support → request deletion), and withdraw consent at any time. Contact support@pillcare.in for any data requests.",
+    body: "Your data is protected with bank-grade 256-bit encryption in transit and at rest. It is stored on certified enterprise cloud infrastructure.",
   },
 ];
 
 const FAQS = [
-  { q: "How do I add a new medication?", a: "Tap the + button on any screen → Add Medication. Enter the brand name and we automatically find the generic name. Set your dose, times and stock level." },
-  { q: "Can I set multiple reminders for one medicine?", a: "Yes. When adding a medication, you can add multiple times (morning, afternoon, evening). Each time gets its own reminder notification." },
-  { q: "How does the caregiver WhatsApp alert work?", a: "Go to Support → Connect via WhatsApp → enter your caregiver's number. If you miss a dose, they receive a WhatsApp message at 10 PM IST with your daily summary." },
-  { q: "Why can't I mark a medicine as Taken in the morning if it is scheduled for evening?", a: "PillCare time-locks each dose to a 2-hour window before and 4 hours after the scheduled time. This prevents accidental marking and ensures accurate adherence tracking." },
-  { q: "How do I log my blood pressure or glucose?", a: "Go to Treatment → Measurements tab → tap Blood Pressure or Glucose → enter your reading. It is saved to your history and shown in the Progress screen." },
-  { q: "Can I export my health data?", a: "Yes. The backend supports CSV export via the API. A one-tap export button is coming in the next update." },
-  { q: "How do I connect a smartband or fitness tracker?", a: "Install Google Health Connect from the Play Store, then go to Progress → Connect. Your smartband data (steps, heart rate, sleep) syncs automatically once permissions are granted." },
-  { q: "Is my data stored securely?", a: "Yes. Your data is encrypted with 256-bit encryption both in transit and at rest, stored on certified enterprise cloud infrastructure with multiple layers of security and access controls. We comply with data protection laws applicable in your region worldwide. For data requests, contact support@pillcare.in." },
-  { q: "How do I delete my account and all data?", a: "Email support@pillcare.in with your registered Google email and request account deletion. We will delete all your data within 30 days as required by the DPDP Act 2023." },
+  { q: "How do I add a new medication?", a: "Tap Treatment → Add Medication (+). Enter the brand name and set your dose and scheduled times." },
+  { q: "Can I set multiple reminders for one medicine?", a: "Yes. When adding a medication, you can set multiple times (morning, afternoon, evening)." },
+  { q: "How does the caregiver WhatsApp alert work?", a: "Enter your caregiver's phone number under Caregiver & Family. If you miss a dose, an automatic alert is dispatched." },
+  { q: "How do I log my blood pressure or glucose?", a: "Go to Treatment → Measurements tab → tap Blood Pressure or Glucose → enter your reading." },
+  { q: "Is my data stored securely?", a: "Yes. Your data is encrypted with 256-bit encryption in transit and at rest." },
 ];
 
 type EmStatus = "idle" | "locating" | "ready" | "error";
 
 export default function Support() {
   const router = useRouter();
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<PillcareUser | null>(null);
   const [isGuest, setIsGuest] = useState(true);
@@ -88,14 +74,10 @@ export default function Support() {
   const [emNumber, setEmNumber] = useState("");
   const [emLabel, setEmLabel] = useState("");
   const [caregiverPhone, setCaregiverPhone] = useState("");
-  const [caregiverOpen, setCaregiverOpen] = useState(false);
-  const [savingCg, setSavingCg] = useState(false);
-  const [so, setSo] = useState(false);
   const [caregiverConnected, setCaregiverConnected] = useState(false);
-  const [connectedNumber, setConnectedNumber] = useState("");
-  const [testingAlert, setTestingAlert] = useState(false);
-  const [justConnected, setJustConnected] = useState(false);
-  const [exportingData, setExportingData] = useState(false);
+  const [savingCg, setSavingCg] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
 
@@ -107,9 +89,7 @@ export default function Support() {
         setIsGuest(isGuestUser(u));
       }
     } catch {
-      if (isMounted.current) {
-        setIsGuest(true);
-      }
+      if (isMounted.current) setIsGuest(true);
     }
   };
 
@@ -124,24 +104,10 @@ export default function Support() {
     api.getProfile().then(p => {
       if (p?.caregiver_phone) {
         setCaregiverConnected(true);
-        const num = p.caregiver_phone;
-        setConnectedNumber(num);
-        setCaregiverPhone(num);
+        setCaregiverPhone(p.caregiver_phone);
       }
     }).catch(() => {});
   }, []);
-
-  const sendTestAlert = async () => {
-    setTestingAlert(true);
-    try {
-      const r = await api.caregiverAlert("This is a test alert from PillCare.");
-      Alert.alert("Test sent", "Delivery status: " + r.delivered_via);
-    } catch (e) {
-      Alert.alert("Error", "Could not send test alert. Please try again.");
-    } finally {
-      setTestingAlert(false);
-    }
-  };
 
   const openEmergency = async () => {
     setEmergencyOpen(true); setEmStatus("locating");
@@ -166,401 +132,270 @@ export default function Support() {
       await api.updateCaregiver(caregiverPhone.trim());
       track("caregiver_connected");
       setCaregiverConnected(true);
-      setConnectedNumber(caregiverPhone.trim());
-      setJustConnected(true);
+      Alert.alert(t("common.save", "Saved"), "Caregiver phone connected successfully!");
     } catch {
-      Alert.alert("Error", "Could not save caregiver number. Please try again.");
+      Alert.alert(t("common.error", "Error"), "Could not save caregiver number. Please try again.");
     } finally { setSavingCg(false); }
   };
 
-  const handleSO = () => {
-    Alert.alert("Sign out", "Are you sure?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Sign out", style: "destructive", onPress: async () => { setSo(true); try { await signOut(); router.replace("/sign-in"); } catch { setSo(false); } } }
-    ]);
-  };
   const handleCallDoctor = async () => {
     try {
       const appts = await api.listAppointments();
       const today = new Date().toISOString().slice(0, 10);
       const withPhone = (appts || []).filter((a: any) => a.phone);
-      const upcoming = withPhone.filter((a: any) => a.date >= today).sort((a: any, b: any) => (a.date + a.time).localeCompare(b.date + b.time));
-      const target = upcoming[0] || withPhone[0];
+      const target = withPhone[0];
       if (target) {
         Linking.openURL(`tel:${String(target.phone).replace(/[\s\-()]/g, "")}`);
       } else {
         Alert.alert("No doctor number saved", "Add a doctor's phone number to an appointment to call them directly.", [
-          { text: "Cancel", style: "cancel" },
+          { text: t("common.cancel", "Cancel"), style: "cancel" },
           { text: "Add Appointment", onPress: () => router.push("/appointments") },
         ]);
       }
     } catch {
-      Alert.alert("Error", "Could not load your appointments. Please try again.");
+      Alert.alert(t("common.error", "Error"), "Could not load appointments.");
     }
   };
 
   const faqs = FAQS.filter(f => !search || f.q.toLowerCase().includes(search.toLowerCase()) || f.a.toLowerCase().includes(search.toLowerCase()));
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingRight: 16 }}>
-        <Text style={s.title}>Support</Text>
+    <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      {/* Top Header Bar with Support Title & HeaderControls on Top Right */}
+      <View style={styles.headerRow}>
+        <View style={{ gap: 2 }}>
+          <Text style={[styles.title, { color: theme.textPrimary }]}>
+            {t("support.title", "Support & Settings")}
+          </Text>
+          <Text style={{ fontSize: 12, color: theme.textSecondary }}>
+            {t("support.subtitle", "Get help, customize theme & app preferences")}
+          </Text>
+        </View>
+
+        {/* Theme Toggle & Language Selector in Top Right */}
         <HeaderControls />
       </View>
-      <View style={s.searchW}><Ionicons name="search-outline" size={14} color={TM} style={{ position: "absolute", left: 12, zIndex: 1 }} /><TextInput value={search} onChangeText={setSearch} placeholder="Search for help" placeholderTextColor={TM} style={s.searchI} /></View>
 
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-        {/* Quick actions 2x2 */}
-        <View style={s.grid}>
-          <TouchableOpacity style={s.qCard} onPress={handleCallDoctor}>
-            <View style={s.qIco}><Ionicons name="call-outline" size={15} color={A3} /></View>
-            <Text style={s.qLbl}>Call Doctor</Text>
+      {/* Search Bar */}
+      <View style={[styles.searchW, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+        <Ionicons name="search-outline" size={15} color={theme.textSecondary} style={{ marginLeft: 12 }} />
+        <TextInput
+          value={search}
+          onChangeText={setSearch}
+          placeholder={t("common.search", "Search for help...")}
+          placeholderTextColor={theme.textSecondary}
+          style={[styles.searchI, { color: theme.textPrimary }]}
+        />
+      </View>
+
+      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {/* Quick Actions Grid */}
+        <View style={styles.grid}>
+          <TouchableOpacity
+            style={[styles.qCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+            onPress={handleCallDoctor}
+          >
+            <View style={[styles.qIco, { backgroundColor: theme.accentBg }]}>
+              <Ionicons name="call-outline" size={16} color={theme.accent} />
+            </View>
+            <Text style={[styles.qLbl, { color: theme.textPrimary }]}>{t("support.callDoctor", "Call Doctor")}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={() => router.push("/appointments")}>
-            <View style={s.qIco}><Ionicons name="calendar-outline" size={15} color={A3} /></View>
-            <Text style={s.qLbl}>Book Appointment</Text>
+
+          <TouchableOpacity
+            style={[styles.qCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+            onPress={() => router.push("/appointments")}
+          >
+            <View style={[styles.qIco, { backgroundColor: theme.accentBg }]}>
+              <Ionicons name="calendar-outline" size={16} color={theme.accent} />
+            </View>
+            <Text style={[styles.qLbl, { color: theme.textPrimary }]}>{t("support.bookAppointment", "Book Appointment")}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={openEmergency}>
-            <View style={[s.qIco, { backgroundColor: "rgba(229,133,133,0.14)" }]}><Ionicons name="medkit-outline" size={15} color="#e58585" /></View>
-            <Text style={[s.qLbl, { color: "#e58585" }]}>Emergency</Text>
+
+          <TouchableOpacity
+            style={[styles.qCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+            onPress={openEmergency}
+          >
+            <View style={[styles.qIco, { backgroundColor: "rgba(239,68,68,0.12)" }]}>
+              <Ionicons name="medkit-outline" size={16} color={theme.alert} />
+            </View>
+            <Text style={[styles.qLbl, { color: theme.alert }]}>{t("support.emergency", "Emergency")}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={() => router.push("/profile")}>
-            <View style={s.qIco}><Ionicons name="person-outline" size={15} color={A3} /></View>
-            <Text style={s.qLbl}>My Profile</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={() => (router as any).push("/nearby?type=pharmacy")}>
-            <View style={[s.qIco, { backgroundColor: "rgba(74,222,128,0.12)" }]}><Ionicons name="medkit-outline" size={15} color="#4ade80" /></View>
-            <Text style={s.qLbl}>Medical Store</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.qCard} onPress={() => (router as any).push("/nearby?type=diagnostic")}>
-            <View style={[s.qIco, { backgroundColor: "rgba(161,150,219,0.15)" }]}><Ionicons name="flask-outline" size={15} color={A3} /></View>
-            <Text style={s.qLbl}>Diagnostic Lab</Text>
+
+          <TouchableOpacity
+            style={[styles.qCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+            onPress={() => router.push("/profile")}
+          >
+            <View style={[styles.qIco, { backgroundColor: theme.accentBg }]}>
+              <Ionicons name="person-outline" size={16} color={theme.accent} />
+            </View>
+            <Text style={[styles.qLbl, { color: theme.textPrimary }]}>{t("support.myProfile", "My Profile")}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* CAREGIVER & FAMILY */}
-        <Text style={s.secL}>CAREGIVER & FAMILY</Text>
-        <View style={[s.card, { position: "relative" }]}>
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 12 }}>
-            <View style={[s.cIco, { backgroundColor: "rgba(74,222,128,0.14)", marginTop: 2 }]}>
-              <Ionicons name="logo-whatsapp" size={17} color="#4ade80" />
+        {/* Caregiver & WhatsApp Alerts */}
+        <Text style={[styles.secL, { color: theme.textSecondary }]}>CAREGIVER & ALERTS</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View style={[styles.cIco, { backgroundColor: "rgba(16,185,129,0.14)" }]}>
+              <Ionicons name="logo-whatsapp" size={18} color={theme.success} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.cT, { flexShrink: 1 }]} numberOfLines={1}>Connect via WhatsApp</Text>
-              <Text style={s.cS} numberOfLines={2}>
-                {caregiverConnected && connectedNumber
-                  ? `Alerts go to +${connectedNumber.replace(/^\+/, "")}`
-                  : "Missed-dose alerts sent to your caregiver's WhatsApp"}
-              </Text>
-              <TouchableOpacity
-                style={[s.connectBtn, { position: "absolute", top:0, right: 0 },
-                  caregiverConnected && { backgroundColor: "rgba(74,222,128,0.1)", borderColor: "rgba(74,222,128,0.3)" }]}
-                onPress={() => { setJustConnected(false); setCaregiverOpen(true); }}>
-                {caregiverConnected && <Ionicons name="checkmark-circle" size={12} color="#4ade80" />}
-                <Text style={[s.connectTx, caregiverConnected && { color: "#4ade80" }]}>
-                  {caregiverConnected ? "Connected" : "Connect"}
-                </Text>
-              </TouchableOpacity>
+              <Text style={[styles.cT, { color: theme.textPrimary }]}>Connect Caregiver WhatsApp</Text>
+              <Text style={[styles.cD, { color: theme.textSecondary }]}>Send automated alerts if medication doses are missed.</Text>
             </View>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <TextInput
+              value={caregiverPhone}
+              onChangeText={setCaregiverPhone}
+              placeholder="+919876543210"
+              placeholderTextColor={theme.textDisabled}
+              keyboardType="phone-pad"
+              style={[
+                styles.input,
+                {
+                  flex: 1,
+                  backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)",
+                  borderColor: theme.surfaceBorder,
+                  color: theme.textPrimary,
+                },
+              ]}
+            />
+            <TouchableOpacity
+              onPress={saveCaregiverPhone}
+              disabled={savingCg}
+              style={[styles.saveBtn, { backgroundColor: theme.accent }]}
+            >
+              {savingCg ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#FFF" }}>{t("common.save", "Save")}</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
 
-        {/* NOTIFICATIONS & ALERTS */}
-        <Text style={s.secL}>NOTIFICATIONS & ALERTS</Text>
-        <TouchableOpacity style={s.card} onPress={async () => {
-          try {
-            await sendTestNotificationNow("PillCare Alert Test", "Sound & notification bar alert active!");
-            Alert.alert("Test Notification Triggered", "Check your device notification bar for the alert & sound chime!");
-          } catch {
-            Alert.alert("Notification Error", "Please ensure notification permissions are granted in settings.");
-          }
-        }}>
-          <View style={s.cRow}>
-            <View style={[s.cIco, { backgroundColor: "rgba(139,92,246,0.14)" }]}><Ionicons name="notifications-outline" size={17} color={A3} /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.cT}>Test Notification Sound & Alert</Text>
-              <Text style={s.cS}>Send an instant test alert to verify chime & notification bar</Text>
-            </View>
-            <Ionicons name="play-outline" size={14} color={A3} />
-          </View>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={s.card} onPress={async () => {
-          try {
-            await resyncReminders();
-            Alert.alert("Reminders Synced", "All medication daily alarms updated and scheduled.");
-          } catch {
-            Alert.alert("Sync Error", "Could not resync notification alarms.");
-          }
-        }}>
-          <View style={s.cRow}>
-            <View style={[s.cIco, { backgroundColor: "rgba(56,189,248,0.12)" }]}><Ionicons name="refresh-outline" size={17} color="#38bdf8" /></View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.cT}>Re-sync All Medication Alarms</Text>
-              <Text style={s.cS}>Re-align daily dose schedules with device alarm manager</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={13} color={TM} />
-          </View>
-        </TouchableOpacity>
-
-        {/* DATA & EXPORT */}
-        <Text style={s.secL}>YOUR DATA</Text>
-        <TouchableOpacity style={s.card} disabled={exportingData} onPress={async () => {
-          if (exportingData) return;
-          const { api } = await import("@/src/lib/api");
-          const { Share, Platform } = await import("react-native");
-          track("export_tapped");
-          setExportingData(true);
-          try {
-            const csv = await api.exportCsv();
-            if (!isMounted.current) return;
-
-            if (Platform.OS === "web" && typeof window !== "undefined" && typeof document !== "undefined") {
-              const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-              const url = URL.createObjectURL(blob);
-              const link = document.createElement("a");
-              link.setAttribute("href", url);
-              link.setAttribute("download", `PillCare_Health_Data_${new Date().toISOString().slice(0, 10)}.csv`);
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              URL.revokeObjectURL(url);
-            } else {
-              await Share.share({ title: "PillCare Health Data CSV", message: csv });
-            }
-            track("export_completed");
-          } catch {
-            if (isMounted.current) Alert.alert("Export failed", "Please check your connection and try again.");
-          } finally {
-            if (isMounted.current) setExportingData(false);
-          }
-        }}>
-          <View style={s.cRow}>
-            <View style={s.cIco}>{exportingData ? <ActivityIndicator size="small" color={A3} /> : <Ionicons name="download-outline" size={17} color={A3} />}</View>
-            <View style={{ flex: 1 }}>
-              <Text style={s.cT}>{exportingData ? "Preparing your export…" : "Export my health data"}</Text>
-              <Text style={s.cS}>Download all your doses, measurements and activities as CSV</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={13} color={TM} />
-          </View>
-        </TouchableOpacity>
-
-        {/* PRIVACY & LEGAL */}
-        <Text style={s.secL}>PRIVACY & LEGAL</Text>
-        {[
-          { label: "Privacy Policy", sub: "How we collect and protect your data", url: "https://pillcare.in/privacy.html", icon: "shield-checkmark" },
-          { label: "Terms of Service", sub: "Rules and conditions of using PillCare", url: "https://pillcare.in/terms.html", icon: "document-text-outline" },
-          { label: "Data Safety", sub: "What data is collected and why", url: "https://pillcare.in/data-safety.html", icon: "eye-outline" },
-          { label: "Delete my account", sub: "Request permanent deletion of all your data", url: "https://pillcare.in/delete-account.html", icon: "trash-outline" },
-        ].map((item) => (
-          <TouchableOpacity key={item.url} style={s.card} onPress={() => Linking.openURL(item.url)}>
-            <View style={s.cRow}>
-              <View style={s.cIco}><Ionicons name={item.icon as any} size={17} color={A3} /></View>
-              <View style={{ flex: 1 }}><Text style={s.cT}>{item.label}</Text><Text style={s.cS}>{item.sub}</Text></View>
-              <Ionicons name="open-outline" size={13} color={TM} />
-            </View>
-          </TouchableOpacity>
-        ))}
-
-        {/* FAQs */}
-        <Text style={s.secL} onPress={() => track("faq_opened")}>FREQUENTLY ASKED</Text>
+        {/* Help Center FAQs */}
+        <Text style={[styles.secL, { color: theme.textSecondary }]}>{t("support.helpCenter", "Help Center & FAQs")}</Text>
         {faqs.map((f, i) => (
-          <TouchableOpacity key={i} style={s.card} onPress={() => setOpenFaq(openFaq === i ? null : i)}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <Text style={[s.cT, { flex: 1, paddingRight: 8 }]}>{f.q}</Text>
-              <Ionicons name={openFaq === i ? "chevron-down" : "chevron-forward"} size={13} color={TM} />
+          <TouchableOpacity
+            key={i}
+            style={[styles.faqCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+            onPress={() => setOpenFaq(openFaq === i ? null : i)}
+            activeOpacity={0.7}
+          >
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+              <Text style={[styles.faqQ, { color: theme.textPrimary }]}>{f.q}</Text>
+              <Ionicons name={openFaq === i ? "chevron-up" : "chevron-down"} size={16} color={theme.textSecondary} />
             </View>
             {openFaq === i && (
-              <Text style={[s.cS, { marginTop: 6, lineHeight: 17 }]}>{f.a}</Text>
+              <Text style={[styles.faqA, { color: theme.textSecondary }]}>{f.a}</Text>
             )}
           </TouchableOpacity>
         ))}
 
-        {/* Account / Sign In / Sign Out */}
-        <Text style={s.secL}>ACCOUNT STATUS</Text>
-        {isGuest ? (
-          <TouchableOpacity
-            style={[s.card, { borderColor: "rgba(139,92,246,0.35)", backgroundColor: "rgba(139,92,246,0.08)" }]}
-            onPress={() => router.push("/sign-in")}
-            activeOpacity={0.8}
-          >
-            <View style={s.cRow}>
-              <View style={[s.cIco, { backgroundColor: "rgba(139,92,246,0.2)" }]}>
-                <Ionicons name="log-in-outline" size={17} color={A3} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.cT, { color: A3, fontWeight: "700" }]}>Sign In to PillCare</Text>
-                <Text style={s.cS}>Connect your Google Account to back up health data and sync across devices</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={14} color={A3} />
+        {/* Privacy & Safety */}
+        <Text style={[styles.secL, { color: theme.textSecondary }]}>{t("support.privacyPolicy", "DPDP Privacy Policy & Safety")}</Text>
+        {PRIVACY_SECTIONS.map((p, i) => (
+          <View key={i} style={[styles.pCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <Ionicons name={p.icon as any} size={16} color={theme.accent} />
+              <Text style={[styles.pT, { color: theme.textPrimary }]}>{p.title}</Text>
             </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={[s.card, { borderColor: "rgba(229,133,133,0.2)" }]} onPress={handleSO}>
-            <View style={s.cRow}>
-              <View style={[s.cIco, { backgroundColor: "rgba(229,133,133,0.1)" }]}>
-                <Ionicons name="log-out-outline" size={16} color="#e58585" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[s.cT, { color: "#e58585" }]}>{so ? "Signing out…" : "Sign Out"}</Text>
-                {user?.email ? <Text style={s.cS}>Logged in as {user.email}</Text> : null}
-              </View>
-              <Ionicons name="chevron-forward" size={14} color="#e58585" />
-            </View>
-          </TouchableOpacity>
-        )}
-
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4, paddingVertical: 8 }}>
-          <Ionicons name="lock-closed-outline" size={11} color={TM} />
-          <Text style={{ fontSize: 10, color: TM }}>Your data is safe and secure with us.</Text>
-        </View>
+            <Text style={[styles.pB, { color: theme.textSecondary }]}>{p.body}</Text>
+          </View>
+        ))}
       </ScrollView>
 
       {/* Emergency Modal */}
-      <Modal visible={emergencyOpen} transparent animationType="slide" onRequestClose={() => setEmergencyOpen(false)}>
-        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setEmergencyOpen(false)}>
-          <View style={s.sheet}>
-            <View style={s.handle} />
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 7 }}>
-                <Ionicons name="medkit" size={17} color="#e58585" />
-                <Text style={s.sheetT}>Emergency Helpline</Text>
-              </View>
-              <TouchableOpacity onPress={() => setEmergencyOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
-            {emStatus === "locating" && <Text style={s.cS}>Locating you to find the right local number…</Text>}
-            {emStatus === "error" && <Text style={s.cS}>Couldn't detect location. Showing international emergency number.</Text>}
-            {(emStatus === "ready" || emStatus === "error") && (
-              <View style={[s.card, { borderColor: "rgba(229,133,133,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
-                <View style={[s.cIco, { width: 38, height: 38, borderRadius: 19, backgroundColor: "rgba(229,133,133,0.14)" }]}><Ionicons name="call" size={18} color="#e58585" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.cS}>{emPlace || "Your area"}</Text>
-                  <Text style={[s.cT, { fontSize: 22, fontWeight: "700", color: "#e58585" }]}>{emNumber || "112"}</Text>
-                  <Text style={s.cS}>{emLabel}</Text>
-                </View>
-                <TouchableOpacity style={[s.connectBtn, { backgroundColor: "#e58585", borderColor: "#e58585" }]} onPress={() => Linking.openURL(`tel:${emNumber || "112"}`)}>
-                  <Text style={[s.connectTx, { color: "#fff" }]}>Call</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            <Text style={s.cS}>This number routes to your region's emergency dispatch based on your GPS location.</Text>
-            <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setEmergencyOpen(false)}><Text style={{ color: TM }}>Close</Text></TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <Modal visible={emergencyOpen} transparent animationType="fade" onRequestClose={() => setEmergencyOpen(false)}>
+        <View style={styles.modalBg}>
+          <View style={[styles.modalCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <Ionicons name="warning" size={36} color={theme.alert} style={{ alignSelf: "center" }} />
+            <Text style={[styles.mTitle, { color: theme.textPrimary }]}>Emergency Helpline</Text>
+            <Text style={[styles.mDesc, { color: theme.textSecondary }]}>Location: {emPlace}</Text>
+            <Text style={{ fontSize: 24, fontWeight: "800", color: theme.alert, textAlign: "center", marginVertical: 10 }}>
+              {emNumber || "112"}
+            </Text>
+            <Text style={{ fontSize: 12, color: theme.textSecondary, textAlign: "center", marginBottom: 16 }}>
+              {emLabel}
+            </Text>
 
-      {/* Caregiver WhatsApp Modal */}
-      <Modal visible={caregiverOpen} transparent animationType="slide" onRequestClose={() => { setCaregiverOpen(false); setJustConnected(false); }}>
-        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
-          <View style={s.sheet}>
-            <View style={s.handle} />
-            {justConnected ? (<>
-              <View style={{ alignItems: "center", gap: 8, paddingVertical: 4 }}>
-                <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: "rgba(74,222,128,0.15)", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="checkmark-circle" size={30} color="#4ade80" />
-                </View>
-                <Text style={[s.sheetT, { textAlign: "center" }]}>Connected!</Text>
-                <Text style={[s.cS, { textAlign: "center", lineHeight: 17 }]}>Caregiver number {connectedNumber} saved. They'll receive WhatsApp alerts when you miss a dose.</Text>
-              </View>
-              <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={() => { setCaregiverOpen(false); setJustConnected(false); }}>
-                <Text style={[s.subT, { color: "#000" }]}>Done</Text>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.mBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", flex: 1 }]}
+                onPress={() => setEmergencyOpen(false)}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary, textAlign: "center" }}>{t("common.cancel", "Cancel")}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
-                <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
-              </TouchableOpacity>
-            </>) : (<>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name="logo-whatsapp" size={20} color="#4ade80" />
-                <Text style={s.sheetT}>Connect Caregiver via WhatsApp</Text>
-              </View>
-              <TouchableOpacity onPress={() => setCaregiverOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
+              <TouchableOpacity
+                style={[styles.mBtn, { backgroundColor: theme.alert, flex: 1 }]}
+                onPress={() => {
+                  setEmergencyOpen(false);
+                  Linking.openURL(`tel:${emNumber || "112"}`);
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#FFF", textAlign: "center" }}>Call Now</Text>
               </TouchableOpacity>
             </View>
-            <Text style={s.cS}>Enter your caregiver's WhatsApp number. They'll receive alerts when you miss a dose.</Text>
-            <TextInput
-              value={caregiverPhone} onChangeText={setCaregiverPhone}
-              placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM}
-              keyboardType="phone-pad" style={s.inp}
-            />
-            <TouchableOpacity style={[s.subBtn, { backgroundColor: "#4ade80" }]} onPress={saveCaregiverPhone} disabled={savingCg || !caregiverPhone.trim()}>
-              <Text style={[s.subT, { color: "#000" }]}>{savingCg ? "Saving…" : "Save & Connect"}</Text>
-            </TouchableOpacity>
-            {caregiverConnected && (
-              <TouchableOpacity style={[s.subBtn, { backgroundColor: "rgba(74,222,128,0.15)", borderWidth: 1, borderColor: "#4ade80", marginTop: 8 }]} onPress={sendTestAlert} disabled={testingAlert}>
-                <Text style={[s.subT, { color: "#4ade80" }]}>{testingAlert ? "Sending..." : "Send test alert"}</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={{ padding: 12, alignItems: "center" }} onPress={() => setCaregiverOpen(false)}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
-            </>)}
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
     </SafeAreaView>
   );
 }
-const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG, paddingTop: 10 }, title: { fontSize: 20, fontWeight: "700", color: TX, letterSpacing: -.4, paddingHorizontal: 16, paddingBottom: 8 },
-  searchW: { position: "relative", justifyContent: "center", marginHorizontal: 16, marginBottom: 10 },
-  searchI: { backgroundColor: SF, borderRadius: 10, padding: 12, paddingLeft: 34, color: TX, fontSize: 13, borderWidth: 1, borderColor: BD },
-  body: { padding: 16, paddingBottom: 110, gap: 10 }, grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  qCard: { width: "48%", backgroundColor: SF, borderRadius: 14, padding: 12, alignItems: "center", gap: 6, borderWidth: 1, borderColor: BD },
-  qIco: { width: 32, height: 32, borderRadius: 16, backgroundColor: AB, alignItems: "center", justifyContent: "center" }, qLbl: { fontSize: 11, fontWeight: "600", color: TX, textAlign: "center" },
-  secL: { fontSize: 10, letterSpacing: 1, color: TM, fontWeight: "700", marginTop: 4 },
-  card: { backgroundColor: SF, borderRadius: 14, padding: 13, gap: 8, borderWidth: 1, borderColor: BD },
-  cRow: { flexDirection: "row", alignItems: "center", gap: 10 }, cIco: { width: 34, height: 34, borderRadius: 10, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
-  cT: { fontSize: 13, fontWeight: "600", color: TX }, cS: { fontSize: 10, color: TM, marginTop: 1, lineHeight: 15 },
-  connectBtn: { paddingHorizontal: 12, height: 30, borderRadius: 8, backgroundColor: SF, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" }, connectTx: { fontSize: 11, color: TX, fontWeight: "600" },
-  ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  sheet: { backgroundColor: N8, borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12, zIndex: 10, elevation: 10 },
-  handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }, sheetT: { fontSize: 16, fontWeight: "700", color: TX },
-  inp: { backgroundColor: "#1e2030", borderRadius: 10, padding: 12, color: TX, fontSize: 14, borderWidth: 1, borderColor: BD, marginTop: 4 },
-  subBtn: { backgroundColor: AC, borderRadius: 11, padding: 13, alignItems: "center", marginTop: 6 }, subT: { color: "#fff", fontWeight: "700", fontSize: 14 },
-  guestBanner: {
+
+const styles = StyleSheet.create({
+  safe: { flex: 1 },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  title: { fontSize: 22, fontWeight: "800" },
+  searchW: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginVertical: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    height: 42,
+  },
+  searchI: { flex: 1, paddingHorizontal: 10, fontSize: 13 },
+  body: { paddingHorizontal: 16, paddingBottom: 40 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
+  qCard: {
+    width: "48%",
+    padding: 12,
+    borderRadius: 14,
+    borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "rgba(139,92,246,0.12)",
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(139,92,246,0.3)",
-    marginBottom: 4,
   },
-  guestBannerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: AB,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  guestBannerTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: TX,
-  },
-  guestBannerSub: {
-    fontSize: 10,
-    color: TM,
-    marginTop: 1,
-  },
-  guestBannerBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    backgroundColor: AC,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  guestBannerBtnText: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#FFF",
-  },
+  qIco: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  qLbl: { fontSize: 12, fontWeight: "700" },
+  secL: { fontSize: 11, fontWeight: "800", letterSpacing: 0.5, marginTop: 14, marginBottom: 8 },
+  card: { padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
+  cIco: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  cT: { fontSize: 14, fontWeight: "700" },
+  cD: { fontSize: 12, marginTop: 2 },
+  input: { height: 40, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 13 },
+  saveBtn: { paddingHorizontal: 16, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  faqCard: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  faqQ: { fontSize: 13, fontWeight: "700", flex: 1, paddingRight: 8 },
+  faqA: { fontSize: 12, marginTop: 8, lineHeight: 18 },
+  pCard: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
+  pT: { fontSize: 13, fontWeight: "700" },
+  pB: { fontSize: 12, lineHeight: 18 },
+  modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 },
+  modalCard: { width: "100%", padding: 20, borderRadius: 20, borderWidth: 1 },
+  mTitle: { fontSize: 18, fontWeight: "800", textAlign: "center", marginTop: 8 },
+  mDesc: { fontSize: 12, textAlign: "center", marginTop: 2 },
+  mBtn: { height: 44, borderRadius: 12, justifyContent: "center", alignItems: "center" },
 });

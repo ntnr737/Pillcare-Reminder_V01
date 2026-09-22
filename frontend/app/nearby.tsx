@@ -11,7 +11,6 @@ import { get, K } from "@/src/lib/store";
 import * as Location from "expo-location";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
-import { HeaderControls } from "@/src/components/HeaderControls";
 
 const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
   TM = "rgba(249, 250, 251, 0.65)", AC = "#8B5CF6", A3 = "#A78BFA",
@@ -358,7 +357,6 @@ export default function Nearby() {
         </TouchableOpacity>
         <Text style={[s.title, { color: theme.textPrimary }]}>{t("nearby.title", "Nearby Medical Stores")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <HeaderControls />
           <TouchableOpacity onPress={openGoogleMaps} style={[s.mapBtn, { backgroundColor: theme.accentBg }]}>
             <Ionicons name="map-outline" size={18} color={theme.accent} />
           </TouchableOpacity>

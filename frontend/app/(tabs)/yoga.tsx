@@ -17,7 +17,8 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
-import { HeaderControls } from "@/src/components/HeaderControls";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 import { COLORS } from "@/src/constants/theme";
 import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
@@ -420,7 +421,6 @@ export default function YogaTabScreen() {
           <Text style={s.title}>AI Yoga Therapy</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <HeaderControls />
           <TouchableOpacity
             style={s.headerBadge}
             onPress={() => Alert.alert("AYUSH & Isha Verified", "All yoga sequences are designed in consultation with AYUSH Ministry guidelines, Patanjali Yogpeeth, and Isha Foundation protocols.")}>

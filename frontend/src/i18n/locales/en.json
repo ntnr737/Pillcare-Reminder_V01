@@ -2,13 +2,12 @@
   "appName": "PillCare",
   "tagline": "Your Smart Medication Companion",
   "nav": {
-    "home": "Home",
-    "medications": "Medications",
-    "appointments": "Appointments",
-    "nearby": "Nearby Stores",
-    "vitals": "Health Vitals",
-    "support": "Support & Settings",
-    "yoga": "AI Yoga Care"
+    "today": "Today",
+    "treatment": "Treatment",
+    "yoga": "Yoga",
+    "progress": "Progress",
+    "support": "Support",
+    "profile": "Profile"
   },
   "common": {
     "save": "Save",
@@ -28,9 +27,13 @@
     "details": "View Details",
     "share": "Share",
     "dismiss": "Dismiss",
-    "confirm": "Confirm"
+    "confirm": "Confirm",
+    "active": "Active",
+    "paused": "Paused",
+    "completed": "Completed"
   },
-  "home": {
+  "today": {
+    "title": "Today's Schedule",
     "greetingMorning": "Good Morning",
     "greetingAfternoon": "Good Afternoon",
     "greetingEvening": "Good Evening",
@@ -39,23 +42,44 @@
     "streakDays": "Day Adherence Streak",
     "quickActions": "Quick Actions",
     "refillAlert": "Refill Alert",
-    "refillDesc": "Pill supplies running low. Reorder now."
+    "refillDesc": "Pill supplies running low. Reorder now.",
+    "markTaken": "Mark Taken",
+    "taken": "Taken",
+    "skipped": "Skipped",
+    "snooze": "Snooze 15m"
   },
-  "nearby": {
-    "title": "Nearby Medical Stores",
-    "subtitle": "Find pharmacies, blood banks, diagnostic centers & emergency care near you",
-    "searchPlaceholder": "Search pharmacy, hospital, blood bank...",
-    "pharmacies": "Pharmacies",
-    "bloodBanks": "Blood Banks",
-    "diagnostics": "Diagnostics",
-    "emergency": "Emergency",
-    "noStoresInRadius": "No medical stores found within this radius.",
-    "nearestStoresOutside": "NEAREST STORES OUTSIDE RADIUS",
-    "expandRadius": "Expand search radius",
-    "enterPhone": "Enter WhatsApp / Mobile Number"
+  "treatment": {
+    "title": "My Medications",
+    "subtitle": "Manage prescriptions, schedules & refill alerts",
+    "addMedication": "Add Medication",
+    "searchPlaceholder": "Search medications...",
+    "activeMeds": "Active Medications",
+    "pausedMeds": "Paused",
+    "noMeds": "No medications added yet."
+  },
+  "yoga": {
+    "title": "AI Yoga & Wellness",
+    "subtitle": "Curated therapeutic poses & guided sessions for your health",
+    "aiTherapy": "AI Personalised Therapy",
+    "searchPlaceholder": "Search yoga poses or health condition...",
+    "allPoses": "All Poses",
+    "breathing": "Pranayama / Breathing",
+    "meditation": "Meditation",
+    "duration": "mins"
+  },
+  "progress": {
+    "title": "Health Progress",
+    "subtitle": "Track medication adherence, streak & vitals",
+    "overallAdherence": "Overall Adherence",
+    "currentStreak": "Current Streak",
+    "dosesTaken": "Doses Taken",
+    "missedDoses": "Missed Doses",
+    "weeklyReport": "Weekly Report",
+    "logVitals": "Log Vitals"
   },
   "support": {
-    "title": "Support & App Settings",
+    "title": "Support & Settings",
+    "subtitle": "Get help, customize theme & app preferences",
     "appearance": "App Theme & Appearance",
     "darkMode": "Dark Mode (Obsidian)",
     "lightMode": "Light Mode (Crisp Slate)",
@@ -63,7 +87,12 @@
     "language": "App Language",
     "selectLanguage": "Select Preferred Language",
     "emergencyContacts": "Emergency Contacts",
+    "callDoctor": "Call Doctor",
+    "bookAppointment": "Book Appointment",
+    "emergency": "Emergency",
+    "myProfile": "My Profile",
     "helpCenter": "Help Center & FAQs",
-    "termsPrivacy": "Terms & Privacy Policy"
+    "privacyPolicy": "DPDP Privacy Policy & Safety",
+    "terms": "Terms of Service"
   }
 }

@@ -15,7 +15,8 @@ import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
 import { DrugFoodGuideModal } from "@/src/components/DrugFoodGuideModal";
 import { ActionSheetModal } from "@/src/components/ActionSheetModal";
-import { HeaderControls } from "@/src/components/HeaderControls";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Notifications from "expo-notifications";
 
@@ -303,14 +304,16 @@ export default function Treatment() {
     }
   };
 
+  const { theme } = useTheme();
+  const { t } = useTranslation();
+
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
-        <Text style={s.title}>Treatment</Text>
+    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomColor: theme.surfaceBorder }]}>
+        <Text style={[s.title, { color: theme.textPrimary }]}>{t("treatment.title", "My Medications")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <HeaderControls />
           <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-treatment-btn">
-            <Ionicons name="refresh" size={20} color={A3} />
+            <Ionicons name="refresh" size={20} color={theme.accent} />
           </TouchableOpacity>
         </View>
       </View>

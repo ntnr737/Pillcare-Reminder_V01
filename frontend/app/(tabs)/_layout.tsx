@@ -1,17 +1,21 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { theme } from "@/src/lib/theme";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 
 export default function TabsLayout() {
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: theme.colors.brand,
-        tabBarInactiveTintColor: theme.colors.textSecondary,
+        tabBarActiveTintColor: theme.accent,
+        tabBarInactiveTintColor: theme.textSecondary,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.borderSubtle,
+          backgroundColor: theme.surface,
+          borderTopColor: theme.surfaceBorder,
           borderTopWidth: 1,
           paddingTop: 6,
           height: 64,
@@ -22,35 +26,35 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="today"
         options={{
-          title: "Today",
+          title: t("nav.today", "Today"),
           tabBarIcon: ({ color, size }) => <Ionicons name="sunny-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="treatment"
         options={{
-          title: "Treatment",
+          title: t("nav.treatment", "Treatment"),
           tabBarIcon: ({ color, size }) => <Ionicons name="medkit-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="yoga"
         options={{
-          title: "Yoga",
+          title: t("nav.yoga", "Yoga"),
           tabBarIcon: ({ color, size }) => <Ionicons name="flower-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="progress"
         options={{
-          title: "Progress",
+          title: t("nav.progress", "Progress"),
           tabBarIcon: ({ color, size }) => <Ionicons name="trending-up-outline" size={size} color={color} />,
         }}
       />
       <Tabs.Screen
         name="support"
         options={{
-          title: "Support",
+          title: t("nav.support", "Support"),
           tabBarIcon: ({ color, size }) => <Ionicons name="heart-outline" size={size} color={color} />,
         }}
       />

@@ -14,7 +14,8 @@ import {
   HealthSnapshot
 } from "@/src/lib/healthConnect";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
-import { HeaderControls } from "@/src/components/HeaderControls";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 import { YogaRoutineModal } from "@/src/components/YogaRoutineModal";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
 import { getClinicalTipsForMedications } from "@/src/lib/clinicalRules";
@@ -201,14 +202,16 @@ export default function Progress() {
     return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   };
 
+  const { theme } = useTheme();
+  const { t } = useTranslation();
+
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }]}>
-        <Text style={s.title}>Progress</Text>
+    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomColor: theme.surfaceBorder }]}>
+        <Text style={[s.title, { color: theme.textPrimary }]}>{t("progress.title", "Health Progress")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-          <HeaderControls />
           <TouchableOpacity onPress={onRefresh} style={{ padding: 4 }} testID="refresh-progress-btn">
-            <Ionicons name="refresh" size={18} color={A3} />
+            <Ionicons name="refresh" size={18} color={theme.accent} />
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.iBtn, { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 8, height: 32, borderRadius: 999, backgroundColor: "rgba(145,132,217,0.12)", borderWidth: 1, borderColor: "rgba(145,132,217,0.25)" }]}

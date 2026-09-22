@@ -13,7 +13,8 @@ import { YogaRoutineModal } from "@/src/components/YogaRoutineModal";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
 import { DrugFoodGuideModal } from "@/src/components/DrugFoodGuideModal";
 import { ActionSheetModal } from "@/src/components/ActionSheetModal";
-import { HeaderControls } from "@/src/components/HeaderControls";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 import { getFeatures } from "@/src/lib/features";
 import { track } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
@@ -345,14 +346,16 @@ export default function Today() {
     return "#e58585";
   };
 
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
-      <View style={s.hdr}>
-        <Text style={s.appNm}>PillCare</Text>
+    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
+      <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
+        <Text style={[s.appNm, { color: theme.textPrimary }]}>PillCare</Text>
         <View style={s.hdrR}>
-          <HeaderControls />
-          <TouchableOpacity style={s.iBtn} onPress={() => setCalOpen(true)}><Ionicons name="calendar-outline" size={15} color={TX} /></TouchableOpacity>
-          <View style={s.sTag}><Ionicons name="flame" size={13} color={A3} /><Text style={s.sTx}>{streak}</Text></View>
+          <TouchableOpacity style={[s.iBtn, { borderColor: theme.surfaceBorder }]} onPress={() => setCalOpen(true)}><Ionicons name="calendar-outline" size={15} color={theme.textPrimary} /></TouchableOpacity>
+          <View style={[s.sTag, { backgroundColor: theme.accentBg, borderColor: theme.surfaceBorder }]}><Ionicons name="flame" size={13} color={theme.accent} /><Text style={[s.sTx, { color: theme.accent }]}>{streak}</Text></View>
         </View>
       </View>
 

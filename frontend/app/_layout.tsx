@@ -11,11 +11,20 @@ import { resyncReminders, registerForPushNotifications, setupNotificationListene
 import { loadCachedFeatures, fetchFeatures } from "@/src/lib/features";
 import { getStoredToken } from "@/src/lib/auth";
 
-import { ThemeProvider } from "@/src/context/ThemeContext";
+import { ThemeProvider, useTheme } from "@/src/context/ThemeContext";
 import { LanguageProvider } from "@/src/context/LanguageContext";
 
 LogBox.ignoreAllLogs(true);
 SplashScreen.preventAutoHideAsync();
+
+function RootStack() {
+  const { theme } = useTheme();
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg }}>
+      <Stack screenOptions={{ headerShown: false }} />
+    </GestureHandlerRootView>
+  );
+}
 
 export default function RootLayout() {
   const [loaded, error] = useIconFonts();
@@ -46,8 +55,6 @@ export default function RootLayout() {
     return () => unsubNotifs();
   }, []);
 
-  // Re-fetch plan/feature flags whenever the app comes back to the foreground —
-  // otherwise a plan upgrade only takes effect after a full app restart.
   useEffect(() => {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
@@ -59,14 +66,12 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#0B0D14" }}>
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <LanguageProvider>
-            <Stack screenOptions={{ headerShown: false }} />
-          </LanguageProvider>
-        </ThemeProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <LanguageProvider>
+          <RootStack />
+        </LanguageProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
