@@ -3833,9 +3833,12 @@ async def create_announcement(payload: dict = Body(...), _: None = Depends(requi
         "body": body,
         "action_text": payload.get("action_text") or "Explore Now",
         "action_link": action_link,
+        "link_url": action_link,
         "type": type_val,
         "target_plan": target_plan,
+        "target": target_plan,
         "active": True,
+        "is_active": True,
         "created_at": datetime.now(timezone.utc),
         "expires_at": exp,
     }
@@ -3846,21 +3849,46 @@ async def create_announcement(payload: dict = Body(...), _: None = Depends(requi
 @app.get("/admin/announcements")
 async def list_admin_announcements(_: None = Depends(require_admin)):
     items = await db.announcements.find({}, PROJECTION).sort("created_at", -1).to_list(100)
+    for item in items:
+        if "action_link" in item and "link_url" not in item:
+            item["link_url"] = item["action_link"]
+        if "target" in item and "target_plan" not in item:
+            item["target_plan"] = item["target"]
     return items
 
 @app.delete("/admin/announcements/{ann_id}")
 async def delete_announcement(ann_id: str, _: None = Depends(require_admin)):
-    await db.announcements.update_one({"id": ann_id}, {"$set": {"active": False}})
+    await db.announcements.update_many({"$or": [{"id": ann_id}, {"_id": ann_id}]}, {"$set": {"active": False, "is_active": False}})
     return {"ok": True}
 
+@app.get("/announcements/active")
+@app.get("/api/announcements/active")
+@app.get("/api/v1/announcements/active")
 @api.get("/announcements/active")
 async def get_active_announcements(plan: str = "free"):
     now = datetime.now(timezone.utc)
-    items = await db.announcements.find({
-        "active": True,
-        "expires_at": {"$gte": now},
-        "target_plan": {"$in": ["all", plan.lower()]}
-    }, PROJECTION).sort("created_at", -1).to_list(10)
+    query = {
+        "$and": [
+            {"$or": [{"active": True}, {"is_active": True}, {"active": {"$exists": False}}]},
+            {"$or": [
+                {"expires_at": {"$gte": now}},
+                {"expires_at": None},
+                {"expires_at": {"$exists": False}}
+            ]},
+            {"$or": [
+                {"target_plan": {"$in": ["all", plan.lower()]}},
+                {"target": {"$in": ["all", plan.lower()]}},
+                {"target_plan": None},
+                {"target_plan": {"$exists": False}}
+            ]}
+        ]
+    }
+    items = await db.announcements.find(query, PROJECTION).sort("created_at", -1).to_list(20)
+    for item in items:
+        if "action_link" in item and "link_url" not in item:
+            item["link_url"] = item["action_link"]
+        if "target" in item and "target_plan" not in item:
+            item["target_plan"] = item["target"]
     return items
 
 @app.get("/admin/analytics/financials")
@@ -4059,12 +4087,16 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     
     # ALSO auto-publish as an in-app system broadcast so users see it in-app regardless of push token permissions
     announcement_doc = {
+        "id": f"ann_{uuid.uuid4().hex[:12]}",
         "title": title,
         "body": body,
         "type": "info",
+        "target_plan": target_plan,
         "target": target_plan,
-        "created_at": datetime.now(timezone.utc),
+        "active": True,
         "is_active": True,
+        "created_at": datetime.now(timezone.utc),
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
         "sent_by": "admin_push_broadcast"
     }
     await db.announcements.insert_one(announcement_doc)
