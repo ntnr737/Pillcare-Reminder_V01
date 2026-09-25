@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PillCare Platform Architecture & Integration Reference (v2026.2)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    @page {
+      size: A4 portrait;
+      margin: 15mm 12mm 15mm 12mm;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.5;
+      font-size: 13px;
+      -webkit-print-color-adjust: exact;
+    }
+
+    .container {
+      max-width: 100%;
+      margin: 0 auto;
+    }
+
+    /* HEADER BLOCK */
+    .header {
+      background: linear-gradient(135deg, #0b0f19 0%, #1e1b4b 50%, #0f172a 100%);
+      color: #ffffff;
+      padding: 24px 28px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+    }
+
+    .header-badge {
+      display: inline-block;
+      background: rgba(16, 185, 129, 0.2);
+      color: #34d399;
+      border: 1px solid rgba(52, 211, 153, 0.4);
+      font-weight: 700;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 10px;
+    }
+
+    .header h1 {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+
+    .header p {
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 16px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .meta-item {
+      font-size: 11px;
+    }
+
+    .meta-item .label {
+      color: #64748b;
+      font-size: 10px;
+      text-transform: uppercase;
+      font-weight: 600;
+
+    }
+
+    .meta-item .val {
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    /* SECTION HEADERS */
+    h2 {
+      font-size: 16px;
+      font-weight: 800;
+      color: #0f172a;
+      padding-bottom: 6px;
+      margin-top: 24px;
+      margin-bottom: 12px;
+      border-bottom: 2px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 16px;
+      margin-bottom: 8px;
+    }
+
+    /* CARDS & CONTAINERS */
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+
+    .card-accent {
+      border-left: 4px solid #10b981;
+    }
+
+    .card-blue {
+      border-left: 4px solid #3b82f6;
+    }
+
+    .card-purple {
+      border-left: 4px solid #8b5cf6;
+    }
+
+    /* TABLES */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px 0;
+      font-size: 11.5px;
+    }
+
+    th {
+      background: #0f172a;
+      color: #ffffff;
+      text-align: left;
+      padding: 8px 12px;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    th:first-child {
+      border-top-left-radius: 6px;
+    }
+
+    th:last-child {
+      border-top-right-radius: 6px;
+    }
+
+    td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e2e8f0;
+      background: #ffffff;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      background: #f1f5f9;
+      color: #0f172a;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 10.5px;
+      border: 1px solid #cbd5e1;
+    }
+
+    ul, ol {
+      padding-left: 18px;
+      margin-bottom: 10px;
+    }
+
+    li {
+      margin-bottom: 4px;
+    }
+
+    /* DIAGRAM BOXES */
+    .diagram-container {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 12px 0 16px 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      overflow-x: auto;
+    }
+
+    .endpoint-badge {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-right: 6px;
+    }
+
+    .post { background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+    .get { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .delete { background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .footer {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid #e2e8f0;
+      font-size: 10px;
+      color: #64748b;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- HEADER -->
+    <div class="header">
+      <span class="header-badge">Architecture Reference · System Version 2026.2</span>
+      <h1>🏗️ PillCare Platform Architecture & Integration Specification</h1>
+      <p>Decoupled 2-Repository Microservice Ecosystem & Technical Contract Documentation</p>
+      
+      <div class="meta-grid">
+        <div class="meta-item">
+          <div class="label">Backend Endpoint</div>
+          <div class="val">gcp-cloud-run / europe-west1</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Primary Web Domain</div>
+          <div class="val">https://pillcare.in</div>
+        </div>
+        <div class="meta-item">
+          <div class="label">Admin Mission Control</div>
+          <div class="val">https://admin.pillcare.in</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1. MULTI-REPO ARCHITECTURE -->
+    <h2>1. Multi-Repository System Architecture</h2>
+    <p>PillCare operates as a decoupled microservice architecture divided across two core repositories:</p>
+
+    <div class="diagram-container">
+┌────────────────────────────────────────────────────────────────────────┐
+│ REPOSITORY 1: Pillcare.com (Static Website & Admin Panel)              │
+│  - Landing Page: pillcare.in                                           │
+│  - Mission Control UI: admin.html / admin/index.html                   │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ HTTPS REST APIs
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│ REPOSITORY 2: Pillcare-Reminder_V01 (Mobile App & Core Backend API)    │
+│  - FastAPI Backend Server: backend/server.py                           │
+│  - Mobile Application: React Native (Expo SDK 50)                      │
+│  - Database Layer: MongoDB Atlas (db.users, db.subscriptions, etc.)   │
+│  - Push Gateway: Expo Push API (exp.host)                              │
+└────────────────────────────────────────────────────────────────────────┘
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Repository Component</th>
+          <th>GitHub Origin</th>
+          <th>Local System Path</th>
+          <th>Scope & Responsibilities</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Repo 1: Website & Admin</strong></td>
+          <td><code>ntnr737/Pillcare.com</code></td>
+          <td><code>.../pillcare-website</code></td>
+          <td>Marketing landing pages, download links, <code>admin.html</code> executive dashboard UI.</td>
+        </tr>
+        <tr>
+          <td><strong>Repo 2: App & Backend</strong></td>
+          <td><code>ntnr737/Pillcare-Reminder_V01</code></td>
+          <td><code>.../Pillcare-Reminder_V01</code></td>
+          <td>FastAPI server (<code>server.py</code>), React Native cross-platform application (<code>frontend/</code>).</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 2. INTEGRATION CONTRACTS -->
+    <h2>2. End-to-End Integration Contracts & Protocols</h2>
+
+    <div class="card card-accent">
+      <h3>A. Subscription Tiers & 1-Click Feature Override Engine</h3>
+      <p>Admin Panel updates subscription plans (Free, Basic ₹30, Premium ₹99, Enterprise) and billing cycles (Monthly 30d, Annual 365d) or toggles specific features (OCR Scanner, PDF Export, Yoga Full, Brand → Generic, Caregiver Alerts).</p>
+      <div style="margin-top:8px;">
+        <p><span class="endpoint-badge post">POST</span> <code>/admin/users/{user_id}/subscription</code> — Set subscription plan, billing cycle, expiration, and notes.</p>
+        <p><span class="endpoint-badge post">POST</span> <code>/admin/users/{user_id}/features</code> — Apply single-click feature overrides (<code>export_data</code>, <code>scanner</code>, <code>yoga_full</code>, etc.).</p>
+        <p><span class="endpoint-badge delete">DELETE</span> <code>/admin/users/{user_id}/features/{feature}</code> — Remove a manual feature override.</p>
+        <p><span class="endpoint-badge get">GET</span> <code>/api/me/features</code> — Mobile client endpoint to sync active user privileges.</p>
+      </div>
+    </div>
+
+    <div class="card card-blue">
+      <h3>B. High-Reliability Push Notification Pipeline</h3>
+      <p>Supports both <code>ExpoPushToken[...]</code> and <code>ExponentPushToken[...]</code> formats across Expo SDK versions.</p>
+      <div style="margin-top:8px;">
+        <p><span class="endpoint-badge post">POST</span> <code>/api/profile/push-token</code> — Registers or updates device push token (accepts <code>{ push_token }</code> or <code>{ token }</code>).</p>
+        <p><span class="endpoint-badge post">POST</span> <code>/admin/notify</code> — Broadcasts push notifications globally or to specific target <code>user_id</code> / <code>email</code>.</p>
+      </div>
+    </div>
+
+    <div class="card card-purple">
+      <h3>C. Flash Announcements & Healthcare Intelligence</h3>
+      <p>Allows broadcasting instant in-app promotions, system alerts, or feature releases to specific subscription tiers.</p>
+      <div style="margin-top:8px;">
+        <p><span class="endpoint-badge post">POST</span> <code>/admin/announcements</code> — Publish announcement (<code>title</code>, <code>body</code>, <code>type</code>, <code>target_plan</code>, <code>link_url</code>).</p>
+        <p><span class="endpoint-badge get">GET</span> <code>/admin/analytics/financials</code> — Unit economics (MRR, ARR, ARPU, LTV, Paid Conversion %).</p>
+        <p><span class="endpoint-badge get">GET</span> <code>/admin/analytics/healthcare-intelligence</code> — Refill GMV, Low-Stock Radar (≤3 doses remaining).</p>
+      </div>
+    </div>
+
+    <!-- 3. DATABASE SCHEMA -->
+    <h2>3. MongoDB Database Schema Definitions</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Collection</th>
+          <th>Key Fields & Indexes</th>
+          <th>Purpose & System Function</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>users</code></td>
+          <td><code>id</code>, <code>email</code>, <code>name</code>, <code>push_token</code>, <code>created_at</code></td>
+          <td>Core user identity and device push token registration records.</td>
+        </tr>
+        <tr>
+          <td><code>profile</code></td>
+          <td><code>user_id</code>, <code>phone</code>, <code>caregiver_phone</code>, <code>location_city</code>, <code>location_state</code></td>
+          <td>Onboarded patient demographics and caregiver contact details.</td>
+        </tr>
+        <tr>
+          <td><code>subscriptions</code></td>
+          <td><code>user_id</code>, <code>plan</code>, <code>billing_cycle</code>, <code>status</code>, <code>overrides</code></td>
+          <td>Subscription status, billing cycle expirations, and custom feature flags.</td>
+        </tr>
+        <tr>
+          <td><code>medications</code></td>
+          <td><code>id</code>, <code>user_id</code>, <code>name</code>, <code>dosage</code>, <code>frequency</code>, <code>stock</code>, <code>active</code></td>
+          <td>Active and paused prescription items with current inventory stock.</td>
+        </tr>
+        <tr>
+          <td><code>doses</code></td>
+          <td><code>id</code>, <code>user_id</code>, <code>medication_id</code>, <code>scheduled_time</code>, <code>status</code></td>
+          <td>Adherence history (taken, missed, skipped) used for analytics.</td>
+        </tr>
+        <tr>
+          <td><code>announcements</code></td>
+          <td><code>id</code>, <code>title</code>, <code>body</code>, <code>target_plan</code>, <code>created_at</code></td>
+          <td>Active flash announcement banners displayed on mobile home screen.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 4. PERFORMANCE RULES -->
+    <h2>4. Performance & Concurrency Rules</h2>
+    <ul style="line-height: 1.6;">
+      <td><strong>Concurrent Batch Aggregation (<code>asyncio.gather</code>)</strong>: All admin endpoints returning user lists or analytics avoid sequential <code>for</code> loop queries, processing database queries concurrently to maintain sub-50ms latency.</td>
+      <td><strong>FastAPI Static Route Order</strong>: Static endpoints (e.g. <code>/admin/analytics/users/comprehensive</code>) are declared <em>before</em> parameterized endpoints (e.g. <code>/admin/analytics/users/{user_id}</code>) to prevent route matching collisions.</td>
+      <td><strong>Authentication Enforcer</strong>: <code>require_admin</code> dependency validates header <code>x-admin-secret</code> matching <code>ADMIN_SECRET</code> environment variable or valid Google OAuth admin tokens.</td>
+    </ul>
+
+    <!-- 5. RECENT ENHANCEMENTS -->
+    <h2>5. Recent System Enhancements (Version 2026.2 / Release v1.0.11)</h2>
+
+    <div class="grid-2">
+      <div class="card card-accent">
+        <h3>🌐 100% Internationalization (i18n) QC</h3>
+        <ul>
+          <li><strong>Languages Supported</strong>: English (<code>en</code>), Hindi (<code>hi</code>), Bengali (<code>bn</code>), German (<code>de</code>), Spanish (<code>es</code>), French (<code>fr</code>).</li>
+          <li><strong>Zero English Fallbacks</strong>: 100% full translation dictionary coverage across all 6 main tabs and 6 modal components.</li>
+          <li><strong>Dynamic Parameter Support</strong>: <code>LanguageContext.tsx</code> supports dynamic variables (<code>{med}</code>, <code>{slot}</code>, <code>{count}</code>, <code>{avg}</code>).</li>
+        </ul>
+      </div>
+
+      <div class="card card-blue">
+        <h3>🔐 Google OAuth 2.0 SHA-1 Setup</h3>
+        <ul>
+          <li><strong>Package Name</strong>: <code>com.pillcare.reminder</code></li>
+          <li><strong>SHA-1 Fingerprint</strong>: <code>5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25</code></li>
+          <li><strong>Web Client ID</strong>: <code>1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com</code></li>
+          <li>Fully aligned in Google Cloud Console for seamless native Google Sign-In on Android.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📦 Production Release Artifact & Website Sync</h3>
+      <p><strong>Current Production Release</strong>: <code>v1.0.11</code> (Tag: <a href="https://github.com/ntnr737/Pillcare-Reminder_V01/releases/tag/v1.0.11">v1.0.11</a>)</p>
+      <p><strong>Android APK Binary Asset</strong>: <a href="https://github.com/ntnr737/Pillcare-Reminder_V01/releases/download/v1.0.11/PillCare-v1.0.11-release.apk">PillCare-v1.0.11-release.apk</a> (113 MB)</p>
+      <p><strong>Website & Admin Sync</strong>: Landing page (<code>index.html</code>) and Admin Panel (<code>admin/index.html</code>, <code>admin.html</code>) updated to point directly to the release asset.</p>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <p>Authoritative Architecture & Integration Specification — PillCare Platform © 2026. All Rights Reserved.</p>
+    </div>
+
+  </div>
+</body>
+</html>
