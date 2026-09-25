@@ -26,7 +26,8 @@ export function ActionSheetModal({ visible, onClose, options, title }: ActionShe
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+      <View style={s.overlay}>
+        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
         <View style={[s.sheetBox, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={[s.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
           <View style={s.headerRow}>
@@ -39,7 +40,12 @@ export function ActionSheetModal({ visible, onClose, options, title }: ActionShe
             <TouchableOpacity
               key={o.title}
               style={[s.optCard, { backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "#f8fafc", borderColor: theme.surfaceBorder }]}
-              onPress={o.fn}
+              onPress={() => {
+                onClose();
+                setTimeout(() => {
+                  o.fn();
+                }, 120);
+              }}
             >
               <View style={[s.iconWrap, { backgroundColor: theme.accentBg }]}>
                 <Ionicons name={o.icon as any} size={17} color={theme.accent} />
@@ -52,7 +58,7 @@ export function ActionSheetModal({ visible, onClose, options, title }: ActionShe
             </TouchableOpacity>
           ))}
         </View>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -60,8 +66,11 @@ export function ActionSheetModal({ visible, onClose, options, title }: ActionShe
 const s = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "flex-end",
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0,0,0,0.55)",
   },
   sheetBox: {
     borderTopLeftRadius: 22,

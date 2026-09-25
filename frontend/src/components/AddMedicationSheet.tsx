@@ -132,16 +132,15 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
         >
-          <View style={{ flex: 1 }}>
-            <View style={[styles.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
-            <View style={styles.header}>
-              <Text style={[styles.title, { color: theme.textPrimary }]}>{t("addMed.title", "Add Medication")}</Text>
-              <TouchableOpacity testID="close-add-med" onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Feather name="x" size={22} color={theme.textSecondary} />
-              </TouchableOpacity>
-            </View>
+          <View style={[styles.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
+          <View style={styles.header}>
+            <Text style={[styles.title, { color: theme.textPrimary }]}>{t("addMed.title", "Add Medication")}</Text>
+            <TouchableOpacity testID="close-add-med" onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Feather name="x" size={22} color={theme.textSecondary} />
+            </TouchableOpacity>
+          </View>
 
-          <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
             <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.name", "Medication name")}</Text>
             <TextInput
               testID="med-name-input"
@@ -290,7 +289,6 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             onSelect={setUnit}
             onClose={() => setShowUnitModal(false)}
           />
-          </View>
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -300,7 +298,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end" },
   backdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)" },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%", zIndex: 10, elevation: 10, borderTopWidth: 1 },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%", width: "100%", zIndex: 10, elevation: 10, borderTopWidth: 1 },
   handle: { width: 48, height: 4, borderRadius: 2, alignSelf: "center", marginTop: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },
   title: { fontSize: 20, fontWeight: "700" },
