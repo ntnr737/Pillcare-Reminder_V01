@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 
 type Props = {
   visible: boolean;
@@ -31,6 +33,8 @@ export const ALL_MED_UNITS = [
 ];
 
 export function UnitDropdownModal({ visible, selectedUnit, onSelect, onClose }: Props) {
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
 
   const filtered = ALL_MED_UNITS.filter(
@@ -44,30 +48,30 @@ export function UnitDropdownModal({ visible, selectedUnit, onSelect, onClose }: 
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.overlay}>
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
-        <View style={styles.content}>
-          <View style={styles.handle} />
+        <View style={[styles.content, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={[styles.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
           
           <View style={styles.header}>
-            <Text style={styles.title}>Select Medication Unit</Text>
+            <Text style={[styles.title, { color: theme.textPrimary }]}>{t("unitModal.title", "Select Medication Unit")}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={20} color="#94a3b8" />
+              <Ionicons name="close" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {/* Search Field */}
-          <View style={styles.searchBox}>
-            <Ionicons name="search" size={16} color="#94a3b8" />
+          <View style={[styles.searchBox, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", borderColor: theme.surfaceBorder }]}>
+            <Ionicons name="search" size={16} color={theme.textSecondary} />
             <TextInput
-              style={styles.searchInput}
+              style={[styles.searchInput, { color: theme.textPrimary }]}
               value={search}
               onChangeText={setSearch}
-              placeholder="Search units (e.g. tablet, ml, mg, drops)..."
-              placeholderTextColor="#64748b"
+              placeholder={t("unitModal.searchPlaceholder", "Search units (e.g. tablet, ml, mg, drops)...")}
+              placeholderTextColor={theme.textDisabled}
               autoCapitalize="none"
             />
             {search ? (
               <TouchableOpacity onPress={() => setSearch("")}>
-                <Ionicons name="close-circle" size={16} color="#64748b" />
+                <Ionicons name="close-circle" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -80,19 +84,23 @@ export function UnitDropdownModal({ visible, selectedUnit, onSelect, onClose }: 
                 return (
                   <TouchableOpacity
                     key={u.key}
-                    style={[styles.item, isSelected && styles.itemSelected]}
+                    style={[
+                      styles.item,
+                      { backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc", borderColor: theme.surfaceBorder },
+                      isSelected && { backgroundColor: theme.accentBg, borderColor: theme.accent },
+                    ]}
                     onPress={() => {
                       onSelect(u.key);
                       onClose();
                     }}
                   >
                     <View style={{ flex: 1 }}>
-                      <Text style={[styles.itemLabel, isSelected && styles.itemLabelSelected]}>
+                      <Text style={[styles.itemLabel, { color: theme.textPrimary }, isSelected && { color: theme.accent }]}>
                         {u.label}
                       </Text>
-                      <Text style={styles.itemDesc}>{u.desc}</Text>
+                      <Text style={[styles.itemDesc, { color: theme.textSecondary }]}>{u.desc}</Text>
                     </View>
-                    {isSelected && <Ionicons name="checkmark-circle" size={20} color="#38bdf8" />}
+                    {isSelected && <Ionicons name="checkmark-circle" size={20} color={theme.accent} />}
                   </TouchableOpacity>
                 );
               })}
@@ -107,29 +115,25 @@ export function UnitDropdownModal({ visible, selectedUnit, onSelect, onClose }: 
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: "center",
-    padding: 20,
+    justifyContent: "flex-end",
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
   },
   content: {
-    backgroundColor: "#1e2230",
-    borderRadius: 20,
-    padding: 18,
-    gap: 12,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    gap: 14,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
-    zIndex: 10,
-    elevation: 10,
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
     alignSelf: "center",
+    marginBottom: 4,
   },
   header: {
     flexDirection: "row",
@@ -137,55 +141,38 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   title: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "700",
-    color: "#f8fafc",
   },
   searchBox: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
-    backgroundColor: "#282d3f",
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
+    height: 44,
     borderWidth: 1,
-    borderColor: "rgba(255, 255, 255, 0.1)",
+    gap: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
-    color: "#f8fafc",
-    padding: 0,
   },
   list: {
-    gap: 6,
-    paddingVertical: 4,
+    gap: 8,
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
     borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
     borderWidth: 1,
-    borderColor: "transparent",
-  },
-  itemSelected: {
-    backgroundColor: "rgba(56, 189, 248, 0.15)",
-    borderColor: "#38bdf8",
   },
   itemLabel: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#e2e8f0",
-  },
-  itemLabelSelected: {
-    color: "#38bdf8",
   },
   itemDesc: {
     fontSize: 11,
-    color: "#94a3b8",
     marginTop: 2,
   },
 });

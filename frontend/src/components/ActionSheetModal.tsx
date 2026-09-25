@@ -1,7 +1,8 @@
 import React from "react";
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/src/constants/theme";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 
 export interface ActionOption {
   icon: string;
@@ -17,28 +18,37 @@ interface ActionSheetModalProps {
   title?: string;
 }
 
-export function ActionSheetModal({ visible, onClose, options, title = "What would you like to do?" }: ActionSheetModalProps) {
+export function ActionSheetModal({ visible, onClose, options, title }: ActionSheetModalProps) {
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
+  const displayTitle = title || t("actionSheet.title", "What would you like to do?");
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={s.sheetBox}>
-          <View style={s.handle} />
+        <View style={[s.sheetBox, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={[s.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
           <View style={s.headerRow}>
-            <Text style={s.title}>{title}</Text>
+            <Text style={[s.title, { color: theme.textPrimary }]}>{displayTitle}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={20} color={COLORS.TM} />
+              <Ionicons name="close" size={20} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
           {options.map((o) => (
-            <TouchableOpacity key={o.title} style={s.optCard} onPress={o.fn}>
-              <View style={s.iconWrap}>
-                <Ionicons name={o.icon as any} size={17} color={COLORS.A3} />
+            <TouchableOpacity
+              key={o.title}
+              style={[s.optCard, { backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "#f8fafc", borderColor: theme.surfaceBorder }]}
+              onPress={o.fn}
+            >
+              <View style={[s.iconWrap, { backgroundColor: theme.accentBg }]}>
+                <Ionicons name={o.icon as any} size={17} color={theme.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={s.optTitle}>{o.title}</Text>
-                <Text style={s.optBody}>{o.body}</Text>
+                <Text style={[s.optTitle, { color: theme.textPrimary }]}>{o.title}</Text>
+                <Text style={[s.optBody, { color: theme.textSecondary }]}>{o.body}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={14} color={COLORS.TM} />
+              <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
             </TouchableOpacity>
           ))}
         </View>
@@ -54,19 +64,18 @@ const s = StyleSheet.create({
     justifyContent: "flex-end",
   },
   sheetBox: {
-    backgroundColor: "#3f424d",
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     padding: 22,
     gap: 12,
     zIndex: 10,
     elevation: 10,
+    borderTopWidth: 1,
   },
   handle: {
     width: 36,
     height: 4,
     borderRadius: 2,
-    backgroundColor: "rgba(233,233,237,0.2)",
     alignSelf: "center",
     marginBottom: 6,
   },
@@ -79,34 +88,28 @@ const s = StyleSheet.create({
   title: {
     fontSize: 16,
     fontWeight: "700",
-    color: COLORS.TX,
   },
   optCard: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    backgroundColor: "#232532",
     borderRadius: 14,
     padding: 13,
     borderWidth: 1,
-    borderColor: "rgba(233,233,237,0.1)",
   },
   iconWrap: {
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "rgba(145,132,217,0.14)",
     alignItems: "center",
     justifyContent: "center",
   },
   optTitle: {
     fontSize: 13,
     fontWeight: "600",
-    color: COLORS.TX,
   },
   optBody: {
     fontSize: 10,
-    color: COLORS.TM,
     marginTop: 1,
   },
 });

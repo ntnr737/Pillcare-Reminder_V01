@@ -106,7 +106,7 @@ export function VideoPlayerModal({
   };
 
   const videoId = extractYouTubeId(videoUrl);
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&origin=https://www.youtube.com`;
+  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1`;
 
   const htmlContent = `<!DOCTYPE html>
 <html>
@@ -123,6 +123,7 @@ export function VideoPlayerModal({
     src="${embedUrl}"
     title="${(title || "Yoga Video").replace(/"/g, '&quot;')}"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
     allowfullscreen
   ></iframe>
 </body>
@@ -210,6 +211,7 @@ export function VideoPlayerModal({
                       title={title || "Yoga Video"}
                       style={{ width: "100%", height: "100%", border: 0, borderRadius: 12 }}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      referrerPolicy="strict-origin-when-cross-origin"
                       allowFullScreen
                     />
                   ) : WebView ? (

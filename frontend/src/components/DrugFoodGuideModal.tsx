@@ -1,7 +1,8 @@
 import React from "react";
 import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { COLORS } from "@/src/constants/theme";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 
 interface DrugFoodGuideProps {
   visible: boolean;
@@ -19,17 +20,20 @@ interface DrugFoodGuideProps {
 }
 
 export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuideProps) {
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
-        <View style={s.sheet}>
+        <View style={[s.sheet, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={s.headerRow}>
             <View style={s.headerTitle}>
-              <Ionicons name="restaurant-outline" size={20} color={COLORS.SUCCESS} />
-              <Text style={s.title}>Drug-Food Do's & Don'ts Guide</Text>
+              <Ionicons name="restaurant-outline" size={20} color="#10B981" />
+              <Text style={[s.title, { color: theme.textPrimary }]}>{t("drugFoodModal.title", "Drug-Food Do's & Don'ts Guide")}</Text>
             </View>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Ionicons name="close" size={22} color={COLORS.TX} />
+              <Ionicons name="close" size={22} color={theme.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -37,13 +41,13 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
             {/* DO's List */}
             <View style={s.dosCard}>
               <View style={s.cardTitleRow}>
-                <Ionicons name="checkmark-circle" size={16} color={COLORS.SUCCESS} />
-                <Text style={s.dosTitle}>RECOMMENDED DO'S</Text>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={s.dosTitle}>{t("drugFoodModal.recommendedDos", "RECOMMENDED DO'S")}</Text>
               </View>
               {(guide?.dos || []).map((doItem: string, idx: number) => (
                 <View key={idx} style={s.bulletRow}>
                   <Text style={s.dosBullet}>•</Text>
-                  <Text style={s.itemText}>{doItem}</Text>
+                  <Text style={[s.itemText, { color: theme.textPrimary }]}>{doItem}</Text>
                 </View>
               ))}
             </View>
@@ -52,12 +56,12 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
             <View style={s.dontsCard}>
               <View style={s.cardTitleRow}>
                 <Ionicons name="close-circle" size={16} color="#ef4444" />
-                <Text style={s.dontsTitle}>CRITICAL DON'TS</Text>
+                <Text style={s.dontsTitle}>{t("drugFoodModal.criticalDonts", "CRITICAL DON'TS")}</Text>
               </View>
               {(guide?.donts || []).map((dontItem: string, idx: number) => (
                 <View key={idx} style={s.bulletRow}>
                   <Text style={s.dontsBullet}>•</Text>
-                  <Text style={s.itemText}>{dontItem}</Text>
+                  <Text style={[s.itemText, { color: theme.textPrimary }]}>{dontItem}</Text>
                 </View>
               ))}
             </View>
@@ -65,11 +69,11 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
             {/* Per-Medication Guides */}
             {guide?.guides && guide.guides.length > 0 && (
               <>
-                <Text style={s.sectionHeader}>Medication-Specific Guidance:</Text>
+                <Text style={[s.sectionHeader, { color: theme.textSecondary }]}>{t("drugFoodModal.medSpecific", "Medication-Specific Guidance:")}</Text>
                 {guide.guides.map((g, idx) => (
-                  <View key={idx} style={s.medGuideCard}>
-                    <Text style={s.medName}>
-                      {g.medication} {g.category ? <Text style={s.category}>({g.category})</Text> : null}
+                  <View key={idx} style={[s.medGuideCard, { backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "#f8fafc", borderColor: theme.surfaceBorder }]}>
+                    <Text style={[s.medName, { color: theme.textPrimary }]}>
+                      {g.medication} {g.category ? <Text style={[s.category, { color: theme.accent }]}>({g.category})</Text> : null}
                     </Text>
                     {g.dos?.map((d, i) => (
                       <Text key={i} style={s.doCheck}>✓ {d}</Text>
@@ -91,11 +95,10 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
 const s = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
+    backgroundColor: "rgba(0,0,0,0.55)",
     justifyContent: "flex-end",
   },
   sheet: {
-    backgroundColor: "#1c1e2d",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
@@ -103,6 +106,7 @@ const s = StyleSheet.create({
     gap: 16,
     zIndex: 10,
     elevation: 10,
+    borderTopWidth: 1,
   },
   headerRow: {
     flexDirection: "row",
@@ -117,7 +121,6 @@ const s = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: "700",
-    color: "#fff",
   },
   dosCard: {
     backgroundColor: "rgba(74,222,128,0.08)",
@@ -143,7 +146,7 @@ const s = StyleSheet.create({
   dosTitle: {
     fontSize: 13,
     fontWeight: "700",
-    color: COLORS.SUCCESS,
+    color: "#10B981",
   },
   dontsTitle: {
     fontSize: 13,
@@ -156,7 +159,7 @@ const s = StyleSheet.create({
     alignItems: "flex-start",
   },
   dosBullet: {
-    color: COLORS.SUCCESS,
+    color: "#10B981",
     fontWeight: "700",
   },
   dontsBullet: {
@@ -165,35 +168,31 @@ const s = StyleSheet.create({
   },
   itemText: {
     fontSize: 12,
-    color: COLORS.TX,
     flex: 1,
     lineHeight: 17,
   },
   sectionHeader: {
     fontSize: 13,
     fontWeight: "700",
-    color: COLORS.A3,
     marginTop: 4,
   },
   medGuideCard: {
-    backgroundColor: "#252837",
     padding: 12,
     borderRadius: 10,
+    borderWidth: 1,
     gap: 6,
   },
   medName: {
     fontSize: 14,
     fontWeight: "700",
-    color: COLORS.TX,
   },
   category: {
     fontSize: 11,
-    color: COLORS.A3,
     fontWeight: "500",
   },
   doCheck: {
     fontSize: 11,
-    color: COLORS.SUCCESS,
+    color: "#10B981",
   },
   dontCross: {
     fontSize: 11,

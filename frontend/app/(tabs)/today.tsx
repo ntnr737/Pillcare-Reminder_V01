@@ -1,31 +1,27 @@
+import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
-import * as Haptics from "expo-haptics";
 import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { ActionSheetModal } from "@/src/components/ActionSheetModal";
 import { RefillModal } from "@/src/components/RefillModal";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { FlashAnnouncementBanner } from "@/src/components/FlashAnnouncementBanner";
 import { YogaRoutineModal } from "@/src/components/YogaRoutineModal";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
 import { DrugFoodGuideModal } from "@/src/components/DrugFoodGuideModal";
-import { ActionSheetModal } from "@/src/components/ActionSheetModal";
+import { CalendarModal } from "@/src/components/CalendarModal";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 import { getFeatures } from "@/src/lib/features";
-import { track } from "@/src/lib/analytics";
+import { track, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
-import { get, set, K, logCourseCompleted } from "@/src/lib/store";
-import { flushQueue, backgroundRefresh, recordTaken, mergeDoses, enqueueWrite } from "@/src/lib/sync";
-
-const BG = "#0B0D14", SF = "#161926", N8 = "#2A2E42", TX = "#F9FAFB",
-  TM = "rgba(249, 250, 251, 0.65)", TD = "rgba(249, 250, 251, 0.35)",
-  AC = "#6366F1", A3 = "#818CF8", AB = "rgba(99, 102, 241, 0.14)", BD = "rgba(255, 255, 255, 0.08)",
-  REFILL = "#06B6D4", SUCCESS = "#10B981";
+import { get, set, K } from "@/src/lib/store";
+import { backgroundRefresh } from "@/src/lib/sync";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function getWD(c: string) {
@@ -38,21 +34,9 @@ function getWD(c: string) {
 }
 function gs(t: string) { const [h] = t.split(":").map(Number); return h < 12 ? "morning" : h < 17 ? "afternoon" : h < 21 ? "evening" : "night"; }
 
-/**
- * Time window for dose marking.
- * A dose can only be marked TAKEN within 2h before and 4h after scheduled time.
- * Outside this window: future = UPCOMING (locked), past = auto MISSED.
- * This prevents morning dose being marked from evening and vice versa.
- */
 function getDoseWindow(scheduledTime: string, forDate?: string): { canMark: boolean; isFuture: boolean; isPast: boolean; minutesUntil: number } {
-  // A dose belongs to a specific calendar day (the day being viewed in the week
-  // strip). The 2h-before/4h-after window only makes sense when that day is
-  // TODAY — for any other day we short-circuit so the button state reflects
-  // reality instead of comparing a past/future day's dose against "right now".
   if (forDate && forDate !== ds()) {
-    if (forDate < ds()) {
-      return { canMark: false, isFuture: false, isPast: true, minutesUntil: -999999 };
-    }
+    if (forDate < ds()) return { canMark: false, isFuture: false, isPast: true, minutesUntil: -999999 };
     return { canMark: false, isFuture: true, isPast: false, minutesUntil: 999999 };
   }
   const now = new Date();
@@ -60,12 +44,10 @@ function getDoseWindow(scheduledTime: string, forDate?: string): { canMark: bool
   const scheduled = new Date();
   scheduled.setHours(h, m, 0, 0);
   const diffMinutes = (scheduled.getTime() - now.getTime()) / 60000;
-  const BEFORE_WINDOW = -240; // 4 hours after
-  const AFTER_WINDOW = 120;   // 2 hours before
   return {
-    canMark: diffMinutes >= BEFORE_WINDOW && diffMinutes <= AFTER_WINDOW,
-    isFuture: diffMinutes > AFTER_WINDOW,
-    isPast: diffMinutes < BEFORE_WINDOW,
+    canMark: diffMinutes >= -240 && diffMinutes <= 120,
+    isFuture: diffMinutes > 120,
+    isPast: diffMinutes < -240,
     minutesUntil: Math.round(diffMinutes),
   };
 }
@@ -81,301 +63,205 @@ function formatTimeUntil(minutes: number): string {
 }
 const SI: any = { morning: "sunny-outline", afternoon: "partly-sunny-outline", evening: "moon-outline", night: "moon-outline" };
 
-function Ring({ pct }: { pct: number }) {
+function Ring({ pct, textPrimary, accent, isDark }: { pct: number; textPrimary: string; accent: string; isDark: boolean }) {
   const R = 30, C = 2 * Math.PI * R, off = C - (pct / 100) * C;
   return (
     <View style={{ width: 72, height: 72, alignItems: "center", justifyContent: "center" }}>
       <Svg width={72} height={72} viewBox="0 0 72 72" style={{ position: "absolute" }}>
-        <Circle cx={36} cy={36} r={R} fill="none" stroke="rgba(139,92,246,0.18)" strokeWidth={7} />
-        <Circle cx={36} cy={36} r={R} fill="none" stroke={AC} strokeWidth={7}
+        <Circle cx={36} cy={36} r={R} fill="none" stroke={isDark ? "rgba(139,92,246,0.18)" : "rgba(79,70,229,0.1)"} strokeWidth={7} />
+        <Circle cx={36} cy={36} r={R} fill="none" stroke={accent} strokeWidth={7}
           strokeDasharray={`${C}`} strokeDashoffset={off} strokeLinecap="round" transform="rotate(-90 36 36)" />
       </Svg>
-      <Text style={{ color: TX, fontSize: 13, fontWeight: "700" }}>{pct}%</Text>
+      <Text style={{ color: textPrimary, fontSize: 13, fontWeight: "700" }}>{pct}%</Text>
     </View>
   );
 }
 
 export default function Today() {
   const router = useRouter();
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   const [date, setDate] = useState(ds());
   const [doses, setDoses] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
-  const [aiMsg, setAiMsg] = useState<string | null>(null);
-  const [streak, setStreak] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
-  const [yogaReminderTime, setYogaReminderTime] = useState<string | null>(null);
-  const [yogaTipName, setYogaTipName] = useState<string | null>(null);
-  const [yogaTipMeta, setYogaTipMeta] = useState<string | null>(null);
+  const [addMed, setAddMed] = useState(false);
+  const [refillMed, setRefillMed] = useState<any>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [aiMsg, setAiMsg] = useState("");
+  const [yogaTipMeta, setYogaTipMeta] = useState("");
+  const [waterLogged, setWaterLogged] = useState(0);
+  const [waterGoal] = useState(2500);
+  const [yogaModalOpen, setYogaModalOpen] = useState(false);
+  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string } | null>(null);
+  const [yogaReminderTime, setYogaReminderTime] = useState<string>("08:00");
   const [adherenceMap, setAdherenceMap] = useState<Record<string, number>>({});
   const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
   const [foodGuideOpen, setFoodGuideOpen] = useState(false);
-  const [sheet, setSheet] = useState(false);
-  const [waterLogged, setWaterLogged] = useState(0);
-  const waterGoal = 2500; // in ml (10 glasses of 250ml)
+  const [actionSheetOpen, setActionSheetOpen] = useState(false);
 
-  useEffect(() => {
-    setDismissedStockBanner(false);
-    get<number>("water_logged_" + date).then(val => {
-      setWaterLogged(val || 0);
-    });
-  }, [date]);
+  const actionOptions = [
+    {
+      icon: "medical-outline",
+      title: t("actionSheet.addMedication", "Add Medication"),
+      body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"),
+      fn: () => { setActionSheetOpen(false); setAddMed(true); },
+    },
+    {
+      icon: "calendar-outline",
+      title: t("actionSheet.bookAppointment", "Book Appointment"),
+      body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"),
+      fn: () => { setActionSheetOpen(false); router.push("/appointments"); },
+    },
+    {
+      icon: "pulse-outline",
+      title: t("actionSheet.logMeasurement", "Log Measurement"),
+      body: t("actionSheet.logMeasurementDesc", "Blood pressure, glucose, weight..."),
+      fn: () => { setActionSheetOpen(false); router.push("/treatment?tab=measurements" as any); },
+    },
+    {
+      icon: "body-outline",
+      title: t("actionSheet.logActivity", "Log Activity"),
+      body: t("actionSheet.logActivityDesc", "Steps, exercise, walking..."),
+      fn: () => { setActionSheetOpen(false); router.push("/treatment?tab=activities" as any); },
+    },
+    {
+      icon: "heart-outline",
+      title: t("actionSheet.logMood", "Log Mood"),
+      body: t("actionSheet.logMoodDesc", "Track how you're feeling today"),
+      fn: () => { setActionSheetOpen(false); router.push("/treatment?tab=mood" as any); },
+    },
+  ];
 
-  useEffect(() => {
-    api.getDrugFoodGuide().then(g => { if (g) setDrugFoodGuide(g); }).catch(() => {});
-  }, [doses]);
+  const fetchServer = async () => {
+    try {
+      const [dos, prof] = await Promise.all([
+        api.listDoses(date),
+        api.getProfile().catch(() => null),
+      ]);
+      setDoses(dos || []);
+      if (prof) setProfile(prof);
 
-  const addWater = async (amountMl: number) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (waterLogged >= 5000) {
-      Alert.alert(
-        "Maximum Daily Limit Reached",
-        "You have reached the maximum daily limit of 5,000 mL (5 Liters).\n\nWorld Health Organization (WHO) and clinical guidelines recommend 2,000–2,500 mL of water daily under normal conditions. Excessive fluid consumption beyond 4,000–5,000 mL is not recommended unless advised by a physician."
-      );
-      return;
-    }
-    const newTotal = Math.min(5000, waterLogged + amountMl);
-    setWaterLogged(newTotal);
-    await set("water_logged_" + date, newTotal);
-    track("water_intake_logged", { amountMl, date, totalMl: newTotal });
+      api.adherence(30).then((data: any) => {
+        if (data && typeof data === "object") setAdherenceMap(data);
+      }).catch(() => {});
 
-    if (newTotal >= 5000) {
-      Alert.alert(
-        "Hydration Cap (5,000 mL)",
-        "Daily hydration logged at maximum limit (5,000 mL). Reached recommended WHO upper safety threshold."
-      );
-    } else if (newTotal >= waterGoal && waterLogged < waterGoal) {
-      Alert.alert(
-        "Goal Achieved! 🎉",
-        "Congratulations! You've met your daily hydration goal of 2,500 mL (10 glasses)."
-      );
-    }
-  };
+      api.getDrugFoodGuide().then((guide: any) => {
+        if (guide) setDrugFoodGuide(guide);
+      }).catch(() => {});
 
-  const resetWater = async () => {
-    setWaterLogged(0);
-    await set("water_logged_" + date, 0);
-  };
-
-  const [addMed, setAddMed] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
-  const [yogaModalOpen, setYogaModalOpen] = useState(false);
-  const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string; step?: any } | null>(null);
-
-  const handleAddMedication = () => {
-    const features = getFeatures();
-    const uniqueMeds = new Set(doses.map((d: any) => d.medication_id)).size;
-    if (uniqueMeds >= features.max_medications) {
-      setShowUpgrade(true);
-      return;
-    }
-    setAddMed(true);
-  };
-  const [actionSheet, setActionSheet] = useState(false);
-  const [stockModal, setStockModal] = useState<{ id: string; name: string; stock: number; generic_name?: string; dosage?: string; unit?: string } | null>(null);
-  const [refillMed, setRefillMed] = useState<{ id: string; name: string; stock?: number } | null>(null);
-  const [dismissedStockBanner, setDismissedStockBanner] = useState(false);
-  const [stockListOpen, setStockListOpen] = useState(false);
-  const pending = useRef<Set<string>>(new Set());
-  const days = getWD(date);
-
-  // Proactively surface a low/out-of-stock prompt once per day per medication —
-  // instead of relying on the user to notice and tap the passive banner.
-  useEffect(() => {
-    if (!doses.length) return;
-    const lows = [...new Set(doses.map((d: any) => d.medication_id))]
-      .map(mid => doses.find((d: any) => d.medication_id === mid))
-      .filter(Boolean)
-      .map((d: any) => ({
-        id: d.medication_id,
-        name: d.medication_name || d.medication?.name || "",
-        stock: d.medication?.stock ?? 999,
-        active: d.medication?.active,
-        completed: d.medication?.completed,
-      }))
-      .filter((m: any) => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
-    if (!lows.length) return;
-    (async () => {
-      for (const m of lows) {
-        const key = `stock_prompt_${date}_${m.id}`;
-        const already = await get<boolean>(key);
-        if (!already) {
-          await set(key, true);
-          setStockModal(m);
-          break;
-        }
+      const curMeds = (dos || []).map((d: any) => d.medication?.name).filter(Boolean);
+      const prevMeds = ((await get("cached_med_names")) as string[]) || [];
+      if (JSON.stringify(curMeds) !== JSON.stringify(prevMeds)) {
+        await set("cached_med_names", curMeds);
+        resyncReminders().catch(() => {});
       }
-    })();
-  }, [doses, date]);
+    } catch {
+      const stored = ((await get(K.doses(date))) as any[]) || [];
+      setDoses(stored.filter((d: any) => d.scheduled_time?.startsWith(date)));
+    }
+  };
 
-  // Load from local cache instantly — always shown even offline
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchServer();
+    setRefreshing(false);
+  };
+
+  useFocusEffect(useCallback(() => { fetchServer(); }, [date]));
+
   useEffect(() => {
-    get<any[]>(K.doses(date)).then(d => { if (d) setDoses(d); });
-    get<any>(K.profile).then(p => { if (p) setProfile(p); });
-    get<number>(K.streak).then(s => { if (s !== null) setStreak(s); });
-    get<any>(K.aiMsg).then(a => { if (a) setAiMsg(a); });
-    get<string>("yoga_reminder_time").then(t => { if (t) setYogaReminderTime(t); }).catch(() => {});
-    get<any>(K.yogaTip).then(tip => {
-      if (tip?.title) setYogaTipName(tip.title);
-      if (tip?.duration || tip?.level) setYogaTipMeta([tip.duration, tip.level].filter(Boolean).join(" • "));
-    }).catch(() => {});
-  }, [date]);
+    const d = new Date().getDay();
+    const tips = [
+      "Consistent timing improves medicine effectiveness by 40%.",
+      "Take medicines with water unless advised otherwise by your doctor.",
+      "Never skip doses even if you feel better.",
+      "Store medicines away from heat, moisture, and direct sunlight.",
+      "Set alarms for recurring daily doses.",
+      "Keep an updated list of your medications when visiting a doctor.",
+      "Check expiry dates regularly and discard expired medicines safely."
+    ];
+    setAiMsg(tips[d % tips.length]);
 
-  const fetchServer = useCallback(async () => {
-    try {
-      // ALWAYS flush write queue first — server must receive our taken status before we fetch
-      await flushQueue();
-      const [d, p, a] = await Promise.all([api.listDoses(date), api.getProfile(), api.adherence(30)]);
-      const serverDoses = d || [];
-      // Merge with persistent local taken registry — local ALWAYS wins over server "pending"
-      const merged = await mergeDoses(serverDoses, date);
-      setDoses(merged);
-      set(K.doses(date), merged);
-      setProfile(p); setStreak(a?.streak || 0);
-      set(K.profile, p); set(K.streak, a?.streak || 0);
-      const map: Record<string, number> = {};
-      for (const day of (a?.daily || [])) map[day.date] = day.pct;
-      setAdherenceMap(map);
-    } catch {
-      // Offline — keep showing cached data, never clear anything
-    }
-  }, [date]);
-
-  const fetchAI = useCallback(async () => {
-    try {
-      const r = await api.dailyMessage();
-      setAiMsg(r.message);
-      if (r.streak) setStreak(r.streak);
-      set(K.aiMsg, r.message);
-    } catch {}
-  }, []);
-
-  useFocusEffect(useCallback(() => {
-    track("app_open");
-    flushQueue();
-    backgroundRefresh(fetchServer);
-    backgroundRefresh(fetchAI);
-  }, [fetchServer, fetchAI]));
-
-  const onRefresh = async () => { setRefreshing(true); await Promise.all([fetchServer(), fetchAI()]); setRefreshing(false); };
-
-  // Race-condition-free dose marking
-  // RULE: Taken is FINAL — once marked taken, it cannot be changed.
-  // Missed/Skipped can be acknowledged but not toggled back.
-  const mark = useCallback(async (id: string, cur: string, action?: string) => {
-    if (pending.current.has(id)) return;
-    // If already taken — do nothing. Taken is permanent.
-    if (cur === "taken") return;
-    // Determine next status
-    const nx = action || (cur === "pending" ? "taken" : "missed");
-    // Always use device local time — not UTC
-    const takenAt = nx === "taken" ? new Date().toISOString() : undefined;
-    pending.current.add(id);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    track(nx === "taken" ? "dose_taken" : nx === "missed" ? "dose_missed" : "dose_skipped", { date });
-    // 1. Update UI immediately
-    setDoses(prev => {
-      const u = prev.map(d => d.id === id ? { ...d, status: nx, taken_at: takenAt } : d);
-      set(K.doses(date), u);
-      return u;
+    get<string>(K.yogaReminderTime).then((y) => {
+      if (y) setYogaReminderTime(y);
     });
-    // 2. Persist taken status permanently in AsyncStorage
-    //    This survives server data overwrites — even if offline for days
-    if (nx === "taken" && takenAt) {
-      recordTaken(id, date, takenAt);
-    }
-    // 3. Add to write queue first (ensures delivery if offline)
-    const queueId = await enqueueWrite("doseStatus", { id, status: nx, taken_at: takenAt });
-    // 4. Try direct API call immediately if online
-    api.setDoseStatus(id, nx, takenAt)
-      .then(async () => {
-        // Success — remove from queue so it doesn't send twice
-        if (queueId) {
-          const { dequeue } = await import("@/src/lib/store");
-          await dequeue(queueId);
-        }
-        pending.current.delete(id);
-      })
-      .catch(() => {
-        // Offline — stays in queue, will sync when reconnected
-        pending.current.delete(id);
-      });
-    resyncReminders().catch(() => {});
+
+    const wKey = `water_${date}`;
+    get<number>(wKey).then((logged) => {
+      if (typeof logged === "number") setWaterLogged(logged);
+    });
   }, [date]);
 
-  const markComplete = async (medId: string) => {
+  const addWater = (amount: number) => {
+    const next = waterLogged + amount;
+    setWaterLogged(next);
+    set(`water_${date}`, next);
+  };
+
+  const resetWater = () => {
+    setWaterLogged(0);
+    set(`water_${date}`, 0);
+  };
+
+  const mark = async (doseId: string, currentStatus: string, newStatus: string) => {
     try {
-      const pendingForMed = doses.filter((d: any) => d.medication_id === medId && d.status === "pending");
-      await Promise.all(pendingForMed.map((d: any) => api.setDoseStatus(d.id, "skipped")));
-      await api.deleteMedication(medId);
-      track("medication_marked_complete", { reason: "out_of_stock" });
-      // Drop this medication's doses from state immediately instead of waiting
-      // on the background refresh round-trip — otherwise the out-of-stock
-      // banner/modal looks "stuck" for a beat (or longer, on a slow network)
-      // right after the user taps Treatment complete.
-      setDoses(prev => {
-        const u = prev.filter((d: any) => d.medication_id !== medId);
-        set(K.doses(date), u);
-        return u;
-      });
-      await backgroundRefresh(fetchServer);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch {}
+    const updated = doses.map((d: any) => d.id === doseId ? { ...d, status: newStatus } : d);
+    setDoses(updated);
+    try {
+      const evtName: EventName = newStatus === "taken" ? "dose_taken" : newStatus === "missed" ? "dose_missed" : "dose_skipped";
+      track(evtName, { doseId });
     } catch {
-      Alert.alert("Could not update", "Please check your connection and try again.");
+      await backgroundRefresh(fetchServer);
     }
   };
 
-  const taken = doses.filter(d => d.status === "taken").length,
-    total = doses.length,
-    pct = total > 0 ? Math.round((taken / total) * 100) : 0;
-  const next = doses.filter(d => d.status === "pending").sort((a, b) => a.scheduled_time.localeCompare(b.scheduled_time))[0];
-  const secs: Record<string, any[]> = {};
-  for (const d of doses) { const sc = gs(d.scheduled_time); if (!secs[sc]) secs[sc] = []; secs[sc].push(d); }
-
-  const calDayColor = (dayDate: string) => {
-    const pct = adherenceMap[dayDate];
-    if (pct === undefined) return BD;
-    if (pct >= 80) return "rgba(74,222,128,0.22)";
-    if (pct >= 50) return "rgba(229,178,133,0.22)";
-    return "rgba(229,133,133,0.22)";
-  };
-  const calDayTextColor = (dayDate: string) => {
-    const pct = adherenceMap[dayDate];
-    if (pct === undefined) return TX;
-    if (pct >= 80) return "#4ade80";
-    if (pct >= 50) return "#e5b285";
-    return "#e58585";
-  };
-
-  const { theme, isDark } = useTheme();
-  const { t } = useTranslation();
+  const days = getWD(date);
+  const total = doses.length;
+  const taken = doses.filter(d => d.status === "taken").length;
+  const streak = profile?.streak_days ?? 0;
+  const pct = total === 0 ? 0 : Math.round((taken / total) * 100);
+  const secs: Record<string, any[]> = { morning: [], afternoon: [], evening: [], night: [] };
+  doses.forEach(d => { const s = gs(d.scheduled_time || "08:00"); secs[s]?.push(d); });
+  const pending = doses.filter(d => d.status === "pending" || !d.status);
+  const next = pending.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""))[0];
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
         <Text style={[s.appNm, { color: theme.textPrimary }]}>PillCare</Text>
         <View style={s.hdrR}>
-          <TouchableOpacity style={[s.iBtn, { borderColor: theme.surfaceBorder }]} onPress={() => setCalOpen(true)}><Ionicons name="calendar-outline" size={15} color={theme.textPrimary} /></TouchableOpacity>
-          <View style={[s.sTag, { backgroundColor: theme.accentBg, borderColor: theme.surfaceBorder }]}><Ionicons name="flame" size={13} color={theme.accent} /><Text style={[s.sTx, { color: theme.accent }]}>{streak}</Text></View>
+          <TouchableOpacity style={[s.iBtn, { borderColor: theme.surfaceBorder, backgroundColor: theme.surface }]} onPress={() => setCalOpen(true)}>
+            <Ionicons name="calendar-outline" size={15} color={theme.textPrimary} />
+          </TouchableOpacity>
+          <View style={[s.sTag, { backgroundColor: theme.accentBg, borderColor: theme.surfaceBorder }]}>
+            <Ionicons name="flame" size={13} color={theme.accent} />
+            <Text style={[s.sTx, { color: theme.accent }]}>{streak}</Text>
+          </View>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={AC} />}>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}>
 
         <FlashAnnouncementBanner />
 
         {/* Overview card */}
-        <View style={s.ov}>
+        <View style={[s.ov, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={{ flex: 1, gap: 5 }}>
-            <View style={s.ovTag}><Text style={s.ovTagTx}>{profile?.nickname?.toUpperCase() || "YOU"}</Text></View>
-            <Text style={s.ovTitle}>Your consistency{"\n"}is your strength.</Text>
-            <Text style={s.ovSub}>{total === 0 ? "Add your first medication." : taken === total ? "All done for today!" : `${total - taken} medication${total - taken === 1 ? "" : "s"} left.`}</Text>
+            <View style={[s.ovTag, { backgroundColor: theme.accentBg }]}><Text style={[s.ovTagTx, { color: theme.accent }]}>{profile?.nickname?.toUpperCase() || "YOU"}</Text></View>
+            <Text style={[s.ovTitle, { color: theme.textPrimary }]}>{t("today.consistencyTitle", "Your consistency\nis your strength.")}</Text>
+            <Text style={[s.ovSub, { color: theme.textSecondary }]}>{total === 0 ? t("today.firstMed", "Add your first medication.") : taken === total ? t("today.allDone", "All done for today!") : `${total - taken} ${t("today.medsLeft", "medication(s) left.")}`}</Text>
             <View style={{ gap: 4, marginTop: 4 }}>
-              {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={A3} /><Text style={s.mTx}>Next: <Text style={{ color: TX }}>{next.medication?.name}</Text> at {next.scheduled_time}</Text></View>}
-              <View style={s.mRow}><Ionicons name="flame" size={12} color={A3} /><Text style={s.mTx}>Streak: <Text style={{ color: TX, fontWeight: "700" }}>{streak} Days</Text></Text></View>
+              {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Next: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{next.medication?.name}</Text> at {next.scheduled_time}</Text></View>}
+              <View style={s.mRow}><Ionicons name="flame" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Streak: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{streak} {t("today.streakDays", "Days")}</Text></Text></View>
             </View>
           </View>
-          <Ring pct={pct} />
+          <Ring pct={pct} textPrimary={theme.textPrimary} accent={theme.accent} isDark={isDark} />
         </View>
 
         {/* Week strip */}
@@ -383,30 +269,47 @@ export default function Today() {
           {days.map(d => {
             const a = d.iso === date;
             return (
-              <TouchableOpacity key={d.iso} onPress={() => setDate(d.iso)} style={[s.pill, a && s.pillOn]}>
-                <Text style={[s.pL, a && s.pLOn]}>{d.l}</Text>
-                <Text style={[s.pN, a && s.pNOn]}>{d.n}</Text>
+              <TouchableOpacity
+                key={d.iso}
+                onPress={() => setDate(d.iso)}
+                style={[
+                  s.pill,
+                  { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+                  a && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+                ]}
+              >
+                <Text style={[s.pL, { color: theme.textSecondary }, a && { color: theme.accent, fontWeight: "800" }]}>{d.l}</Text>
+                <Text style={[s.pN, { color: theme.textPrimary }, a && { color: theme.accent, fontWeight: "800" }]}>{d.n}</Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         {/* Water Intake & Hydration Tracker Card */}
-        <View style={[s.aiCard, { borderColor: waterLogged >= 5000 ? "rgba(248,113,113,0.4)" : waterLogged >= waterGoal ? "rgba(74,222,128,0.4)" : "rgba(56,189,248,0.3)", backgroundColor: waterLogged >= 5000 ? "rgba(239,68,68,0.06)" : waterLogged >= waterGoal ? "rgba(16,185,129,0.06)" : "rgba(14,165,233,0.06)", marginTop: 10 }]}>
+        <View style={[
+          s.aiCard,
+          {
+            backgroundColor: isDark ? "rgba(14,165,233,0.08)" : "rgba(14,165,233,0.06)",
+            borderColor: waterLogged >= 5000 ? "rgba(248,113,113,0.4)" : waterLogged >= waterGoal ? "rgba(74,222,128,0.4)" : "rgba(56,189,248,0.3)",
+            marginTop: 10
+          }
+        ]}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
             <View style={s.aiH}>
               <Ionicons name="water" size={13} color={waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8"} />
-              <Text style={[s.aiK, { color: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8" }]}>HYDRATION & WATER TRACKER</Text>
+              <Text style={[s.aiK, { color: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8" }]}>
+                {t("today.hydrationTitle", "HYDRATION & WATER TRACKER")}
+              </Text>
             </View>
             <TouchableOpacity onPress={resetWater}>
-              <Text style={{ fontSize: 10, color: TM, fontWeight: "600" }}>Reset</Text>
+              <Text style={{ fontSize: 10, color: theme.textSecondary, fontWeight: "600" }}>{t("today.reset", "Reset")}</Text>
             </TouchableOpacity>
           </View>
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginVertical: 8 }}>
             <View style={{ gap: 2, flex: 1, paddingRight: 8 }}>
-              <Text style={{ fontSize: 18, fontWeight: "800", color: TX }}>
-                {waterLogged} <Text style={{ fontSize: 12, fontWeight: "500", color: TM }}>/ {waterGoal} mL</Text>
+              <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary }}>
+                {waterLogged} <Text style={{ fontSize: 12, fontWeight: "500", color: theme.textSecondary }}>/ {waterGoal} mL</Text>
               </Text>
               {waterLogged >= 5000 ? (
                 <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700" }}>
@@ -421,8 +324,8 @@ export default function Today() {
                   🎉 Daily Goal Met! ({Math.round(waterLogged / 250)} glasses logged)
                 </Text>
               ) : (
-                <Text style={{ fontSize: 11, color: "#38bdf8", fontWeight: "600" }}>
-                  {Math.round(waterLogged / 250)} of {Math.round(waterGoal / 250)} glasses consumed today
+                <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "600" }}>
+                  {Math.round(waterLogged / 250)} of {Math.round(waterGoal / 250)} {t("today.glassesConsumed", "glasses consumed today")}
                 </Text>
               )}
             </View>
@@ -432,162 +335,104 @@ export default function Today() {
           </View>
 
           {/* Progress bar */}
-          <View style={{ height: 6, borderRadius: 3, backgroundColor: "rgba(255,255,255,0.08)", overflow: "hidden", marginBottom: 10 }}>
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", overflow: "hidden", marginBottom: 10 }}>
             <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
           </View>
 
           {/* Action buttons */}
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: waterLogged >= 5000 ? "rgba(255,255,255,0.05)" : "rgba(56,189,248,0.15)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
+              style={{ flex: 1, backgroundColor: isDark ? "rgba(56,189,248,0.15)" : "rgba(56,189,248,0.12)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
               onPress={() => addWater(250)}>
-              <Ionicons name="add-circle-outline" size={14} color={waterLogged >= 5000 ? TM : "#38bdf8"} />
-              <Text style={{ fontSize: 12, color: waterLogged >= 5000 ? TM : "#38bdf8", fontWeight: "700" }}>+ Glass (250ml)</Text>
+              <Ionicons name="add-circle-outline" size={14} color="#0284C7" />
+              <Text style={{ fontSize: 12, color: "#0284C7", fontWeight: "700" }}>{t("today.addGlass", "+ Glass (250ml)")}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: waterLogged >= 5000 ? "rgba(255,255,255,0.05)" : "rgba(56,189,248,0.22)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
+              style={{ flex: 1, backgroundColor: isDark ? "rgba(56,189,248,0.22)" : "rgba(56,189,248,0.18)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
               onPress={() => addWater(500)}>
-              <Ionicons name="add" size={14} color={waterLogged >= 5000 ? TM : "#38bdf8"} />
-              <Text style={{ fontSize: 12, color: waterLogged >= 5000 ? TM : "#38bdf8", fontWeight: "700" }}>+ Bottle (500ml)</Text>
+              <Ionicons name="add" size={14} color="#0284C7" />
+              <Text style={{ fontSize: 12, color: "#0284C7", fontWeight: "700" }}>{t("today.addBottle", "+ Bottle (500ml)")}</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* AI Insight */}
         {aiMsg && (
-          <View style={s.aiCard}>
-            <View style={s.aiH}><Ionicons name="sparkles" size={10} color={A3} /><Text style={s.aiK}>AI INSIGHT</Text></View>
-            <Text style={s.aiTx}>{aiMsg}</Text>
+          <View style={[s.aiCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <View style={s.aiH}><Ionicons name="sparkles" size={12} color={theme.accent} /><Text style={[s.aiK, { color: theme.accent }]}>AI INSIGHT</Text></View>
+            <Text style={[s.aiTx, { color: theme.textSecondary }]}>{aiMsg}</Text>
           </View>
         )}
 
         {/* AI Recommended Yoga Therapy Card */}
         <TouchableOpacity
           activeOpacity={0.85}
-          style={[s.aiCard, { borderColor: "rgba(168,85,247,0.3)", backgroundColor: "rgba(22,25,38,0.9)" }]}
+          style={[s.aiCard, { borderColor: "rgba(20,184,166,0.3)", backgroundColor: theme.surface }]}
           onPress={() => setYogaModalOpen(true)}>
           <View style={s.aiH}>
-            <Ionicons name="leaf-outline" size={12} color="#14B8A6" />
+            <Ionicons name="leaf-outline" size={13} color="#14B8A6" />
             <Text style={[s.aiK, { color: "#14B8A6" }]}>
-              AI YOGA THERAPY — {(() => {
-                if (!yogaReminderTime) return "08:00 AM daily";
-                const [h, m] = yogaReminderTime.split(":").map(Number);
-                if (isNaN(h) || isNaN(m)) return `${yogaReminderTime} daily`;
-                const period = h >= 12 ? "PM" : "AM";
-                const hour12 = h % 12 === 0 ? 12 : h % 12;
-                return `${hour12}:${String(m).padStart(2, "0")} ${period} daily`;
-              })()}
+              {t("today.aiYogaBanner", "AI YOGA THERAPY")}
             </Text>
           </View>
-          <Text style={[s.aiTx, { fontWeight: "700", color: TX, marginBottom: 2 }]} numberOfLines={2}>
-            {yogaTipName || "Anulom Vilom & Pawanmuktasana Flow"}
+          <Text style={[s.aiTx, { fontWeight: "700", color: theme.textPrimary, marginTop: 4, marginBottom: 2 }]}>
+            {t("today.yogaFlowTitle", "Anulom Vilom & Pawanmuktasana Flow")}
           </Text>
-          <Text style={{ fontSize: 11, color: TM, marginBottom: 8 }}>
-            {yogaTipMeta || "12 min • Verified Ministry of AYUSH & Swami Ramdev"}
+          <Text style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 8 }}>
+            {t("today.ayushVerified", "12 min • Verified Ministry of AYUSH & Swami Ramdev")}
           </Text>
           <View style={{ marginTop: 6 }}>
-            <TouchableOpacity
-              style={{ width: "100%", backgroundColor: "rgba(20,184,166,0.12)", borderRadius: 10, paddingVertical: 10, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6, borderWidth: 1, borderColor: "rgba(20,184,166,0.3)" }}
-              onPress={() => setYogaModalOpen(true)}>
+            <View style={{ width: "100%", backgroundColor: "rgba(20,184,166,0.12)", borderRadius: 10, paddingVertical: 10, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 6, borderWidth: 1, borderColor: "rgba(20,184,166,0.3)" }}>
               <Ionicons name="play-circle-outline" size={16} color="#14B8A6" />
-              <Text style={{ fontSize: 13, color: "#14B8A6", fontWeight: "700" }}>View Routine & Guided Poses</Text>
-            </TouchableOpacity>
+              <Text style={{ fontSize: 13, color: "#14B8A6", fontWeight: "700" }}>{t("today.viewRoutine", "View Routine & Guided Poses")}</Text>
+            </View>
           </View>
         </TouchableOpacity>
 
-        {/* Drug & Food Clinical Guide Card on Today screen */}
-        {drugFoodGuide && drugFoodGuide.has_medications && (
-          <TouchableOpacity
-            activeOpacity={0.85}
-            style={[s.aiCard, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.05)" }]}
-            onPress={() => setFoodGuideOpen(true)}>
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={s.aiH}>
-                <Ionicons name="restaurant-outline" size={12} color="#4ade80" />
-                <Text style={[s.aiK, { color: "#4ade80" }]}>DRUG & FOOD CLINICAL GUIDE</Text>
-              </View>
-              <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.18)" }}>
-                <Text style={{ fontSize: 9, color: "#4ade80", fontWeight: "700" }}>VIEW GUIDE</Text>
-              </View>
-            </View>
-            <Text style={[s.aiTx, { fontWeight: "700", color: TX, marginTop: 4, marginBottom: 2 }]}>
-              Food Timing & Interaction Advice
-            </Text>
-            <Text style={{ fontSize: 11, color: TM }}>
-              {drugFoodGuide.scanned_medications} medicines scanned • Avoid food interactions & improve absorption
-            </Text>
-          </TouchableOpacity>
-        )}
-
         {/* Dose sections */}
         {total === 0 ? (
-          <View style={s.empty}>
-            <View style={s.emI}><Ionicons name="medical-outline" size={26} color={AC} /></View>
-            <Text style={s.emT}>No medications yet</Text>
-            <Text style={s.emS}>Tap + to add your first medication</Text>
+          <View style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <View style={[s.emI, { backgroundColor: theme.accentBg }]}><Ionicons name="medical-outline" size={26} color={theme.accent} /></View>
+            <Text style={[s.emT, { color: theme.textPrimary }]}>{t("today.noDosesToday", "No pending medication doses for today!")}</Text>
+            <Text style={[s.emS, { color: theme.textSecondary }]}>{t("treatment.noMedsDesc", "Tap + to add one")}</Text>
           </View>
         ) : ["morning", "afternoon", "evening", "night"].map(sec => {
           const items = secs[sec]; if (!items?.length) return null;
           return (
             <View key={sec} style={{ gap: 8, marginBottom: 6 }}>
-              <View style={s.sH}><Ionicons name={SI[sec]} size={12} color={A3} /><Text style={s.sL}>{sec.toUpperCase()} • {items[0]?.scheduled_time}</Text></View>
+              <View style={s.sH}><Ionicons name={SI[sec]} size={12} color={theme.accent} /><Text style={[s.sL, { color: theme.textSecondary }]}>{sec.toUpperCase()} • {items[0]?.scheduled_time}</Text></View>
               {items.map(dose => {
                 const m = dose.medication || {}, st = dose.status || "pending";
                 const tk = st === "taken", sk = st === "skipped", ms = st === "missed";
-                const guide = drugFoodGuide?.guides?.find((g: any) =>
-                  g.medication?.toLowerCase().includes(m.name?.toLowerCase()) ||
-                  m.name?.toLowerCase().includes(g.medication?.toLowerCase())
-                );
                 return (
-                  <View key={dose.id} style={[s.dc, (tk) && s.dcD]}>
-                    <View style={[s.dI, tk && { backgroundColor: "rgba(145,132,217,0.08)" }]}>
-                      <Ionicons name="medical-outline" size={16} color={tk ? TM : A3} />
+                  <View key={dose.id} style={[s.dc, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, (tk) && { backgroundColor: theme.surfaceElevated, opacity: 0.7 }]}>
+                    <View style={[s.dI, { backgroundColor: theme.accentBg }, tk && { backgroundColor: "rgba(16,185,129,0.1)" }]}>
+                      <Ionicons name="medical-outline" size={16} color={tk ? "#10B981" : theme.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[s.dN, (tk) && { color: TM }]}>{m.name || "Unknown"}</Text>
-                      {m.generic_name ? <Text style={[s.dM, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
-                      <Text style={s.dM}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
-                      {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : TM, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
-                      {m.food_relation ? (
-                        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.1)", borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", alignSelf: "flex-start" }}>
-                          <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
-                            {m.food_relation === "before_food" ? "Before Food" : m.food_relation === "with_food" ? "With Food" : m.food_relation === "anytime" ? "Anytime" : "After Food"}
-                          </Text>
-                        </View>
-                      ) : null}
-                      {m.notes || dose.note ? (
-                        <Text style={{ fontSize: 10, color: TM, fontStyle: "italic", marginTop: 2 }}>
-                          Note: {m.notes || dose.note}
-                        </Text>
-                      ) : null}
-                      {guide?.dos?.[0] && (
-                        <View style={{ marginTop: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-start" }}>
-                          <Ionicons name="restaurant-outline" size={10} color="#4ade80" />
-                          <Text style={{ fontSize: 9, color: "#4ade80", fontWeight: "600" }}>{guide.dos[0]}</Text>
-                        </View>
-                      )}
+                      <Text style={[s.dN, { color: theme.textPrimary }, (tk) && { color: theme.textSecondary }]}>{m.name || "Unknown"}</Text>
+                      {m.generic_name ? <Text style={[s.dM, { color: theme.accent, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
+                      <Text style={[s.dM, { color: theme.textSecondary }]}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
+                      {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : theme.textSecondary, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
                     </View>
                     {/* Time-locked dose actions */}
                     {(() => {
                       const win = getDoseWindow(dose.scheduled_time, date);
                       if (tk) return (
-                        // TAKEN = permanent, non-tappable
                         <View style={[s.bTk, { opacity: 1 }]}>
-                          <Ionicons name="checkmark-circle" size={13} color={A3} style={{ marginRight: 3 }} />
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>
-                            {"Taken" + (dose.taken_at ? " " + new Date(dose.taken_at).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) : "")}
-                          </Text>
+                          <Ionicons name="checkmark-circle" size={13} color="#10B981" style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>{t("today.taken", "Taken")}</Text>
                         </View>
                       );
                       if (ms || sk) return (
                         <View style={s.bSk}>
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : "Skipped"}</Text>
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : t("today.skipped", "Skipped")}</Text>
                         </View>
                       );
                       if (win.isFuture) return (
                         <View style={s.bLock}>
-                          <Ionicons name="lock-closed" size={10} color={TM} />
-                          <Text style={{ fontSize: 10, color: TM }}>{formatTimeUntil(win.minutesUntil)}</Text>
+                          <Ionicons name="lock-closed" size={10} color={theme.textSecondary} />
+                          <Text style={{ fontSize: 10, color: theme.textSecondary }}>{formatTimeUntil(win.minutesUntil)}</Text>
                         </View>
                       );
                       if (win.isPast) return (
@@ -595,14 +440,10 @@ export default function Today() {
                           <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>Mark Missed</Text>
                         </TouchableOpacity>
                       );
-                      // Within window
                       return (
                         <View style={{ flexDirection: "row", gap: 4 }}>
-                          <TouchableOpacity style={s.bP} onPress={() => mark(dose.id, st, "taken")}>
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#fff" }}>Take</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity style={s.bMs} onPress={() => mark(dose.id, st, "missed")}>
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>Missed</Text>
+                          <TouchableOpacity style={[s.bP, { backgroundColor: theme.accent }]} onPress={() => mark(dose.id, st, "taken")}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#FFF" }}>{t("today.markTaken", "Taken")}</Text>
                           </TouchableOpacity>
                         </View>
                       );
@@ -614,315 +455,6 @@ export default function Today() {
           );
         })}
       </ScrollView>
-
-      {/* Low stock & out of stock consolidated summary banner */}
-      {doses.length > 0 && !dismissedStockBanner && (() => {
-        const lowStock = [...new Set(doses.map((d: any) => d.medication_id))]
-          .map(mid => doses.find((d: any) => d.medication_id === mid))
-          .filter(Boolean)
-          .map((d: any) => ({
-            id: d.medication_id,
-            name: d.medication_name || d.medication?.name || "",
-            stock: d.medication?.stock ?? 999,
-            active: d.medication?.active,
-            completed: d.medication?.completed,
-          }))
-          .filter(m => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
-
-        if (!lowStock.length) return null;
-
-        const hasZeroStock = lowStock.some(m => m.stock <= 0);
-        const accentColor = hasZeroStock ? "#f87171" : "#fbbf24";
-        const bgAlpha = hasZeroStock ? "rgba(248,113,113,0.12)" : "rgba(251,191,36,0.12)";
-        const borderAlpha = hasZeroStock ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)";
-
-        const firstTwoNames = lowStock.slice(0, 2).map(m => m.name).join(", ");
-        const remainingCount = lowStock.length - 2;
-        const summaryNames = remainingCount > 0 ? `${firstTwoNames} +${remainingCount} more` : firstTwoNames;
-        const bannerTitle = lowStock.length === 1
-          ? (lowStock[0].stock <= 0 ? `${lowStock[0].name} is out of stock` : `${lowStock[0].name} — only ${lowStock[0].stock} left`)
-          : `${lowStock.length} Medications Low on Stock: ${summaryNames}`;
-
-        return (
-          <View style={{ marginHorizontal: 14, marginBottom: 10 }}>
-            <TouchableOpacity
-              activeOpacity={0.88}
-              style={{
-                backgroundColor: bgAlpha,
-                borderRadius: 12,
-                padding: 12,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 10,
-                borderWidth: 1,
-                borderColor: borderAlpha,
-              }}
-              onPress={() => setStockListOpen(true)}
-            >
-              <Ionicons name={hasZeroStock ? "alert-circle" : "warning"} size={18} color={accentColor} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 13, fontWeight: "700", color: accentColor }} numberOfLines={1}>
-                  {bannerTitle}
-                </Text>
-                <Text style={{ fontSize: 11, color: TM, marginTop: 2 }}>
-                  Tap to manage & refill • Tap ✕ to remind later
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                style={{
-                  backgroundColor: "rgba(145,132,217,0.15)",
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 6,
-                  borderWidth: 1,
-                  borderColor: "rgba(145,132,217,0.3)",
-                }}
-                onPress={() => setStockListOpen(true)}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "700", color: A3 }}>Manage</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                style={{ padding: 4 }}
-                onPress={() => setDismissedStockBanner(true)}
-              >
-                <Ionicons name="close" size={16} color={TM} />
-              </TouchableOpacity>
-            </TouchableOpacity>
-          </View>
-        );
-      })()}
-      {/* FAB */}
-      <TouchableOpacity style={s.fab} onPress={() => setActionSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
-
-      {/* Calendar modal with green/red coloring */}
-      <Modal visible={calOpen} transparent animationType="fade" onRequestClose={() => setCalOpen(false)}>
-        <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setCalOpen(false)}>
-          <View style={[s.cal, { zIndex: 10, elevation: 10 }]}>
-            <View style={s.hand} />
-            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: 4 }}>
-              <Text style={s.calT}>{new Date().toLocaleString("default", { month: "long", year: "numeric" })}</Text>
-              <TouchableOpacity onPress={() => setCalOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
-            <View style={{ flexDirection: "row", gap: 12, marginBottom: 4 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#4ade80" }} /><Text style={{ fontSize: 9, color: TM }}>All taken</Text></View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#e5b285" }} /><Text style={{ fontSize: 9, color: TM }}>Partial</Text></View>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}><View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: "#e58585" }} /><Text style={{ fontSize: 9, color: TM }}>Missed</Text></View>
-            </View>
-            <View style={s.calG}>
-              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(d => (<Text key={d} style={s.calH}>{d}</Text>))}
-              {Array.from({ length: 31 }, (_, i) => {
-                const dayNum = i + 1;
-                const now = new Date();
-                const dayDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(dayNum).padStart(2, "0")}`;
-                const isSelected = dayDate === date;
-                const bgColor = isSelected ? AC : calDayColor(dayDate);
-                const textColor = isSelected ? "#fff" : calDayTextColor(dayDate);
-                return (
-                  <TouchableOpacity key={i} style={[s.calD, { backgroundColor: bgColor, borderWidth: isSelected ? 1.5 : 0, borderColor: AC }]}
-                    onPress={() => { setDate(dayDate); setCalOpen(false); }}>
-                    <Text style={[s.calDT, { color: textColor }]}>{dayNum}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <View style={s.dc}>
-              <View style={[s.dI, { borderRadius: 19 }]}><Ionicons name="flame" size={19} color={A3} /></View>
-              <View><Text style={s.dN}>{streak} day streak</Text><Text style={s.dM}>Keep it going!</Text></View>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Action sheet */}
-      <ActionSheetModal
-        visible={actionSheet}
-        onClose={() => setActionSheet(false)}
-        options={[
-          { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setActionSheet(false); handleAddMedication(); } },
-          { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setActionSheet(false); router.push("/appointments"); } },
-          { icon: "leaf-outline", title: "AI Yoga Recommendation", body: "View your personalised yoga routine", fn: () => { setActionSheet(false); router.push("/(tabs)/yoga" as any); } },
-          { icon: "storefront-outline", title: "Nearby Pharmacy", body: "Find medical stores and diagnostic labs", fn: () => { setActionSheet(false); router.push("/nearby"); } },
-        ]}
-      />
-
-      {/* Out of stock modal */}
-      <Modal visible={!!stockModal} transparent animationType="slide" onRequestClose={() => setStockModal(null)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockModal(null)}>
-          <View style={{ backgroundColor: "#3f424d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 22, gap: 12, zIndex: 10, elevation: 10 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 6 }} />
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-                <Ionicons name={(stockModal?.stock ?? 0) <= 0 ? "alert-circle" : "warning"} size={22} color={(stockModal?.stock ?? 0) <= 0 ? "#f87171" : "#fbbf24"} />
-                <Text style={{ fontSize: 16, fontWeight: "700", color: TX, flex: 1 }}>{(stockModal?.stock ?? 0) <= 0 ? `${stockModal?.name} is out of stock` : `${stockModal?.name} — only ${stockModal?.stock} left`}</Text>
-              </View>
-              <TouchableOpacity onPress={() => setStockModal(null)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
-            <Text style={{ fontSize: 12, color: TM, lineHeight: 17 }}>{(stockModal?.stock ?? 0) <= 0 ? "You have 0 pills remaining. Refill your stock to continue reminders, or mark this treatment course as complete." : "Running low on medication — refill your stock or find a nearby pharmacy before running out."}</Text>
-
-            {/* If stock > 0 and pending dose exists, allow marking taken */}
-            {(() => {
-              if ((stockModal?.stock ?? 0) <= 0) return null;
-              const pendingDose = doses.find((d: any) => d.medication_id === stockModal?.id && d.status === "pending");
-              if (!pendingDose) return null;
-              return (
-                <TouchableOpacity onPress={() => { mark(pendingDose.id, "pending", "taken"); setStockModal(null); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(74,222,128,0.25)" }}>
-                  <Ionicons name="checkmark-circle-outline" size={18} color="#4ade80" />
-                  <Text style={{ fontSize: 13, fontWeight: "600", color: "#4ade80", flex: 1 }}>Mark today's dose as taken</Text>
-                </TouchableOpacity>
-              );
-            })()}
-
-            {/* Custom Refill Stock Option */}
-            <TouchableOpacity onPress={() => {
-              const med = stockModal;
-              setStockModal(null);
-              if (med) setRefillMed(med);
-            }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(56,189,248,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)" }}>
-              <Ionicons name="cube-outline" size={18} color="#38bdf8" />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: "#38bdf8", flex: 1 }}>Refill stock (Select quantity)</Text>
-              <Ionicons name="chevron-forward" size={14} color="#38bdf8" />
-            </TouchableOpacity>
-
-            {/* Find Pharmacy Option */}
-            <TouchableOpacity onPress={() => { setStockModal(null); router.push("/nearby"); }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "#232532", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(233,233,237,0.1)" }}>
-              <Ionicons name="storefront-outline" size={18} color={A3} />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: TX, flex: 1 }}>Find nearby pharmacy</Text>
-              <Ionicons name="chevron-forward" size={14} color={TM} />
-            </TouchableOpacity>
-
-            {/* Treatment Course Complete Option */}
-            <TouchableOpacity onPress={() => {
-              const id = stockModal?.id;
-              const name = stockModal?.name;
-              const generic = stockModal?.generic_name;
-              const dosage = stockModal?.dosage;
-              const unit = stockModal?.unit;
-              Alert.alert("Mark Course Complete?", `Mark treatment for ${name || "this medication"} as completed? It will be archived in your course history.`, [
-                { text: "Cancel", style: "cancel" },
-                { text: "Mark Complete", style: "default", onPress: async () => {
-                  setStockModal(null);
-                  if (id) {
-                    setDoses(prev => prev.filter(d => d.medication_id !== id));
-                    try {
-                      await logCourseCompleted(id, name || "Medication", generic, dosage, unit);
-                      await api.completeMedication(id);
-                    } catch {}
-                    await fetchServer();
-                  }
-                }}
-              ]);
-            }} style={{ flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: "rgba(74,222,128,0.1)", borderRadius: 14, padding: 13, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)" }}>
-              <Ionicons name="checkmark-done-circle-outline" size={18} color="#4ade80" />
-              <Text style={{ fontSize: 13, fontWeight: "600", color: "#4ade80", flex: 1 }}>Course completed (Archive)</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => setStockModal(null)} style={{ alignItems: "center", paddingVertical: 8 }}>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: TM }}>Remind me later</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Drug-Food Modal Guide */}
-      <DrugFoodGuideModal
-        visible={foodGuideOpen}
-        onClose={() => setFoodGuideOpen(false)}
-        guide={drugFoodGuide}
-      />
-
-      {/* Consolidated Low & Out of Stock Management Modal Sheet */}
-      <Modal visible={stockListOpen} transparent animationType="slide" onRequestClose={() => setStockListOpen(false)}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" }} activeOpacity={1} onPress={() => setStockListOpen(false)}>
-          <View style={{ backgroundColor: "#1e212d", borderTopLeftRadius: 22, borderTopRightRadius: 22, padding: 20, maxHeight: "80%", gap: 14, zIndex: 10, elevation: 10 }}>
-            <View style={{ width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.2)", alignSelf: "center", marginBottom: 2 }} />
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name="warning" size={20} color="#fbbf24" />
-                <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>Low & Out of Stock Medications</Text>
-              </View>
-              <TouchableOpacity onPress={() => setStockListOpen(false)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-              {(() => {
-                const lowStockList = [...new Set(doses.map((d: any) => d.medication_id))]
-                  .map(mid => doses.find((d: any) => d.medication_id === mid))
-                  .filter(Boolean)
-                  .map((d: any) => ({
-                    id: d.medication_id,
-                    name: d.medication_name || d.medication?.name || "",
-                    stock: d.medication?.stock ?? 999,
-                    active: d.medication?.active,
-                    completed: d.medication?.completed,
-                  }))
-                  .filter(m => m.stock !== undefined && m.stock <= 3 && m.active !== false && !m.completed);
-
-                if (!lowStockList.length) {
-                  return (
-                    <Text style={{ fontSize: 13, color: TM, textAlign: "center", paddingVertical: 20 }}>
-                      All medication stocks are sufficient!
-                    </Text>
-                  );
-                }
-
-                return lowStockList.map((item, idx) => (
-                  <View key={idx} style={{ backgroundColor: "#262938", borderRadius: 12, padding: 12, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, borderWidth: 1, borderColor: item.stock <= 0 ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.3)" }}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 14, fontWeight: "700", color: TX }}>{item.name}</Text>
-                      <Text style={{ fontSize: 11, color: item.stock <= 0 ? "#f87171" : "#fbbf24", fontWeight: "600", marginTop: 2 }}>
-                        {item.stock <= 0 ? "Out of stock (0 left)" : `Only ${item.stock} left`}
-                      </Text>
-                    </View>
-                    <View style={{ flexDirection: "row", gap: 6 }}>
-                      <TouchableOpacity
-                        style={{ backgroundColor: "rgba(56,189,248,0.15)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)" }}
-                        onPress={() => {
-                          setStockListOpen(false);
-                          setRefillMed(item);
-                        }}>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>Refill</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={{ backgroundColor: "rgba(74,222,128,0.12)", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)" }}
-                        onPress={() => {
-                          setStockListOpen(false);
-                          Alert.alert("Mark Course Complete?", `Archive ${item.name}? It will hide from daily dose lists.`, [
-                            { text: "Cancel", style: "cancel" },
-                            { text: "Mark Complete", onPress: () => markComplete(item.id) }
-                          ]);
-                        }}>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>Done</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ));
-              })()}
-            </ScrollView>
-
-            <TouchableOpacity
-              style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, backgroundColor: "rgba(139,92,246,0.2)", borderRadius: 12, paddingVertical: 12, borderWidth: 1, borderColor: "rgba(139,92,246,0.35)", marginTop: 4 }}
-              onPress={() => { setStockListOpen(false); router.push("/nearby"); }}>
-              <Ionicons name="storefront-outline" size={16} color={A3} />
-              <Text style={{ fontSize: 13, fontWeight: "700", color: A3 }}>Find Nearby Pharmacy</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={{ alignItems: "center", paddingVertical: 8 }}
-              onPress={() => { setStockListOpen(false); setDismissedStockBanner(true); }}>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: TM }}>Dismiss banner for today</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       <UpgradePrompt
         visible={showUpgrade}
@@ -945,45 +477,68 @@ export default function Today() {
         channel={activeVideo?.channel}
         benefit={activeVideo?.benefit}
       />
+      <TouchableOpacity
+        testID="fab-add-today-btn"
+        style={[s.fab, { backgroundColor: theme.accent }]}
+        onPress={() => setActionSheetOpen(true)}
+      >
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
+      <ActionSheetModal
+        visible={actionSheetOpen}
+        onClose={() => setActionSheetOpen(false)}
+        options={actionOptions}
+      />
+      <CalendarModal
+        visible={calOpen}
+        selectedDate={date}
+        onClose={() => setCalOpen(false)}
+        onSelectDate={(newDate) => {
+          setDate(newDate);
+        }}
+      />
     </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG }, hdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
-  appNm: { fontSize: 16, fontWeight: "600", color: TX }, hdrR: { flexDirection: "row", alignItems: "center", gap: 7 },
-  iBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: "rgba(233,233,237,0.15)", alignItems: "center", justifyContent: "center" },
-  sTag: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: AB, borderWidth: 1, borderColor: "rgba(145,132,217,0.25)" },
-  sTx: { fontSize: 13, fontWeight: "600", color: A3 }, body: { paddingHorizontal: 16, paddingBottom: 110, gap: 10 },
-  ov: { backgroundColor: SF, borderRadius: 18, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: BD },
-  ovTag: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, backgroundColor: AB, marginBottom: 4 },
-  ovTagTx: { fontSize: 9, fontWeight: "700", color: A3, letterSpacing: 1 }, ovTitle: { fontSize: 19, fontWeight: "700", color: TX, lineHeight: 25, letterSpacing: -.4 },
-  ovSub: { fontSize: 12, color: TM }, mRow: { flexDirection: "row", alignItems: "center", gap: 5 }, mTx: { fontSize: 11, color: TM },
-  strip: { paddingVertical: 2, gap: 6 }, pill: { width: 46, height: 60, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 2, borderWidth: 1, borderColor: BD },
-  pillOn: { backgroundColor: AB, borderColor: AC }, pL: { fontSize: 9, letterSpacing: .6, textTransform: "uppercase", color: TD, fontWeight: "700" }, pLOn: { color: A3 },
-  pN: { fontSize: 17, fontWeight: "700", color: TX }, pNOn: { color: A3 },
-  aiCard: { backgroundColor: "rgba(145,132,217,0.07)", borderRadius: 14, padding: 13, gap: 5, borderWidth: 1, borderColor: "rgba(145,132,217,0.22)" },
-  aiH: { flexDirection: "row", alignItems: "center", gap: 4 }, aiK: { fontSize: 9, letterSpacing: 1, textTransform: "uppercase", color: A3, fontWeight: "700" },
-  aiTx: { fontSize: 12, color: TM, lineHeight: 17 }, sH: { flexDirection: "row", alignItems: "center", gap: 5 }, sL: { fontSize: 10, letterSpacing: .7, color: TM, fontWeight: "600" },
-  dc: { backgroundColor: SF, borderRadius: 14, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1, borderColor: BD },
-  dcD: { backgroundColor: "rgba(35,37,50,0.5)", borderColor: "rgba(233,233,237,0.06)" },
-  dI: { width: 34, height: 34, borderRadius: 10, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
-  dN: { fontSize: 13, fontWeight: "600", color: TX }, dM: { fontSize: 10, color: TM, marginTop: 2 },
-  bP: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: AC, alignItems: "center", justifyContent: "center" },
-  bTk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(145,132,217,0.12)", borderWidth: 1, borderColor: "rgba(145,132,217,0.2)", alignItems: "center", justifyContent: "center", flexDirection: "row" },
+  safe: { flex: 1 },
+  hdr: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 16, paddingTop: 10, paddingBottom: 6 },
+  appNm: { fontSize: 18, fontWeight: "800" },
+  hdrR: { flexDirection: "row", alignItems: "center", gap: 7 },
+  iBtn: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  sTag: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, borderWidth: 1 },
+  sTx: { fontSize: 13, fontWeight: "700" },
+  body: { paddingHorizontal: 16, paddingBottom: 110, gap: 10 },
+  ov: { borderRadius: 18, padding: 16, flexDirection: "row", alignItems: "center", borderWidth: 1 },
+  ovTag: { alignSelf: "flex-start", paddingHorizontal: 8, paddingVertical: 3, borderRadius: 999, marginBottom: 4 },
+  ovTagTx: { fontSize: 9, fontWeight: "700", letterSpacing: 1 },
+  ovTitle: { fontSize: 19, fontWeight: "800", lineHeight: 25, letterSpacing: -0.4 },
+  ovSub: { fontSize: 12 },
+  mRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  mTx: { fontSize: 11 },
+  strip: { paddingVertical: 2, gap: 6 },
+  pill: { width: 46, height: 60, borderRadius: 14, alignItems: "center", justifyContent: "center", gap: 2, borderWidth: 1 },
+  pL: { fontSize: 9, letterSpacing: 0.6, textTransform: "uppercase", fontWeight: "700" },
+  pN: { fontSize: 17, fontWeight: "700" },
+  aiCard: { borderRadius: 14, padding: 13, gap: 5, borderWidth: 1 },
+  aiH: { flexDirection: "row", alignItems: "center", gap: 4 },
+  aiK: { fontSize: 9, letterSpacing: 1, textTransform: "uppercase", fontWeight: "700" },
+  aiTx: { fontSize: 12, lineHeight: 17 },
+  sH: { flexDirection: "row", alignItems: "center", gap: 5 },
+  sL: { fontSize: 10, letterSpacing: 0.7, fontWeight: "700" },
+  dc: { borderRadius: 14, padding: 12, flexDirection: "row", alignItems: "center", gap: 10, borderWidth: 1 },
+  dI: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  dN: { fontSize: 14, fontWeight: "700" },
+  dM: { fontSize: 11, marginTop: 1 },
+  bP: { height: 30, paddingHorizontal: 12, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  bTk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(16,185,129,0.12)", borderWidth: 1, borderColor: "rgba(16,185,129,0.25)", alignItems: "center", justifyContent: "center", flexDirection: "row" },
   bSk: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(229,133,133,0.12)", alignItems: "center", justifyContent: "center" },
   bMs: { height: 30, paddingHorizontal: 12, borderRadius: 8, backgroundColor: "rgba(229,133,133,0.1)", borderWidth: 1, borderColor: "rgba(229,133,133,0.2)", alignItems: "center", justifyContent: "center" },
-  bLock: { height: 30, paddingHorizontal: 10, borderRadius: 8, backgroundColor: "rgba(233,233,237,0.06)", borderWidth: 1, borderColor: "rgba(233,233,237,0.1)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 },
-  empty: { backgroundColor: SF, borderRadius: 18, padding: 36, alignItems: "center", gap: 8, borderWidth: 1, borderColor: BD },
-  emI: { width: 52, height: 52, borderRadius: 26, backgroundColor: AB, alignItems: "center", justifyContent: "center", marginBottom: 4 },
-  emT: { fontSize: 15, fontWeight: "700", color: TX }, emS: { fontSize: 12, color: TM, textAlign: "center" },
-  fab: { position: "absolute", right: 18, bottom: 90, width: 52, height: 52, borderRadius: 26, backgroundColor: AC, alignItems: "center", justifyContent: "center", elevation: 6 },
-  ovl: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", justifyContent: "flex-end" },
-  cal: { backgroundColor: N8, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 18, gap: 10 },
-  hand: { width: 36, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.25)", alignSelf: "center", marginBottom: 4 },
-  calT: { fontSize: 15, fontWeight: "700", color: TX, textAlign: "center" },
-  calG: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
-  calH: { width: "14.28%", textAlign: "center", fontSize: 9, color: TM, fontWeight: "600", paddingBottom: 4 },
-  calD: { width: "14.28%", aspectRatio: 1, borderRadius: 999, alignItems: "center", justifyContent: "center" },
-  calDT: { fontSize: 12, color: TX },
+  bLock: { height: 30, paddingHorizontal: 10, borderRadius: 8, backgroundColor: "rgba(0,0,0,0.04)", borderWidth: 1, borderColor: "rgba(0,0,0,0.08)", alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 4 },
+  empty: { borderRadius: 18, padding: 36, alignItems: "center", gap: 8, borderWidth: 1 },
+  emI: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", marginBottom: 4 },
+  emT: { fontSize: 15, fontWeight: "700" },
+  emS: { fontSize: 12, textAlign: "center" },
+  fab: { position: "absolute", right: 18, bottom: 24, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", elevation: 6, zIndex: 99 },
 });

@@ -121,53 +121,87 @@ export default function Profile() {
         </View>
 
         {/* Identity */}
-        <Text style={s.secL}>IDENTITY</Text>
-        <View style={s.card}>
+        <Text style={[s.secL, { color: theme.accent }]}>IDENTITY</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={s.field}>
-            <Text style={s.label}>Display Name</Text>
-            <TextInput value={profile.nickname || ""} onChangeText={v => update("nickname", v)} placeholder="Your name" placeholderTextColor={TM} style={s.inp} />
+            <Text style={[s.label, { color: theme.textSecondary }]}>Display Name</Text>
+            <TextInput
+              value={profile.nickname || ""}
+              onChangeText={v => update("nickname", v)}
+              placeholder="Your name"
+              placeholderTextColor={theme.textDisabled}
+              style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
+            />
           </View>
           <View style={s.field}>
-            <Text style={s.label}>Email Account</Text>
-            <Text style={[s.inp, { color: TM }]}>
+            <Text style={[s.label, { color: theme.textSecondary }]}>Email Account</Text>
+            <Text style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textSecondary, borderColor: theme.surfaceBorder }]}>
               {profile.email || "Registered Google Account"}
             </Text>
           </View>
           <View style={s.field}>
-            <Text style={s.label}>Gender</Text>
-            <View style={{ flexDirection: "row", gap: 8 }}>
+            <Text style={[s.label, { color: theme.textSecondary }]}>Gender</Text>
+            <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
               {["male", "female", "other", "prefer not to say"].map(g => (
-                <TouchableOpacity key={g} onPress={() => update("gender", g)}
-                  style={[s.chip, profile.gender === g && s.chipOn]}>
-                  <Text style={[s.chipT, profile.gender === g && { color: A3 }]}>{g.charAt(0).toUpperCase() + g.slice(1)}</Text>
+                <TouchableOpacity
+                  key={g}
+                  onPress={() => update("gender", g)}
+                  style={[
+                    s.chip,
+                    { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+                    profile.gender === g && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+                  ]}
+                >
+                  <Text style={[s.chipT, { color: theme.textSecondary }, profile.gender === g && { color: theme.accent, fontWeight: "700" }]}>
+                    {g.charAt(0).toUpperCase() + g.slice(1)}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
           <View style={s.field}>
-            <Text style={s.label}>Year of Birth</Text>
-            <TextInput value={profile.year_of_birth ? String(profile.year_of_birth) : ""} onChangeText={v => update("year_of_birth", parseInt(v) || "")} placeholder="1990" placeholderTextColor={TM} style={s.inp} keyboardType="numeric" />
+            <Text style={[s.label, { color: theme.textSecondary }]}>Year of Birth</Text>
+            <TextInput
+              value={profile.year_of_birth ? String(profile.year_of_birth) : ""}
+              onChangeText={v => update("year_of_birth", parseInt(v) || "")}
+              placeholder="1990"
+              placeholderTextColor={theme.textDisabled}
+              style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
+              keyboardType="numeric"
+            />
           </View>
         </View>
 
         {/* Location */}
-        <Text style={s.secL}>LOCATION</Text>
-        <View style={s.card}>
+        <Text style={[s.secL, { color: theme.accent }]}>LOCATION</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={s.field}>
-            <Text style={s.label}>City</Text>
-            <TextInput value={profile.location_city || ""} onChangeText={v => update("location_city", v)} placeholder="Mumbai" placeholderTextColor={TM} style={s.inp} />
+            <Text style={[s.label, { color: theme.textSecondary }]}>City</Text>
+            <TextInput
+              value={profile.location_city || ""}
+              onChangeText={v => update("location_city", v)}
+              placeholder="Mumbai"
+              placeholderTextColor={theme.textDisabled}
+              style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
+            />
           </View>
           <View style={s.field}>
-            <Text style={s.label}>State / Region</Text>
-            <TextInput value={profile.location_state || ""} onChangeText={v => update("location_state", v)} placeholder="Maharashtra" placeholderTextColor={TM} style={s.inp} />
+            <Text style={[s.label, { color: theme.textSecondary }]}>State / Region</Text>
+            <TextInput
+              value={profile.location_state || ""}
+              onChangeText={v => update("location_state", v)}
+              placeholder="Maharashtra"
+              placeholderTextColor={theme.textDisabled}
+              style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
+            />
           </View>
         </View>
 
         {/* Contact */}
-        <Text style={s.secL}>CONTACT</Text>
-        <View style={s.card}>
+        <Text style={[s.secL, { color: theme.accent }]}>CONTACT</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={s.field}>
-            <Text style={s.label}>Phone Number</Text>
+            <Text style={[s.label, { color: theme.textSecondary }]}>Phone Number</Text>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
               <CountryCodePicker
                 selectedDialCode={dialCode}
@@ -178,14 +212,14 @@ export default function Profile() {
                 value={profile.phone || ""}
                 onChangeText={v => update("phone", formatFullWhatsAppPhone(dialCode, v))}
                 placeholder="98765 43210"
-                placeholderTextColor={TM}
-                style={[s.inp, { flex: 1 }]}
+                placeholderTextColor={theme.textDisabled}
+                style={[s.inp, { flex: 1, backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
                 keyboardType="phone-pad"
               />
             </View>
           </View>
           <View style={s.field}>
-            <Text style={s.label}>Caregiver WhatsApp</Text>
+            <Text style={[s.label, { color: theme.textSecondary }]}>Caregiver WhatsApp</Text>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
               <CountryCodePicker
                 selectedDialCode={dialCode}
@@ -196,49 +230,56 @@ export default function Profile() {
                 value={profile.caregiver_phone || ""}
                 onChangeText={v => update("caregiver_phone", formatFullWhatsAppPhone(dialCode, v))}
                 placeholder="98765 43210"
-                placeholderTextColor={TM}
-                style={[s.inp, { flex: 1 }]}
+                placeholderTextColor={theme.textDisabled}
+                style={[s.inp, { flex: 1, backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
                 keyboardType="phone-pad"
               />
             </View>
-            <Text style={[s.label, { marginTop: 4, fontStyle: "italic" }]}>Receives missed-dose alerts via WhatsApp</Text>
+            <Text style={[s.label, { color: theme.textSecondary, marginTop: 4, fontStyle: "italic" }]}>Receives missed-dose alerts via WhatsApp</Text>
             <TouchableOpacity onPress={() => router.push("/caregiver")} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
-              <Ionicons name="people-outline" size={13} color={A3} />
-              <Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>Manage all caregivers & alert history</Text>
+              <Ionicons name="people-outline" size={13} color={theme.accent} />
+              <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "700" }}>Manage all caregivers & alert history</Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Routine */}
-        <Text style={s.secL}>MEDICATION ROUTINE</Text>
-        <View style={s.card}>
-          <Text style={s.label}>When do you typically take medications?</Text>
+        <Text style={[s.secL, { color: theme.accent }]}>MEDICATION ROUTINE</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <Text style={[s.label, { color: theme.textSecondary }]}>When do you typically take medications?</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
             {ROUTINE_OPTIONS.map(r => (
-              <TouchableOpacity key={r.key} onPress={() => update(r.key, !profile[r.key])}
-                style={[s.routineBtn, profile[r.key] && s.routineBtnOn]}>
-                <Ionicons name={r.icon as any} size={13} color={profile[r.key] ? A3 : TM} />
-                <Text style={[s.chipT, profile[r.key] && { color: A3 }]}>{r.label}</Text>
+              <TouchableOpacity
+                key={r.key}
+                onPress={() => update(r.key, !profile[r.key])}
+                style={[
+                  s.routineBtn,
+                  { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+                  profile[r.key] && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+                ]}
+              >
+                <Ionicons name={r.icon as any} size={13} color={profile[r.key] ? theme.accent : theme.textSecondary} />
+                <Text style={[s.chipT, { color: theme.textSecondary }, profile[r.key] && { color: theme.accent, fontWeight: "700" }]}>{r.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
         {/* Notifications */}
-        <Text style={s.secL}>NOTIFICATIONS</Text>
-        <View style={s.card}>
+        <Text style={[s.secL, { color: theme.accent }]}>NOTIFICATIONS</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View>
-              <Text style={s.cT}>Medication Reminders</Text>
-              <Text style={s.cS}>Sound and vibration alerts</Text>
+              <Text style={[s.cT, { color: theme.textPrimary }]}>Medication Reminders</Text>
+              <Text style={[s.cS, { color: theme.textSecondary }]}>Sound and vibration alerts</Text>
             </View>
-            <Switch value={profile.notifications_enabled !== false} onValueChange={v => update("notifications_enabled", v)} trackColor={{ false: "#3e3e3e", true: AC }} thumbColor={TX} />
+            <Switch value={profile.notifications_enabled !== false} onValueChange={v => update("notifications_enabled", v)} trackColor={{ false: theme.surfaceBorder, true: theme.accent }} thumbColor={theme.textPrimary} />
           </View>
         </View>
 
         {/* Save button */}
         {changed && (
-          <TouchableOpacity style={s.saveBtn} onPress={save} disabled={saving}>
+          <TouchableOpacity style={[s.saveBtn, { backgroundColor: theme.accent }]} onPress={save} disabled={saving}>
             <Text style={s.saveTx}>{saving ? "Saving…" : "Save Profile"}</Text>
           </TouchableOpacity>
         )}
@@ -250,21 +291,22 @@ export default function Profile() {
 }
 
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
-  hdr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: BD },
+  safe: { flex: 1 },
+  hdr: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1 },
   backBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
-  title: { fontSize: 16, fontWeight: "700", color: TX },
+  title: { fontSize: 16, fontWeight: "700" },
   body: { padding: 16, paddingBottom: 40, gap: 14 },
-  secL: { fontSize: 10, letterSpacing: 1, color: TM, fontWeight: "700" },
-  card: { backgroundColor: SF, borderRadius: 14, padding: 14, gap: 12, borderWidth: 1, borderColor: BD },
+  secL: { fontSize: 10, letterSpacing: 1, fontWeight: "700" },
+  card: { borderRadius: 14, padding: 14, gap: 12, borderWidth: 1 },
   field: { gap: 6 },
-  label: { fontSize: 10, color: TM, fontWeight: "600" },
-  inp: { backgroundColor: "#1e2030", borderRadius: 10, padding: 12, color: TX, fontSize: 13, borderWidth: 1, borderColor: BD },
-  cT: { fontSize: 13, fontWeight: "600", color: TX }, cS: { fontSize: 10, color: TM },
-  chip: { paddingHorizontal: 10, height: 28, borderRadius: 999, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" },
-  chipOn: { backgroundColor: AB, borderColor: AC }, chipT: { fontSize: 11, color: TM, fontWeight: "600" },
-  routineBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, height: 32, borderRadius: 999, borderWidth: 1, borderColor: BD },
-  routineBtnOn: { backgroundColor: AB, borderColor: AC },
-  saveBtn: { backgroundColor: AC, borderRadius: 12, padding: 14, alignItems: "center" },
+  label: { fontSize: 10, fontWeight: "600" },
+  inp: { borderRadius: 10, padding: 12, fontSize: 13, borderWidth: 1 },
+  cT: { fontSize: 13, fontWeight: "600" }, cS: { fontSize: 10 },
+  chip: { paddingHorizontal: 10, height: 28, borderRadius: 999, borderWidth: 1, alignItems: "center", justifyContent: "center" },
+  chipOn: {}, chipT: { fontSize: 11, fontWeight: "600" },
+  routineBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 12, height: 32, borderRadius: 999, borderWidth: 1 },
+  routineBtnOn: {},
+  saveBtn: { borderRadius: 12, padding: 14, alignItems: "center" },
   saveTx: { color: "#fff", fontWeight: "700", fontSize: 15 },
 });
+

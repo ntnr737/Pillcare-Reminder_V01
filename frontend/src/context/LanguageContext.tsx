@@ -38,7 +38,7 @@ interface LanguageContextType {
   locale: SupportedLocale;
   setLocale: (locale: SupportedLocale) => void;
   currentLanguage: LanguageInfo;
-  t: (path: string, defaultText?: string) => string;
+  t: (path: string, defaultText?: string, params?: Record<string, any>) => string;
 }
 
 const STORAGE_KEY = "@pillcare_language_locale_v1";
@@ -78,7 +78,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const currentLanguage =
     SUPPORTED_LANGUAGES.find((l) => l.code === locale) || SUPPORTED_LANGUAGES[0];
 
-  const t = (path: string, defaultText?: string): string => {
+  const t = (path: string, defaultText?: string, params?: Record<string, any>): string => {
     const keys = path.split(".");
     let currentDict = dictionaries[locale] || dictionaries.en;
     let fallbackDict = dictionaries.en;
@@ -92,25 +92,35 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
     }
 
-    if (typeof currentDict === "string") {
-      return currentDict;
-    }
+    let result = typeof currentDict === "string" ? currentDict : undefined;
 
-    // Fallback to English
-    for (const k of keys) {
-      if (fallbackDict && typeof fallbackDict === "object" && k in fallbackDict) {
-        fallbackDict = fallbackDict[k];
-      } else {
-        fallbackDict = undefined;
-        break;
+    if (!result) {
+      // Fallback to English
+      for (const k of keys) {
+        if (fallbackDict && typeof fallbackDict === "object" && k in fallbackDict) {
+          fallbackDict = fallbackDict[k];
+        } else {
+          fallbackDict = undefined;
+          break;
+        }
+      }
+      if (typeof fallbackDict === "string") {
+        result = fallbackDict;
       }
     }
 
-    if (typeof fallbackDict === "string") {
-      return fallbackDict;
+    let strResult: string = result || defaultText || path;
+
+    if (params) {
+      Object.keys(params).forEach((key) => {
+        const val = String(params[key]);
+        strResult = strResult
+          .replace(new RegExp(`\\{\\{${key}\\}\\}`, "g"), val)
+          .replace(new RegExp(`\\{${key}\\}`, "g"), val);
+      });
     }
 
-    return defaultText || path;
+    return strResult;
   };
 
   return (

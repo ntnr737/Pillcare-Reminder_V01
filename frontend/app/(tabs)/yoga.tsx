@@ -246,6 +246,9 @@ const YOGA_ROUTINES: YogaRoutine[] = [
 const CATEGORIES = ["All", "Thyroid & Metabolism", "Morning Energy", "Digestive Health", "Stress & Sleep"];
 
 export default function YogaTabScreen() {
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeRoutineIndex, setActiveRoutineIndex] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
@@ -410,22 +413,22 @@ export default function YogaTabScreen() {
   };
 
   return (
-    <SafeAreaView style={s.safe} edges={["top"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       {/* Top Header */}
-      <View style={s.header}>
+      <View style={[s.header, { borderBottomColor: theme.surfaceBorder }]}>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <Ionicons name="sparkles" size={14} color={COLORS.A3} />
-            <Text style={s.subHeader}>CLINICALLY VERIFIED</Text>
+            <Ionicons name="sparkles" size={14} color={theme.accent} />
+            <Text style={[s.subHeader, { color: theme.accent }]}>{t("yoga.clinicallyVerified", "CLINICALLY VERIFIED")}</Text>
           </View>
-          <Text style={s.title}>AI Yoga Therapy</Text>
+          <Text style={[s.title, { color: theme.textPrimary }]}>{t("yoga.title", "AI Yoga Therapy")}</Text>
         </View>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <TouchableOpacity
             style={s.headerBadge}
             onPress={() => Alert.alert("AYUSH & Isha Verified", "All yoga sequences are designed in consultation with AYUSH Ministry guidelines, Patanjali Yogpeeth, and Isha Foundation protocols.")}>
-            <Ionicons name="checkmark-circle" size={16} color={COLORS.SUCCESS} />
-            <Text style={s.badgeText}>Verified</Text>
+            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+            <Text style={s.badgeText}>{t("yoga.verified", "Verified")}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -433,12 +436,19 @@ export default function YogaTabScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={COLORS.A3} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
       >
         {/* Category Filter Chips */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipsContainer}>
           {CATEGORIES.map((cat) => {
             const isSelected = selectedCategory === cat;
+            const catKeyMap: Record<string, string> = {
+              "All": "yoga.catAll",
+              "Thyroid & Metabolism": "yoga.catThyroid",
+              "Morning Energy": "yoga.catEnergy",
+              "Digestive Health": "yoga.catDigestive",
+              "Stress & Sleep": "yoga.catStress",
+            };
             return (
               <TouchableOpacity
                 key={cat}
@@ -446,34 +456,48 @@ export default function YogaTabScreen() {
                   setSelectedCategory(cat);
                   setActiveRoutineIndex(0);
                 }}
-                style={[s.chip, isSelected && s.chipSelected]}
+                style={[
+                  s.chip,
+                  { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+                  isSelected && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+                ]}
               >
-                <Text style={[s.chipText, isSelected && s.chipTextSelected]}>{cat}</Text>
+                <Text style={[s.chipText, { color: theme.textSecondary }, isSelected && { color: theme.accent, fontWeight: "700" }]}>
+                  {t(catKeyMap[cat] || cat, cat)}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </ScrollView>
 
         {/* Featured Routine Header Banner */}
-        <View style={s.routineBanner}>
+        <View style={[s.routineBanner, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
             <View style={s.tagRow}>
-              <View style={s.levelTag}>
-                <Ionicons name="speedometer-outline" size={11} color={COLORS.A3} />
-                <Text style={s.levelTagText}>{currentRoutine.level}</Text>
+              <View style={[s.levelTag, { backgroundColor: theme.accentBg }]}>
+                <Ionicons name="speedometer-outline" size={11} color={theme.accent} />
+                <Text style={[s.levelTagText, { color: theme.accent }]}>
+                  {t(`yoga.level${currentRoutine.level}`, currentRoutine.level)}
+                </Text>
               </View>
-              <View style={s.levelTag}>
-                <Ionicons name="time-outline" size={11} color={COLORS.A3} />
-                <Text style={s.levelTagText}>{currentRoutine.duration}</Text>
+              <View style={[s.levelTag, { backgroundColor: theme.accentBg }]}>
+                <Ionicons name="time-outline" size={11} color={theme.accent} />
+                <Text style={[s.levelTagText, { color: theme.accent }]}>
+                  {currentRoutine.duration.replace("min", t("yoga.min", "min"))}
+                </Text>
               </View>
             </View>
             <Text style={s.progressCounter}>
-              {safeCompletedSteps.length}/{currentRoutine.steps.length} Poses Done
+              {safeCompletedSteps.length}/{currentRoutine.steps.length} {t("yoga.posesDone", "Poses Done")}
             </Text>
           </View>
 
-          <Text style={s.routineTitle}>{currentRoutine.title}</Text>
-          <Text style={s.routineDesc}>{currentRoutine.description}</Text>
+          <Text style={[s.routineTitle, { color: theme.textPrimary }]}>
+            {t(`yoga.routine.${currentRoutine.id}.title`, currentRoutine.title)}
+          </Text>
+          <Text style={[s.routineDesc, { color: theme.textSecondary }]}>
+            {t(`yoga.routine.${currentRoutine.id}.desc`, currentRoutine.description)}
+          </Text>
 
           {/* Routine Switcher if multiple in category */}
           {filteredRoutines.length > 1 && (
@@ -482,7 +506,7 @@ export default function YogaTabScreen() {
                 <TouchableOpacity
                   key={r.id}
                   onPress={() => setActiveRoutineIndex(idx)}
-                  style={[s.routineDot, activeRoutineIndex === idx && s.routineDotActive]}
+                  style={[s.routineDot, activeRoutineIndex === idx && { width: 20, backgroundColor: theme.accent }]}
                 />
               ))}
             </View>
@@ -491,50 +515,53 @@ export default function YogaTabScreen() {
 
         {/* Section 4: Analytics Twin Stat Cards */}
         <View style={s.analyticsRow}>
-          <View style={s.analyticsCard}>
+          <View style={[s.analyticsCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
             <View style={s.analyticsIconBox}>
               <Text style={{ fontSize: 18 }}>🔥</Text>
             </View>
             <View>
-              <Text style={s.analyticsVal}>{streakDays} Days</Text>
-              <Text style={s.analyticsLbl}>Current Streak</Text>
+              <Text style={[s.analyticsVal, { color: theme.textPrimary }]}>{streakDays} {t("yoga.days", "Days")}</Text>
+              <Text style={[s.analyticsLbl, { color: theme.textSecondary }]}>{t("yoga.currentStreak", "Current Streak")}</Text>
             </View>
           </View>
 
-          <View style={s.analyticsCard}>
-            <View style={[s.analyticsIconBox, { backgroundColor: "rgba(167,139,250,0.15)" }]}>
-              <Ionicons name="time-outline" size={20} color={COLORS.A3} />
+          <View style={[s.analyticsCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <View style={[s.analyticsIconBox, { backgroundColor: theme.accentBg }]}>
+              <Ionicons name="time-outline" size={20} color={theme.accent} />
             </View>
             <View>
-              <Text style={s.analyticsVal}>{mindfulMins} Mins</Text>
-              <Text style={s.analyticsLbl}>Mindful Practice</Text>
+              <Text style={[s.analyticsVal, { color: theme.textPrimary }]}>{mindfulMins} {t("yoga.mins", "Mins")}</Text>
+              <Text style={[s.analyticsLbl, { color: theme.textSecondary }]}>{t("yoga.mindfulPractice", "Mindful Practice")}</Text>
             </View>
           </View>
         </View>
 
         {/* Step-by-Step Poses Checklist */}
         <View style={s.sectionHeader}>
-          <Text style={s.sectionTitle}>ROUTINE SEQUENCE</Text>
-          <Text style={s.sectionSub}>Tap pose to watch video or log completion</Text>
+          <Text style={[s.sectionTitle, { color: theme.textSecondary }]}>{t("yoga.routineSequence", "ROUTINE SEQUENCE")}</Text>
+          <Text style={[s.sectionSub, { color: theme.textSecondary }]}>{t("yoga.routineSub", "Tap pose to watch video or log completion")}</Text>
         </View>
 
         {currentRoutine.steps.map((step) => {
           const stepDone = isStepDone(step.num);
+          const translatedName = t(`yoga.pose.${currentRoutine.id}.${step.num}.name`, step.name);
+          const translatedBenefit = t(`yoga.pose.${currentRoutine.id}.${step.num}.benefit`, step.benefit);
+
           return (
-            <View key={step.num} style={[s.poseCard, stepDone && s.poseCardDone]}>
+            <View key={step.num} style={[s.poseCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, stepDone && s.poseCardDone]}>
               <View style={s.poseRow}>
-                <View style={[s.poseNumBadge, stepDone && s.poseNumBadgeDone]}>
+                <View style={[s.poseNumBadge, { backgroundColor: theme.accentBg }, stepDone && s.poseNumBadgeDone]}>
                   {stepDone ? (
-                    <Ionicons name="checkmark" size={14} color={COLORS.SUCCESS} />
+                    <Ionicons name="checkmark" size={14} color="#10B981" />
                   ) : (
-                    <Text style={s.poseNumText}>{step.num}</Text>
+                    <Text style={[s.poseNumText, { color: theme.accent }]}>{step.num}</Text>
                   )}
                 </View>
 
                 <View style={{ flex: 1 }}>
-                  <Text style={s.poseName}>{step.name}</Text>
-                  <Text style={s.poseDuration}>{step.duration} • {step.channel}</Text>
-                  <Text style={s.poseBenefit}>{step.benefit}</Text>
+                  <Text style={[s.poseName, { color: theme.textPrimary }]}>{translatedName}</Text>
+                  <Text style={[s.poseDuration, { color: theme.textSecondary }]}>{step.duration.replace("min", t("yoga.min", "min"))} • {step.channel}</Text>
+                  <Text style={[s.poseBenefit, { color: theme.accent }]}>{translatedBenefit}</Text>
                 </View>
               </View>
 
@@ -545,29 +572,29 @@ export default function YogaTabScreen() {
                   onPress={() =>
                     setActiveVideo({
                       url: step.youtube_video,
-                      title: step.name,
+                      title: translatedName,
                       channel: step.channel,
-                      benefit: step.benefit,
+                      benefit: translatedBenefit,
                       step: step,
                     })
                   }
                 >
-                  <Ionicons name="play-circle" size={16} color={COLORS.A3} />
-                  <Text style={s.watchBtnText}>Start Guided Studio ⏱</Text>
-                  <Ionicons name="chevron-forward" size={12} color={COLORS.A3} />
+                  <Ionicons name="play-circle" size={16} color={theme.accent} />
+                  <Text style={[s.watchBtnText, { color: theme.textPrimary }]}>{t("yoga.startGuidedStudio", "Start Guided Studio ⏱")}</Text>
+                  <Ionicons name="chevron-forward" size={12} color={theme.accent} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[s.doneBtn, stepDone && s.doneBtnActive]}
+                  style={[s.doneBtn, { borderColor: theme.surfaceBorder }, stepDone && s.doneBtnActive]}
                   onPress={() => toggleStepDone(step)}
                 >
                   <Ionicons
                     name={stepDone ? "checkmark-circle" : "ellipse-outline"}
                     size={15}
-                    color={stepDone ? COLORS.SUCCESS : COLORS.TM}
+                    color={stepDone ? "#10B981" : theme.textSecondary}
                   />
-                  <Text style={[s.doneBtnText, stepDone && s.doneBtnTextActive]}>
-                    {stepDone ? "Completed" : "Mark Done"}
+                  <Text style={[s.doneBtnText, { color: theme.textSecondary }, stepDone && s.doneBtnTextActive]}>
+                    {stepDone ? t("yoga.completed", "Completed") : t("yoga.markDone", "Mark Done")}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -576,44 +603,46 @@ export default function YogaTabScreen() {
         })}
 
         {/* Daily Reminder Button */}
-        <View style={s.reminderCard}>
+        <View style={[s.reminderCard, { backgroundColor: theme.accentBg, borderColor: theme.accent }]}>
           <View style={{ flex: 1 }}>
-            <Text style={s.reminderTitle}>Daily Yoga Notification</Text>
-            <Text style={s.reminderSub}>
+            <Text style={[s.reminderTitle, { color: theme.textPrimary }]}>{t("yoga.dailyNotification", "Daily Yoga Notification")}</Text>
+            <Text style={[s.reminderSub, { color: theme.textSecondary }]}>
               {savedReminderTime
-                ? `Scheduled daily at ${savedReminderTime}`
-                : "Receive a friendly alert to complete your yoga session"}
+                ? `${t("yoga.scheduledDailyAt", "Scheduled daily at")} ${savedReminderTime}`
+                : t("yoga.reminderSub", "Receive a friendly alert to complete your yoga session")}
             </Text>
           </View>
           <TouchableOpacity
-            style={s.reminderBtn}
+            style={[s.reminderBtn, { backgroundColor: theme.accent }]}
             onPress={() => setTimePickerOpen(true)}
           >
             <Ionicons name="notifications-outline" size={16} color="#fff" />
-            <Text style={s.reminderBtnText}>{savedReminderTime ? "Edit Time" : "Set Alert"}</Text>
+            <Text style={s.reminderBtnText}>{savedReminderTime ? t("yoga.editTime", "Edit Time") : t("yoga.setAlert", "Set Alert")}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Verified AYUSH / Patanjali / Isha Channels */}
-        <Text style={[s.sectionTitle, { marginTop: 14, marginBottom: 6 }]}>VERIFIED INSTRUCTOR CHANNELS</Text>
+        <Text style={[s.sectionTitle, { color: theme.textSecondary, marginTop: 14, marginBottom: 6 }]}>
+          {t("yoga.verifiedChannels", "VERIFIED INSTRUCTOR CHANNELS")}
+        </Text>
         {currentRoutine.channels.map((ch) => (
           <TouchableOpacity
             key={ch.url}
-            style={s.channelRow}
+            style={[s.channelRow, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
             onPress={() => Linking.openURL(ch.url)}
           >
             <Ionicons name="logo-youtube" size={18} color="#FF0000" />
-            <Text style={s.channelName}>{ch.name}</Text>
+            <Text style={[s.channelName, { color: theme.textPrimary }]}>{ch.name}</Text>
             {ch.verified && (
               <View style={s.verifiedBadge}>
                 <Text style={s.verifiedBadgeText}>✓ VERIFIED</Text>
               </View>
             )}
-            <Ionicons name="open-outline" size={12} color={COLORS.TM} />
+            <Ionicons name="open-outline" size={12} color={theme.textSecondary} />
           </TouchableOpacity>
         ))}
 
-        <Text style={s.disclaimerText}>{currentRoutine.disclaimer}</Text>
+        <Text style={[s.disclaimerText, { color: theme.textSecondary }]}>{currentRoutine.disclaimer}</Text>
       </ScrollView>
 
       {/* DateTimePicker for Yoga Reminder */}

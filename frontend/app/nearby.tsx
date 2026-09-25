@@ -290,30 +290,30 @@ export default function Nearby() {
   };
 
   const renderPlaceCard = (p: Place, cfg: typeof TYPE_CONFIG[PlaceType]) => (
-    <TouchableOpacity key={p.id} style={s.card} onPress={() => setSelectedPlace(p)}>
+    <TouchableOpacity key={p.id} style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]} onPress={() => setSelectedPlace(p)}>
       <View style={s.cardTop}>
         <View style={[s.placeIco, { backgroundColor: `${cfg.color}18` }]}>
           <Ionicons name={cfg.icon as any} size={18} color={cfg.color} />
         </View>
         <View style={{ flex: 1 }}>
-          <Text style={s.cT} numberOfLines={1}>{p.name}</Text>
-          <Text style={s.cS} numberOfLines={1}>{p.address}</Text>
+          <Text style={[s.cT, { color: theme.textPrimary }]} numberOfLines={1}>{p.name}</Text>
+          <Text style={[s.cS, { color: theme.textSecondary }]} numberOfLines={1}>{p.address}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 3 }}>
-            <View style={s.distBadge}>
-              <Ionicons name="navigate-outline" size={10} color={A3} />
-              <Text style={{ fontSize: 10, color: A3, fontWeight: "600" }}>{fmt(p.distance)}</Text>
+            <View style={[s.distBadge, { backgroundColor: theme.accentBg }]}>
+              <Ionicons name="navigate-outline" size={10} color={theme.accent} />
+              <Text style={{ fontSize: 10, color: theme.accent, fontWeight: "600" }}>{fmt(p.distance)}</Text>
             </View>
             {p.open === true ? (
               <View style={[s.distBadge, { backgroundColor: "rgba(74,222,128,0.15)" }]}>
-                <Text style={{ fontSize: 10, color: "#4ade80", fontWeight: "700" }}>Open</Text>
+                <Text style={{ fontSize: 10, color: "#10B981", fontWeight: "700" }}>{t("common.openNow", "Open")}</Text>
               </View>
             ) : p.open === false ? (
               <View style={[s.distBadge, { backgroundColor: "rgba(248,113,113,0.15)" }]}>
-                <Text style={{ fontSize: 10, color: "#f87171", fontWeight: "700" }}>Closed</Text>
+                <Text style={{ fontSize: 10, color: "#EF4444", fontWeight: "700" }}>{t("common.closed", "Closed")}</Text>
               </View>
             ) : (
-              <View style={[s.distBadge, { backgroundColor: "rgba(255,255,255,0.06)" }]}>
-                <Text style={{ fontSize: 10, color: TM, fontWeight: "600" }}>Verify Hours</Text>
+              <View style={[s.distBadge, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)" }]}>
+                <Text style={{ fontSize: 10, color: theme.textSecondary, fontWeight: "600" }}>{t("common.verifyHours", "Verify Hours")}</Text>
               </View>
             )}
             {p.rating && (
@@ -324,25 +324,25 @@ export default function Nearby() {
             )}
           </View>
         </View>
-        <Ionicons name="chevron-forward" size={14} color={TM} />
+        <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
       </View>
 
-      <View style={s.cardActions}>
+      <View style={[s.cardActions, { borderTopColor: theme.surfaceBorder }]}>
         {p.phone ? (
           <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.08)" }]}
             onPress={e => { e.stopPropagation(); Linking.openURL(`tel:${(p.phone||"").replace(/[\s\-()]/g,"")}`); }}>
-            <Ionicons name="call" size={14} color="#4ade80" />
-            <Text style={[s.actionTx, { color: "#4ade80" }]}>Call now</Text>
+            <Ionicons name="call" size={14} color="#10B981" />
+            <Text style={[s.actionTx, { color: "#10B981" }]}>{t("common.call", "Call now")}</Text>
           </TouchableOpacity>
         ) : null}
         <TouchableOpacity style={[s.actionBtn, { borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
           onPress={e => { e.stopPropagation(); sendWhatsAppPrescription(p); }}>
           <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
-          <Text style={[s.actionTx, { color: "#25D366", fontWeight: "700" }]}>WhatsApp Order</Text>
+          <Text style={[s.actionTx, { color: "#25D366", fontWeight: "700" }]}>{t("common.whatsapp", "WhatsApp Order")}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[s.actionBtn, { flex: 1 }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
-          <Ionicons name="navigate" size={14} color={A3} />
-          <Text style={s.actionTx}>Directions</Text>
+        <TouchableOpacity style={[s.actionBtn, { flex: 1, borderColor: theme.surfaceBorder }]} onPress={e => { e.stopPropagation(); openMaps(p); }}>
+          <Ionicons name="navigate" size={14} color={theme.accent} />
+          <Text style={[s.actionTx, { color: theme.accent }]}>{t("common.directions", "Directions")}</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -365,22 +365,30 @@ export default function Nearby() {
 
       {/* Type tabs */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.typeTabs}>
-        {(Object.entries(TYPE_CONFIG) as [PlaceType, typeof TYPE_CONFIG[PlaceType]][]).map(([t, cfg]) => (
-          <TouchableOpacity key={t} onPress={() => setType(t)}
-            style={[s.typeTab, type === t && { backgroundColor: AB, borderColor: AC }]}>
-            <Ionicons name={cfg.icon as any} size={13} color={type === t ? A3 : TM} />
-            <Text style={[s.typeTabTx, type === t && { color: A3 }]}>{cfg.label}</Text>
+        {(Object.entries(TYPE_CONFIG) as [PlaceType, typeof TYPE_CONFIG[PlaceType]][]).map(([tType, tCfg]) => (
+          <TouchableOpacity key={tType} onPress={() => setType(tType)}
+            style={[
+              s.typeTab,
+              { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+              type === tType && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+            ]}>
+            <Ionicons name={tCfg.icon as any} size={13} color={type === tType ? theme.accent : theme.textSecondary} />
+            <Text style={[s.typeTabTx, { color: theme.textSecondary }, type === tType && { color: theme.accent, fontWeight: "700" }]}>{tCfg.label}</Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
 
       {/* Radius selector & Quick Filters */}
       <View style={s.radRow}>
-        <Text style={s.radLabel}>Radius:</Text>
+        <Text style={[s.radLabel, { color: theme.textSecondary }]}>Radius:</Text>
         {RADII.map(r => (
           <TouchableOpacity key={r.value} onPress={() => setRadius(r.value)}
-            style={[s.radBtn, radius === r.value && s.radBtnOn]}>
-            <Text style={[s.radTx, radius === r.value && { color: A3, fontWeight: "700" }]}>{r.label}</Text>
+            style={[
+              s.radBtn,
+              { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+              radius === r.value && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+            ]}>
+            <Text style={[s.radTx, { color: theme.textSecondary }, radius === r.value && { color: theme.accent, fontWeight: "700" }]}>{r.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -388,49 +396,49 @@ export default function Nearby() {
       <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}>
         <TouchableOpacity
           onPress={() => setOpenOnly(!openOnly)}
-          style={[s.filterChip, openOnly && s.filterChipOn]}>
-          <Ionicons name="time-outline" size={12} color={openOnly ? "#4ade80" : TM} />
-          <Text style={[s.filterChipTx, openOnly && { color: "#4ade80", fontWeight: "700" }]}>Open Now</Text>
+          style={[s.filterChip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, openOnly && { backgroundColor: "rgba(74,222,128,0.15)", borderColor: "#10B981" }]}>
+          <Ionicons name="time-outline" size={12} color={openOnly ? "#10B981" : theme.textSecondary} />
+          <Text style={[s.filterChipTx, { color: theme.textSecondary }, openOnly && { color: "#10B981", fontWeight: "700" }]}>{t("common.openNow", "Open Now")}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           onPress={() => setHasPhoneOnly(!hasPhoneOnly)}
-          style={[s.filterChip, hasPhoneOnly && s.filterChipOn]}>
-          <Ionicons name="logo-whatsapp" size={12} color={hasPhoneOnly ? "#25D366" : TM} />
-          <Text style={[s.filterChipTx, hasPhoneOnly && { color: "#25D366", fontWeight: "700" }]}>WhatsApp Ready</Text>
+          style={[s.filterChip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, hasPhoneOnly && { backgroundColor: "rgba(37,211,102,0.15)", borderColor: "#25D366" }]}>
+          <Ionicons name="logo-whatsapp" size={12} color={hasPhoneOnly ? "#25D366" : theme.textSecondary} />
+          <Text style={[s.filterChipTx, { color: theme.textSecondary }, hasPhoneOnly && { color: "#25D366", fontWeight: "700" }]}>WhatsApp Ready</Text>
         </TouchableOpacity>
       </View>
 
       {/* Results */}
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); search(); }} tintColor={A3} />}>
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); search(); }} tintColor={theme.accent} />}>
 
         {loading && (
-          <View style={s.center}><ActivityIndicator color={A3} size="large" /><Text style={s.cS}>Finding nearby {cfg.label.toLowerCase()}…</Text></View>
+          <View style={s.center}><ActivityIndicator color={theme.accent} size="large" /><Text style={[s.cS, { color: theme.textSecondary }]}>Finding nearby {cfg.label.toLowerCase()}…</Text></View>
         )}
 
         {!loading && locError && places.length === 0 ? (
-          <View style={[s.card, { alignItems: "center", gap: 12, padding: 28 }]}>
-            <Ionicons name={locError === "PERMISSION_DENIED" ? "location-outline" : "wifi-outline"} size={36} color={TM} />
-            <Text style={[s.cT, { textAlign: "center", lineHeight: 22 }]}>
-              {locError === "PERMISSION_DENIED" ? "Location permission required" : locError}
+          <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder, alignItems: "center", gap: 12, padding: 28 }]}>
+            <Ionicons name={locError === "PERMISSION_DENIED" ? "location-outline" : "wifi-outline"} size={36} color={theme.textSecondary} />
+            <Text style={[s.cT, { color: theme.textPrimary, textAlign: "center", lineHeight: 22 }]}>
+              {locError === "PERMISSION_DENIED" ? "Location permission required" : t("nearby.couldNotFetch", "Could not fetch nearby places. Please check your network and try again.")}
             </Text>
             {locError === "PERMISSION_DENIED" ? (
               <>
-                <Text style={[s.cS, { textAlign: "center" }]}>
+                <Text style={[s.cS, { color: theme.textSecondary, textAlign: "center" }]}>
                   {"Go to Settings → Apps → PillCare → Permissions → Location → Allow while using app"}
                 </Text>
-                <TouchableOpacity style={[s.retryBtn, { backgroundColor: "rgba(145,132,217,0.2)" }]}
+                <TouchableOpacity style={[s.retryBtn, { backgroundColor: theme.accentBg, borderColor: theme.accent }]}
                   onPress={() => Linking.openURL("app-settings:")}>
-                  <Text style={{ color: AC, fontWeight: "700", fontSize: 13 }}>Open Settings</Text>
+                  <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 13 }}>Open Settings</Text>
                 </TouchableOpacity>
               </>
             ) : (
               <>
-                <TouchableOpacity style={s.retryBtn} onPress={() => search()}>
-                  <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Try Again</Text>
+                <TouchableOpacity style={[s.retryBtn, { backgroundColor: theme.accentBg, borderColor: theme.accent }]} onPress={() => search()}>
+                  <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 13 }}>{t("nearby.tryAgain", "Try Again")}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.retryBtn, { marginTop: 10 }]} onPress={openGoogleMaps}>
-                  <Text style={{ color: A3, fontWeight: "600", fontSize: 13 }}>Open in Google Maps</Text>
+                <TouchableOpacity style={[s.retryBtn, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder, marginTop: 10 }]} onPress={openGoogleMaps}>
+                  <Text style={{ color: theme.textPrimary, fontWeight: "600", fontSize: 13 }}>{t("nearby.openGoogleMaps", "Open in Google Maps")}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -443,10 +451,10 @@ export default function Nearby() {
 
           if (filteredPlaces.length === 0 && places.length === 0 && !locError) {
             return (
-              <View style={[s.card, { alignItems: "center", padding: 32, gap: 10 }]}>
-                <Ionicons name="search-outline" size={32} color={TM} />
-                <Text style={s.cT}>No {cfg.label} found matching filters</Text>
-                <Text style={s.cS}>Try expanding radius or resetting quick filters</Text>
+              <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder, alignItems: "center", padding: 32, gap: 10 }]}>
+                <Ionicons name="search-outline" size={32} color={theme.textSecondary} />
+                <Text style={[s.cT, { color: theme.textPrimary }]}>No {cfg.label} found matching filters</Text>
+                <Text style={[s.cS, { color: theme.textSecondary }]}>Try expanding radius or resetting quick filters</Text>
               </View>
             );
           }
@@ -454,18 +462,18 @@ export default function Nearby() {
           return (
             <>
               {filteredPlaces.length === 0 && places.length > 0 && (
-                <View style={[s.card, { alignItems: "center", padding: 24, gap: 10, borderColor: "rgba(168,85,247,0.3)" }]}>
-                  <Ionicons name="location-outline" size={32} color={A3} />
-                  <Text style={[s.cT, { textAlign: "center" }]}>
+                <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.accent, alignItems: "center", padding: 24, gap: 10 }]}>
+                  <Ionicons name="location-outline" size={32} color={theme.accent} />
+                  <Text style={[s.cT, { color: theme.textPrimary, textAlign: "center" }]}>
                     No {cfg.label.toLowerCase()} within {radius < 1000 ? `${radius}m` : `${radius / 1000}km`}
                   </Text>
-                  <Text style={[s.cS, { textAlign: "center" }]}>
+                  <Text style={[s.cS, { color: theme.textSecondary, textAlign: "center" }]}>
                     No stores recorded within {radius < 1000 ? `${radius}m` : `${radius / 1000}km`}. Expand your radius to view nearby options.
                   </Text>
                   <View style={{ flexDirection: "row", gap: 8, marginTop: 4, flexWrap: "wrap", justifyContent: "center" }}>
                     {RADII.filter(r => r.value > radius).map(r => (
-                      <TouchableOpacity key={r.value} style={[s.radBtn, s.radBtnOn]} onPress={() => setRadius(r.value)}>
-                        <Text style={{ color: A3, fontWeight: "700", fontSize: 11 }}>Expand to {r.label}</Text>
+                      <TouchableOpacity key={r.value} style={[s.radBtn, { backgroundColor: theme.accentBg, borderColor: theme.accent }]} onPress={() => setRadius(r.value)}>
+                        <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 11 }}>Expand to {r.label}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -478,7 +486,7 @@ export default function Nearby() {
 
               {filteredPlaces.length === 0 && outsidePlaces.length > 0 && (
                 <View style={{ gap: 8, marginTop: 12 }}>
-                  <Text style={s.secL}>NEAREST STORES OUTSIDE {radius < 1000 ? `${radius}M` : `${radius / 1000}KM`} RADIUS</Text>
+                  <Text style={[s.secL, { color: theme.textSecondary }]}>NEAREST STORES OUTSIDE {radius < 1000 ? `${radius}M` : `${radius / 1000}KM`} RADIUS</Text>
                   {outsidePlaces.slice(0, 5).map(p => renderPlaceCard(p, cfg))}
                 </View>
               )}
@@ -488,31 +496,31 @@ export default function Nearby() {
 
         {places.length > 0 && (
           <View style={{ paddingVertical: 8, alignItems: "center", gap: 4 }}>
-            <Text style={s.cS}>{source === "osm" ? "Data from OpenStreetMap contributors" : "Data from Google"}</Text>
+            <Text style={[s.cS, { color: theme.textSecondary }]}>{source === "osm" ? "Data from OpenStreetMap contributors" : "Data from Google"}</Text>
             <TouchableOpacity onPress={openGoogleMaps}>
-          <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>See all on Google Maps →</Text>
+              <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>See all on Google Maps →</Text>
             </TouchableOpacity>
           </View>
         )}
         <View style={{ height: 20 }} />
       </ScrollView>
 
-      {/* Place detail sheet — shown inside app, no redirect */}
+      {/* Place detail sheet */}
       <Modal visible={!!selectedPlace} transparent animationType="slide" onRequestClose={() => setSelectedPlace(null)}>
         <TouchableOpacity style={{ flex: 1, justifyContent: "flex-end", backgroundColor: "rgba(0,0,0,0.6)" }} activeOpacity={1} onPress={() => setSelectedPlace(null)}>
-          <View style={{ backgroundColor: SF, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: BD, zIndex: 10, elevation: 10 }}>
+          <View style={{ backgroundColor: theme.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, paddingBottom: insets.bottom + 20, gap: 16, borderWidth: 1, borderColor: theme.surfaceBorder, zIndex: 10, elevation: 10 }}>
             {selectedPlace && (<>
               <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
                 <View style={{ flex: 1, gap: 4 }}>
                   <View style={[s.placeIco, { backgroundColor: `${cfg.color}18`, marginBottom: 8 }]}>
                     <Ionicons name={cfg.icon as any} size={20} color={cfg.color} />
                   </View>
-                  <Text style={{ fontSize: 17, fontWeight: "700", color: TX }}>{selectedPlace.name}</Text>
-                  <Text style={{ fontSize: 13, color: TM }}>{selectedPlace.address}</Text>
+                  <Text style={{ fontSize: 17, fontWeight: "700", color: theme.textPrimary }}>{selectedPlace.name}</Text>
+                  <Text style={{ fontSize: 13, color: theme.textSecondary }}>{selectedPlace.address}</Text>
                   <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
-                    <View style={s.distBadge}>
-                      <Ionicons name="navigate-outline" size={10} color={A3} />
-                      <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>{fmt(selectedPlace.distance)}</Text>
+                    <View style={[s.distBadge, { backgroundColor: theme.accentBg }]}>
+                      <Ionicons name="navigate-outline" size={10} color={theme.accent} />
+                      <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>{fmt(selectedPlace.distance)}</Text>
                     </View>
                     {selectedPlace.rating ? (
                       <View style={s.distBadge}>
@@ -522,15 +530,15 @@ export default function Nearby() {
                     ) : null}
                     {selectedPlace.open !== undefined ? (
                       <View style={[s.distBadge, { backgroundColor: selectedPlace.open ? "rgba(74,222,128,0.1)" : "rgba(229,133,133,0.1)" }]}>
-                        <Text style={{ fontSize: 11, color: selectedPlace.open ? "#4ade80" : "#e58585", fontWeight: "600" }}>
-                          {selectedPlace.open ? "Open now" : "Closed"}
+                        <Text style={{ fontSize: 11, color: selectedPlace.open ? "#10B981" : "#EF4444", fontWeight: "600" }}>
+                          {selectedPlace.open ? t("common.openNow", "Open now") : t("common.closed", "Closed")}
                         </Text>
                       </View>
                     ) : null}
                   </View>
                 </View>
                 <TouchableOpacity onPress={() => setSelectedPlace(null)} style={{ padding: 4 }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                  <Ionicons name="close" size={22} color={TM} />
+                  <Ionicons name="close" size={22} color={theme.textSecondary} />
                 </TouchableOpacity>
               </View>
 
@@ -544,21 +552,21 @@ export default function Nearby() {
               {selectedPlace.phone ? (
                 <TouchableOpacity style={[s.actionBtn, { paddingVertical: 14, justifyContent: "center", borderColor: "rgba(74,222,128,0.4)", backgroundColor: "rgba(74,222,128,0.1)" }]}
                   onPress={() => Linking.openURL(`tel:${(selectedPlace.phone||"").replace(/[\s\-()]/g,"")}`)}> 
-                  <Ionicons name="call" size={18} color="#4ade80" />
-                  <Text style={[s.actionTx, { color: "#4ade80", fontSize: 15 }]}>Call {selectedPlace.phone}</Text>
+                  <Ionicons name="call" size={18} color="#10B981" />
+                  <Text style={[s.actionTx, { color: "#10B981", fontSize: 15 }]}>Call {selectedPlace.phone}</Text>
                 </TouchableOpacity>
               ) : null}
 
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center" }]}
+                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center", borderColor: theme.surfaceBorder }]}
                   onPress={() => openMaps(selectedPlace)}>
-                  <Ionicons name="navigate" size={16} color={A3} />
-                  <Text style={[s.actionTx, { fontSize: 13 }]}>Walking directions</Text>
+                  <Ionicons name="navigate" size={16} color={theme.accent} />
+                  <Text style={[s.actionTx, { color: theme.accent, fontSize: 13 }]}>Walking directions</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center" }]}
+                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center", borderColor: theme.surfaceBorder }]}
                   onPress={() => Linking.openURL(`https://www.google.com/maps/search/${encodeURIComponent(selectedPlace.name)}/@${selectedPlace.lat},${selectedPlace.lng},17z`)}>
-                  <Ionicons name="car-outline" size={16} color={A3} />
-                  <Text style={[s.actionTx, { fontSize: 13 }]}>Driving route</Text>
+                  <Ionicons name="car-outline" size={16} color={theme.accent} />
+                  <Text style={[s.actionTx, { color: theme.accent, fontSize: 13 }]}>Driving route</Text>
                 </TouchableOpacity>
               </View>
               <View style={{ height: 8 }} />

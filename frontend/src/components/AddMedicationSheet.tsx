@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView, Alert } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
-import { theme } from "@/src/lib/theme";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 import { PrimaryButton } from "./PrimaryButton";
 import { UnitDropdownModal } from "./UnitDropdownModal";
 import { api } from "@/src/lib/api";
@@ -27,6 +28,9 @@ function fmtTime(d: Date) {
 }
 
 export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
+
   const [name, setName] = useState("");
   const [dosage, setDosage] = useState("");
   const [unit, setUnit] = useState("tablet");
@@ -81,7 +85,6 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
       notes: notes.trim() || undefined,
     };
     try {
-      // Local-first: Save to AsyncStorage cache immediately so UI updates instantly (<50ms)
       const localMed = {
         id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         user_id: "local",
@@ -93,15 +96,12 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
       const updated = [localMed, ...existing];
       await set(K.medications, updated);
 
-      // Enqueue background write
       await enqueueWrite("medication", payload);
 
-      // Instantly reset form, trigger UI refresh & close sheet
       reset();
       onSaved();
       onClose();
 
-      // Trigger background sync to server
       flushQueue().then(() => {
         api.listMedications(true).then((m) => {
           if (m && Array.isArray(m)) set(K.medications, m);
@@ -109,11 +109,20 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
       }).catch(() => {});
     } catch (e: any) {
       console.warn("Save error:", e);
-      Alert.alert("Could not save medication", "An unexpected error occurred while saving locally.");
+      Alert.alert(t("addMed.saveError", "Could not save medication"), t("addMed.saveErrorDesc", "An unexpected error occurred while saving locally."));
     } finally {
       setSaving(false);
     }
   };
+
+  const inputStyle = [
+    styles.input,
+    {
+      backgroundColor: isDark ? "#1e2030" : "#f8fafc",
+      color: theme.textPrimary,
+      borderColor: theme.surfaceBorder,
+    },
+  ];
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -121,125 +130,129 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
         <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={onClose} />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.sheet}
+          style={[styles.sheet, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
         >
           <View style={{ flex: 1 }}>
-            <View style={styles.handle} />
+            <View style={[styles.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
             <View style={styles.header}>
-              <Text style={styles.title}>Add Medication</Text>
+              <Text style={[styles.title, { color: theme.textPrimary }]}>{t("addMed.title", "Add Medication")}</Text>
               <TouchableOpacity testID="close-add-med" onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Feather name="x" size={22} color={theme.colors.textSecondary} />
+                <Feather name="x" size={22} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
           <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
-            <Text style={styles.label}>Medication name</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.name", "Medication name")}</Text>
             <TextInput
               testID="med-name-input"
               value={name}
               onChangeText={setName}
-              placeholder="e.g. Crocin"
-              placeholderTextColor={theme.colors.textDisabled}
-              style={styles.input}
+              placeholder={t("addMed.namePlaceholder", "e.g. Crocin")}
+              placeholderTextColor={theme.textDisabled}
+              style={inputStyle}
             />
 
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={styles.label}>Dosage</Text>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.dosage", "Dosage")}</Text>
                 <TextInput
                   testID="med-dosage-input"
                   value={dosage}
                   onChangeText={setDosage}
                   keyboardType="decimal-pad"
-                  placeholder="500 (optional)"
-                  placeholderTextColor={theme.colors.textDisabled}
-                  style={styles.input}
+                  placeholder={t("addMed.dosagePlaceholder", "500 (optional)")}
+                  placeholderTextColor={theme.textDisabled}
+                  style={inputStyle}
                 />
               </View>
               <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={styles.label}>Unit</Text>
+                <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.unit", "Unit")}</Text>
                 <TouchableOpacity
                   testID="unit-dropdown-btn"
                   onPress={() => setShowUnitModal(true)}
-                  style={styles.dropdownBtn}
+                  style={[styles.dropdownBtn, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", borderColor: theme.surfaceBorder }]}
                 >
-                  <Text style={styles.dropdownText}>{unit}</Text>
-                  <Feather name="chevron-down" size={18} color={theme.colors.brand} />
+                  <Text style={[styles.dropdownText, { color: theme.textPrimary }]}>{unit}</Text>
+                  <Feather name="chevron-down" size={18} color={theme.accent} />
                 </TouchableOpacity>
               </View>
             </View>
 
-            <Text style={styles.label}>Times per day</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.timesPerDay", "Times per day")}</Text>
             <TextInput
               testID="med-freq-input"
               value={freq}
               onChangeText={(t) => setFreq(t.replace(/[^0-9]/g, ""))}
               onBlur={() => setFreq((f) => (f.trim() ? String(Math.max(1, parseInt(f) || 1)) : "1"))}
               keyboardType="number-pad"
-              style={styles.input}
+              style={inputStyle}
             />
 
-            <Text style={styles.label}>Scheduled times</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.scheduledTimes", "Scheduled times")}</Text>
             <View style={styles.timesWrap}>
               {times.map((t, i) => (
-                <TouchableOpacity key={i} testID={`time-slot-${i}`} onPress={() => setShowTimeIdx(i)} style={styles.timePill}>
-                  <Text style={styles.timeText}>{t}</Text>
+                <TouchableOpacity key={i} testID={`time-slot-${i}`} onPress={() => setShowTimeIdx(i)} style={[styles.timePill, { backgroundColor: theme.accentBg }]}>
+                  <Text style={[styles.timeText, { color: theme.accent }]}>{t}</Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.label}>Start date</Text>
-            <TouchableOpacity testID="start-date-btn" onPress={() => setShowDate(true)} style={styles.input}>
-              <Text style={styles.inputText}>{fmt(startDate)}</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.startDate", "Start date")}</Text>
+            <TouchableOpacity testID="start-date-btn" onPress={() => setShowDate(true)} style={inputStyle}>
+              <Text style={[styles.inputText, { color: theme.textPrimary }]}>{fmt(startDate)}</Text>
             </TouchableOpacity>
 
             <View style={styles.row}>
               <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={styles.label}>Stock</Text>
-                <TextInput testID="stock-input" value={stock} onChangeText={setStock} keyboardType="number-pad" style={styles.input} />
+                <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.stock", "Stock")}</Text>
+                <TextInput testID="stock-input" value={stock} onChangeText={setStock} keyboardType="number-pad" style={inputStyle} />
               </View>
               <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={styles.label}>Refill alert at</Text>
-                <TextInput testID="refill-input" value={refill} onChangeText={setRefill} keyboardType="number-pad" style={styles.input} />
+                <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.refillAlert", "Refill alert at")}</Text>
+                <TextInput testID="refill-input" value={refill} onChangeText={setRefill} keyboardType="number-pad" style={inputStyle} />
               </View>
             </View>
 
-            <Text style={styles.label}>Food Instruction (MCI Guidelines)</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.foodInstruction", "Food Instruction (MCI Guidelines)")}</Text>
             <View style={styles.foodRow}>
               {[
-                { key: "after_food", label: "After Food" },
-                { key: "before_food", label: "Before Food" },
-                { key: "with_food", label: "With Food" },
-                { key: "anytime", label: "Anytime" },
+                { key: "after_food", label: t("addMed.afterFood", "After Food") },
+                { key: "before_food", label: t("addMed.beforeFood", "Before Food") },
+                { key: "with_food", label: t("addMed.withFood", "With Food") },
+                { key: "anytime", label: t("addMed.anytime", "Anytime") },
               ].map((item) => (
                 <TouchableOpacity
                   key={item.key}
                   onPress={() => setFoodRelation(item.key)}
-                  style={[styles.foodChip, foodRelation === item.key && styles.foodChipActive]}
+                  style={[
+                    styles.foodChip,
+                    { backgroundColor: isDark ? "#1e2030" : "#f8fafc", borderColor: theme.surfaceBorder },
+                    foodRelation === item.key && { backgroundColor: theme.accentBg, borderColor: theme.accent },
+                  ]}
                 >
-                  <Text style={[styles.foodChipText, foodRelation === item.key && styles.foodChipTextActive]}>
+                  <Text style={[styles.foodChipText, { color: theme.textSecondary }, foodRelation === item.key && { color: theme.accent, fontWeight: "700" }]}>
                     {item.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Text style={styles.label}>Special Notes / Instructions</Text>
+            <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.notes", "Special Notes / Instructions")}</Text>
             <TextInput
               testID="notes-input"
               value={notes}
               onChangeText={setNotes}
-              placeholder="e.g. Take with a full glass of water, do not crush..."
-              placeholderTextColor={theme.colors.textDisabled}
-              style={[styles.input, { height: 60 }]}
+              placeholder={t("addMed.notesPlaceholder", "e.g. Take with a full glass of water, do not crush...")}
+              placeholderTextColor={theme.textDisabled}
+              style={[inputStyle, { height: 60 }]}
               multiline
             />
 
-            <Text style={styles.helper}>Brand → generic name is auto-resolved by AI on save.</Text>
+            <Text style={[styles.helper, { color: theme.textSecondary }]}>{t("addMed.helper", "Brand → generic name is auto-resolved by AI on save.")}</Text>
           </ScrollView>
 
-          <View style={styles.footer}>
-            <PrimaryButton label={saving ? "Saving…" : "Save Medication"} onPress={save} loading={saving} testID="save-med-btn" />
+          <View style={[styles.footer, { borderTopColor: theme.surfaceBorder }]}>
+            <PrimaryButton label={saving ? t("addMed.saving", "Saving…") : t("addMed.save", "Save Medication")} onPress={save} loading={saving} testID="save-med-btn" />
           </View>
 
           {showDate && (
@@ -286,31 +299,24 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: theme.colors.overlay },
-  sheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%", zIndex: 10, elevation: 10 },
-  handle: { width: 48, height: 4, backgroundColor: theme.colors.borderStrong, borderRadius: 2, alignSelf: "center", marginTop: 12 },
+  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)" },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%", zIndex: 10, elevation: 10, borderTopWidth: 1 },
+  handle: { width: 48, height: 4, borderRadius: 2, alignSelf: "center", marginTop: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },
-  title: { color: theme.colors.textPrimary, fontSize: 20, fontWeight: "700" },
-  close: { color: theme.colors.brand, fontSize: 14, fontWeight: "600" },
+  title: { fontSize: 20, fontWeight: "700" },
   body: { paddingBottom: 16, gap: 8 },
-  label: { color: theme.colors.textSecondary, fontSize: 14, marginTop: 8, marginBottom: 6 },
-  input: { backgroundColor: theme.colors.surfaceElevated, borderRadius: 12, padding: 14, color: theme.colors.textPrimary, fontSize: 16, borderWidth: 1, borderColor: theme.colors.borderSubtle, minHeight: 48 },
-  inputText: { color: theme.colors.textPrimary, fontSize: 16 },
+  label: { fontSize: 14, marginTop: 8, marginBottom: 6 },
+  input: { borderRadius: 12, padding: 14, fontSize: 16, borderWidth: 1, minHeight: 48 },
+  inputText: { fontSize: 16 },
   row: { flexDirection: "row" },
-  dropdownBtn: { backgroundColor: theme.colors.surfaceElevated, borderRadius: 12, paddingHorizontal: 14, height: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1, borderColor: theme.colors.borderSubtle },
-  dropdownText: { color: theme.colors.textPrimary, fontSize: 15, fontWeight: "600", textTransform: "capitalize" },
+  dropdownBtn: { borderRadius: 12, paddingHorizontal: 14, height: 48, flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderWidth: 1 },
+  dropdownText: { fontSize: 15, fontWeight: "600", textTransform: "capitalize" },
   foodRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginVertical: 4 },
-  foodChip: { backgroundColor: theme.colors.surfaceElevated, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1, borderColor: theme.colors.borderSubtle },
-  foodChipActive: { backgroundColor: theme.colors.brandMuted, borderColor: theme.colors.brand },
-  foodChipText: { color: theme.colors.textSecondary, fontSize: 12, fontWeight: "600" },
-  foodChipTextActive: { color: theme.colors.brand, fontWeight: "700" },
-  chip: { backgroundColor: theme.colors.surfaceElevated, height: 40, paddingHorizontal: 14, borderRadius: 20, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: theme.colors.borderSubtle, flexShrink: 0 },
-  chipActive: { backgroundColor: theme.colors.brand, borderColor: theme.colors.brand },
-  chipText: { color: theme.colors.textSecondary, fontWeight: "600" },
-  chipTextActive: { color: theme.colors.textInverse },
+  foodChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  foodChipText: { fontSize: 12, fontWeight: "600" },
   timesWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  timePill: { paddingHorizontal: 16, height: 40, borderRadius: 20, backgroundColor: theme.colors.brandMuted, alignItems: "center", justifyContent: "center" },
-  timeText: { color: theme.colors.brand, fontWeight: "600" },
-  helper: { color: theme.colors.textSecondary, fontSize: 12, marginTop: 12 },
-  footer: { paddingTop: 12, borderTopWidth: 1, borderTopColor: theme.colors.borderSubtle },
+  timePill: { paddingHorizontal: 16, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  timeText: { fontWeight: "600" },
+  helper: { fontSize: 12, marginTop: 12 },
+  footer: { paddingTop: 12, borderTopWidth: 1 },
 });

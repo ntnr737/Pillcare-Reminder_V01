@@ -76,6 +76,8 @@ const DEFAULT_YOGA = {
 
 export default function Treatment() {
   const router = useRouter();
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
   const params = useLocalSearchParams<{ openYoga?: string }>();
   useEffect(() => { if (params?.openYoga) { setTab(0); if (!getFeatures().yoga_full) { setShowUpgrade(true); } else { setYogaOpen(true); } } }, [params?.openYoga]);
   const [tab, setTab] = useState(0);
@@ -257,11 +259,11 @@ export default function Treatment() {
 
   const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold && m.active !== false) : filter === "active" ? meds.filter(m => m.active !== false) : filter === "completed" ? meds.filter(m => m.active === false || m.completed === true) : meds;
   const OPTS = [
-    { icon: "medical-outline", title: "Add Medication", body: "Add a new medication to your routine", fn: () => { setSheet(false); setAddMed(true); } },
-    { icon: "calendar-outline", title: "Book Appointment", body: "Schedule a doctor appointment", fn: () => { setSheet(false); router.push("/appointments"); } },
-    { icon: "pulse-outline", title: "Log Measurement", body: "Blood pressure, glucose, weight...", fn: () => { setSheet(false); const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS; openMeasurementModal(mTypes[0]); } },
-    { icon: "body-outline", title: "Log Activity", body: "Steps, exercise, walking...", fn: () => { setSheet(false); const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES; openActivityModal(aTypes[0]); } },
-    { icon: "heart-outline", title: "Log Mood", body: "Track how you're feeling today", fn: () => { setSheet(false); setTab(3); } },
+    { icon: "medical-outline", title: t("actionSheet.addMedication", "Add Medication"), body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"), fn: () => { setSheet(false); setAddMed(true); } },
+    { icon: "calendar-outline", title: t("actionSheet.bookAppointment", "Book Appointment"), body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"), fn: () => { setSheet(false); router.push("/appointments"); } },
+    { icon: "pulse-outline", title: t("actionSheet.logMeasurement", "Log Measurement"), body: t("actionSheet.logMeasurementDesc", "Blood pressure, glucose, weight..."), fn: () => { setSheet(false); const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS; openMeasurementModal(mTypes[0]); } },
+    { icon: "body-outline", title: t("actionSheet.logActivity", "Log Activity"), body: t("actionSheet.logActivityDesc", "Steps, exercise, walking..."), fn: () => { setSheet(false); const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES; openActivityModal(aTypes[0]); } },
+    { icon: "heart-outline", title: t("actionSheet.logMood", "Log Mood"), body: t("actionSheet.logMoodDesc", "Track how you're feeling today"), fn: () => { setSheet(false); setTab(3); } },
   ];
 
   const scheduleYogaReminder = async (time: Date) => {
@@ -297,15 +299,18 @@ export default function Treatment() {
       setYogaTime(time);
       setYogaTimePicker(false);
       setYogaOpen(false);
-      resyncReminders().catch(() => {});
       Alert.alert("Yoga Reminder Set", `Daily reminder set for ${h}:${m}`);
     } catch {
       Alert.alert("Error", "Could not set yoga reminder. Please try again.");
     }
   };
 
-  const { theme } = useTheme();
-  const { t } = useTranslation();
+  const TABS_CONFIG = [
+    { key: "medications", label: t("treatment.medicationsTab", "Medications") },
+    { key: "measurements", label: t("treatment.measurementsTab", "Measurements") },
+    { key: "activities", label: t("treatment.activitiesTab", "Activities") },
+    { key: "mood", label: t("treatment.moodTab", "Mood") },
+  ];
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
@@ -318,75 +323,119 @@ export default function Treatment() {
         </View>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.tabs}>
-        {TABS.map((t, i) => (<TouchableOpacity key={t} onPress={() => setTab(i)} style={[s.tab, i === tab && s.tabOn]}><Text style={[s.tabT, i === tab && s.tabTOn]}>{t}</Text></TouchableOpacity>))}
+        {TABS_CONFIG.map((tConfig, i) => (
+          <TouchableOpacity
+            key={tConfig.key}
+            onPress={() => setTab(i)}
+            style={[
+              s.tab,
+              { borderColor: theme.surfaceBorder },
+              i === tab && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+            ]}
+          >
+            <Text style={[s.tabT, { color: theme.textSecondary }, i === tab && { color: theme.accent, fontWeight: "700" }]}>
+              {tConfig.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={A3} colors={[A3]} />}>
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} colors={[theme.accent]} />}>
         {/* MEDICATIONS */}
         {tab === 0 && (<View style={{ gap: 10 }}>
-          {/* Filter tags - above yoga card so yoga doesn't shift */}
+          {/* Filter tags */}
           <View style={s.fRow}>
-            {["all", "active", "refill", "completed"].map(f => (<TouchableOpacity key={f} onPress={() => setFilter(f)} style={[s.tag, filter === f && s.tagOn]}><Text style={[s.tagT, filter === f && s.tagTOn]}>{f === "all" ? `All (${meds.length})` : f === "active" ? "Active" : f === "refill" ? "Refill Soon" : "Completed Courses"}</Text></TouchableOpacity>))}
+            {[
+              { id: "all", label: `All (${meds.length})` },
+              { id: "active", label: t("common.active", "Active") },
+              { id: "refill", label: t("today.refillAlert", "Refill Soon") },
+              { id: "completed", label: t("common.completed", "Completed Courses") },
+            ].map(f => (
+              <TouchableOpacity
+                key={f.id}
+                onPress={() => setFilter(f.id)}
+                style={[
+                  s.tag,
+                  { borderColor: theme.surfaceBorder },
+                  filter === f.id && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+                ]}
+              >
+                <Text style={[s.tagT, { color: theme.textSecondary }, filter === f.id && { color: theme.accent, fontWeight: "700" }]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          {/* Yoga AI card - fixed position under Medications tab */}
+          {/* Yoga AI card */}
           {(() => {
             const activeYoga = yoga || DEFAULT_YOGA;
             return (
-              <View style={[s.card, { borderColor: "rgba(145,132,217,0.3)", flexDirection: "row", alignItems: "center", gap: 12 }]}>
-                <View style={[s.cI, { borderRadius: 18, width: 36, height: 36 }]}>
-                  <Ionicons name="body-outline" size={17} color={A3} />
+              <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.accent, flexDirection: "row", alignItems: "center", gap: 12 }]}>
+                <View style={[s.cI, { borderRadius: 18, width: 36, height: 36, backgroundColor: theme.accentBg }]}>
+                  <Ionicons name="body-outline" size={17} color={theme.accent} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                    <Ionicons name="sparkles" size={10} color={A3} />
-                    <Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text>
+                    <Ionicons name="sparkles" size={10} color={theme.accent} />
+                    <Text style={{ fontSize: 9, letterSpacing: 1, color: theme.accent, fontWeight: "700" }}>
+                      {t("treatment.aiRecommendedYoga", "AI RECOMMENDED YOGA")}
+                    </Text>
                   </View>
-                  <Text style={s.cT}>{activeYoga.title || "Gentle Flow"}</Text>
-                  <Text style={s.cS}>{activeYoga.duration || "12 min"} • {activeYoga.level || "Beginner"}</Text>
+                  <Text style={[s.cT, { color: theme.textPrimary }]}>{activeYoga.title || "Gentle Flow"}</Text>
+                  <Text style={[s.cS, { color: theme.textSecondary }]}>{activeYoga.duration || "12 min"} • {activeYoga.level || "Beginner"}</Text>
                 </View>
-                <TouchableOpacity style={s.viewBtn} onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}>
-                  <Text style={s.viewBtnT}>View</Text>
+                <TouchableOpacity
+                  style={[s.viewBtn, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+                  onPress={() => { if (!getFeatures().yoga_full) { setShowUpgrade(true); return; } setYogaOpen(true); }}
+                >
+                  <Text style={[s.viewBtnT, { color: theme.textPrimary }]}>{t("treatment.view", "View")}</Text>
                 </TouchableOpacity>
               </View>
             );
           })()}
+
           {/* Drug & Food Interaction & Do's and Don'ts Card */}
           {drugFoodGuide && drugFoodGuide.has_medications && (
             <TouchableOpacity
               activeOpacity={0.85}
-              style={[s.card, { borderColor: "rgba(74,222,128,0.3)", backgroundColor: "rgba(74,222,128,0.05)" }]}
+              style={[s.card, { borderColor: "rgba(74,222,128,0.4)", backgroundColor: isDark ? "rgba(74,222,128,0.06)" : "rgba(74,222,128,0.1)" }]}
               onPress={() => setFoodGuideOpen(true)}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View style={[s.cI, { borderRadius: 18, width: 36, height: 36, backgroundColor: "rgba(74,222,128,0.15)" }]}>
-                  <Ionicons name="restaurant-outline" size={17} color="#4ade80" />
+                <View style={[s.cI, { borderRadius: 18, width: 36, height: 36, backgroundColor: "rgba(74,222,128,0.2)" }]}>
+                  <Ionicons name="restaurant-outline" size={17} color="#10B981" />
                 </View>
                 <View style={{ flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 2 }}>
-                    <Ionicons name="shield-checkmark-outline" size={10} color="#4ade80" />
-                    <Text style={{ fontSize: 9, letterSpacing: 1, color: "#4ade80", fontWeight: "700" }}>DRUG & FOOD CLINICAL GUIDE</Text>
+                    <Ionicons name="shield-checkmark-outline" size={10} color="#10B981" />
+                    <Text style={{ fontSize: 9, letterSpacing: 1, color: "#10B981", fontWeight: "700" }}>DRUG & FOOD CLINICAL GUIDE</Text>
                   </View>
-                  <Text style={s.cT}>Food & Medicine Do's & Don'ts</Text>
-                  <Text style={s.cS}>{drugFoodGuide.scanned_medications} medicines scanned • Food timing & advice</Text>
+                  <Text style={[s.cT, { color: theme.textPrimary }]}>Food & Medicine Do's & Don'ts</Text>
+                  <Text style={[s.cS, { color: theme.textSecondary }]}>{drugFoodGuide.scanned_medications} medicines scanned • Food timing & advice</Text>
                 </View>
-                <View style={[s.viewBtn, { backgroundColor: "rgba(74,222,128,0.2)" }]}>
-                  <Text style={[s.viewBtnT, { color: "#4ade80" }]}>View</Text>
+                <View style={[s.viewBtn, { backgroundColor: "rgba(74,222,128,0.2)", borderColor: "rgba(74,222,128,0.4)" }]}>
+                  <Text style={[s.viewBtnT, { color: "#10B981" }]}>{t("treatment.view", "View")}</Text>
                 </View>
               </View>
             </TouchableOpacity>
           )}
 
-      {/* Drug-Food Modal Guide */}
-      <DrugFoodGuideModal
-        visible={foodGuideOpen}
-        onClose={() => setFoodGuideOpen(false)}
-        guide={drugFoodGuide}
-      />
+          {/* Drug-Food Modal Guide */}
+          <DrugFoodGuideModal
+            visible={foodGuideOpen}
+            onClose={() => setFoodGuideOpen(false)}
+            guide={drugFoodGuide}
+          />
+
           {fm.length === 0 ? (
-            <View style={s.empty}>
-              <Ionicons name="medical-outline" size={26} color={AC} />
-              <Text style={s.emT}>{filter === "refill" ? "No refills needed" : filter === "completed" ? "No completed courses" : "No medications"}</Text>
-              <Text style={s.emS}>{filter === "refill" ? "All stocks are sufficient" : filter === "completed" ? "Finished medication courses will appear here" : "Tap + to add one"}</Text>
+            <View style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+              <Ionicons name="medical-outline" size={26} color={theme.accent} />
+              <Text style={[s.emT, { color: theme.textPrimary }]}>
+                {filter === "refill" ? "No refills needed" : filter === "completed" ? "No completed courses" : t("treatment.noMeds", "No medications")}
+              </Text>
+              <Text style={[s.emS, { color: theme.textSecondary }]}>
+                {filter === "refill" ? "All stocks are sufficient" : filter === "completed" ? "Finished medication courses will appear here" : t("treatment.noMedsDesc", "Tap + to add one")}
+              </Text>
             </View>
           ) : (
             fm.map(m => {
@@ -396,45 +445,45 @@ export default function Treatment() {
               );
               const isCompleted = m.active === false || m.completed === true;
               return (
-                <View key={m.id} style={[s.card, isCompleted && { borderColor: "rgba(74,222,128,0.25)", backgroundColor: "rgba(74,222,128,0.03)" }]}>
+                <View key={m.id} style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, isCompleted && { borderColor: "rgba(74,222,128,0.3)", backgroundColor: isDark ? "rgba(74,222,128,0.04)" : "rgba(74,222,128,0.08)" }]}>
                   <View style={s.cRow}>
-                    <View style={[s.cI, isCompleted && { backgroundColor: "rgba(74,222,128,0.15)" }]}>
-                      <Ionicons name={isCompleted ? "checkmark-done-circle-outline" : "medical-outline"} size={17} color={isCompleted ? "#4ade80" : A3} />
+                    <View style={[s.cI, { backgroundColor: theme.accentBg }, isCompleted && { backgroundColor: "rgba(74,222,128,0.15)" }]}>
+                      <Ionicons name={isCompleted ? "checkmark-done-circle-outline" : "medical-outline"} size={17} color={isCompleted ? "#10B981" : theme.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={s.cT}>{m.name}</Text>
-                      {m.generic_name ? <Text style={[s.cS, { color: A3, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
-                      <Text style={s.cS}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
+                      <Text style={[s.cT, { color: theme.textPrimary }]}>{m.name}</Text>
+                      {m.generic_name ? <Text style={[s.cS, { color: theme.accent, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
+                      <Text style={[s.cS, { color: theme.textSecondary }]}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                       {m.food_relation ? (
-                        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.1)", borderWidth: 1, borderColor: "rgba(56,189,248,0.25)", alignSelf: "flex-start" }}>
-                          <Text style={{ fontSize: 9, color: "#38bdf8", fontWeight: "700" }}>
+                        <View style={{ marginTop: 3, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 5, backgroundColor: "rgba(56,189,248,0.12)", borderWidth: 1, borderColor: "rgba(56,189,248,0.3)", alignSelf: "flex-start" }}>
+                          <Text style={{ fontSize: 9, color: "#0284C7", fontWeight: "700" }}>
                             {m.food_relation === "before_food" ? "Before Food" : m.food_relation === "with_food" ? "With Food" : m.food_relation === "anytime" ? "Anytime" : "After Food"}
                           </Text>
                         </View>
                       ) : null}
                       {m.notes ? (
-                        <Text style={{ fontSize: 10, color: TM, fontStyle: "italic", marginTop: 2 }}>
+                        <Text style={{ fontSize: 10, color: theme.textSecondary, fontStyle: "italic", marginTop: 2 }}>
                           Note: {m.notes}
                         </Text>
                       ) : null}
                     </View>
                     {isCompleted ? (
                       <View style={[s.rTag, { backgroundColor: "rgba(74,222,128,0.15)", borderColor: "rgba(74,222,128,0.3)" }]}>
-                        <Text style={[s.rTx, { color: "#4ade80" }]}>Completed</Text>
+                        <Text style={[s.rTx, { color: "#10B981" }]}>Completed</Text>
                       </View>
                     ) : (m.stock <= m.refill_threshold || (m.days_left != null && m.days_left <= 3)) ? (
-                      <View style={s.rTag}><Text style={s.rTx}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>
+                      <View style={[s.rTag, { backgroundColor: "rgba(239,68,68,0.15)" }]}><Text style={[s.rTx, { color: "#EF4444" }]}>{m.days_left != null ? `~${m.days_left}d left` : "Refill Soon"}</Text></View>
                     ) : null}
                   </View>
                   {guide?.dos?.[0] && (
                     <View style={{ marginTop: 2, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.2)", flexDirection: "row", alignItems: "center", gap: 5 }}>
-                      <Ionicons name="restaurant-outline" size={11} color="#4ade80" />
-                      <Text style={{ fontSize: 10, color: "#4ade80", fontWeight: "600", flex: 1 }}>{guide.dos[0]}</Text>
+                      <Ionicons name="restaurant-outline" size={11} color="#10B981" />
+                      <Text style={{ fontSize: 10, color: "#10B981", fontWeight: "600", flex: 1 }}>{guide.dos[0]}</Text>
                     </View>
                   )}
-                  <View style={s.cFt}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.ftT}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
-                    <Text style={s.ftT}>{isCompleted ? "Course Finished" : `${m.stock} left`}</Text>
+                  <View style={[s.cFt, { borderTopColor: theme.surfaceBorder }]}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}><Ionicons name="time-outline" size={11} color={theme.accent} /><Text style={[s.ftT, { color: theme.textSecondary }]}>{(m.times || []).join(" • ") || "No times set"}</Text></View>
+                    <Text style={[s.ftT, { color: theme.textSecondary }]}>{isCompleted ? "Course Finished" : `${m.stock} left`}</Text>
                   </View>
 
                   {/* Refill / Completion Action Row */}
@@ -442,8 +491,8 @@ export default function Treatment() {
                     <View style={{ flexDirection: "row", gap: 8, marginTop: 8 }}>
                       <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(56,189,248,0.12)", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "rgba(56,189,248,0.3)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
                         onPress={() => setRefillMed(m)}>
-                        <Ionicons name="cube-outline" size={14} color="#38bdf8" />
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#38bdf8" }}>Refill Stock</Text>
+                        <Ionicons name="cube-outline" size={14} color="#0284C7" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#0284C7" }}>Refill Stock</Text>
                       </TouchableOpacity>
 
                       <TouchableOpacity style={{ backgroundColor: "rgba(74,222,128,0.12)", paddingVertical: 8, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}
@@ -460,8 +509,8 @@ export default function Treatment() {
                             }}
                           ]);
                         }}>
-                        <Ionicons name="checkmark-done-circle-outline" size={14} color="#4ade80" />
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>Course Complete</Text>
+                        <Ionicons name="checkmark-done-circle-outline" size={14} color="#10B981" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>Course Complete</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -470,52 +519,33 @@ export default function Treatment() {
                   {isCompleted && (
                     <View style={{ marginTop: 6, padding: 8, borderRadius: 8, backgroundColor: "rgba(74,222,128,0.08)", borderWidth: 1, borderColor: "rgba(74,222,128,0.25)", flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Ionicons name="checkmark-done-circle" size={14} color="#4ade80" />
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#4ade80" }}>COURSE COMPLETED</Text>
+                        <Ionicons name="checkmark-done-circle" size={14} color="#10B981" />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>COURSE COMPLETED</Text>
                       </View>
                       <TouchableOpacity style={{ backgroundColor: "rgba(56,189,248,0.15)", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 }}
                         onPress={() => setRefillMed(m)}>
-                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#38bdf8" }}>Restart Course</Text>
+                        <Text style={{ fontSize: 10, fontWeight: "700", color: "#0284C7" }}>Restart Course</Text>
                       </TouchableOpacity>
                     </View>
                   )}
-
-                  {(m.nudges || []).filter((n: any) => !dismissedNudges.has(`${m.id}_${n.current_time}`)).slice(0, 1).map((n: any) => (
-                    <View key={n.current_time} style={{ marginTop: 4, padding: 10, borderRadius: 10, backgroundColor: "rgba(229,178,133,0.1)", borderWidth: 1, borderColor: "rgba(229,178,133,0.3)", gap: 6 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                        <Ionicons name="bulb-outline" size={13} color="#e5b285" />
-                        <Text style={{ fontSize: 10, color: "#e5b285", fontWeight: "700" }}>SMART NUDGE</Text>
-                      </View>
-                      <Text style={{ fontSize: 11, color: TM, lineHeight: 15 }}>
-                        {`You miss the ${n.current_time} dose ${n.miss_rate}% of the time. Move the reminder to ${n.suggested_time}?`}
-                      </Text>
-                      <View style={{ flexDirection: "row", gap: 8 }}>
-                        <TouchableOpacity style={{ flex: 1, backgroundColor: "#e5b285", borderRadius: 8, paddingVertical: 7, alignItems: "center" }}
-                          onPress={() => applyNudge(m.id, n)}>
-                          <Text style={{ fontSize: 11, color: "#161826", fontWeight: "700" }}>{`Shift to ${n.suggested_time}`}</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={{ paddingHorizontal: 12, justifyContent: "center" }}
-                          onPress={() => setDismissedNudges(prev => new Set(prev).add(`${m.id}_${n.current_time}`))}>
-                          <Text style={{ fontSize: 11, color: TM }}>Not now</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))}
                 </View>
               );
             })
           )}
+
           {/* Find Medical Store — always shown at bottom of medications */}
-          <TouchableOpacity style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12, borderColor: "rgba(74,222,128,0.25)", marginTop: 4 }]}
-            onPress={() => router.push("/nearby?type=pharmacy" as any)}>
-            <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(74,222,128,0.1)", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="medkit-outline" size={18} color="#4ade80" />
+          <TouchableOpacity
+            style={[s.card, { backgroundColor: theme.surface, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 }]}
+            onPress={() => router.push("/nearby?type=pharmacy" as any)}
+          >
+            <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(74,222,128,0.15)", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="medkit-outline" size={18} color="#10B981" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={s.cT}>Find Nearest Medical Store</Text>
-              <Text style={s.cS}>Pharmacies & chemists near you</Text>
+              <Text style={[s.cT, { color: theme.textPrimary }]}>{t("treatment.findNearestStore", "Find Nearest Medical Store")}</Text>
+              <Text style={[s.cS, { color: theme.textSecondary }]}>{t("treatment.pharmaciesNearYou", "Pharmacies & chemists near you")}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={14} color={TM} />
+            <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
           </TouchableOpacity>
         </View>)}
 
@@ -524,39 +554,39 @@ export default function Treatment() {
           const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS;
           return (
             <View style={{ gap: 10 }}>
-              <Text style={s.secL}>LOG A MEASUREMENT</Text>
+              <Text style={[s.secL, { color: theme.textSecondary }]}>LOG A MEASUREMENT</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
                 {mTypes.map((mt: any) => (
-                  <TouchableOpacity key={mt.key} style={s.chip} onPress={() => openMeasurementModal(mt)}>
-                    <Ionicons name="pulse-outline" size={12} color={A3} />
-                    <Text style={s.chipT}>{mt.label} <Text style={{ color: TM, fontSize: 10 }}>({mt.unit})</Text></Text>
+                  <TouchableOpacity key={mt.key} style={[s.chip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]} onPress={() => openMeasurementModal(mt)}>
+                    <Ionicons name="pulse-outline" size={12} color={theme.accent} />
+                    <Text style={[s.chipT, { color: theme.textPrimary }]}>{mt.label} <Text style={{ color: theme.textSecondary, fontSize: 10 }}>({mt.unit})</Text></Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               {measurements.length > 0 ? (
                 <>
-                  <Text style={s.secL}>RECENT</Text>
+                  <Text style={[s.secL, { color: theme.textSecondary }]}>RECENT</Text>
                   {measurements.slice(0, 10).map((m: any, i: number) => (
-                    <View key={i} style={s.card}>
+                    <View key={i} style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
                       <View style={s.cRow}>
-                        <View style={s.cI}><Ionicons name="pulse-outline" size={15} color={A3} /></View>
+                        <View style={[s.cI, { backgroundColor: theme.accentBg }]}><Ionicons name="pulse-outline" size={15} color={theme.accent} /></View>
                         <View style={{ flex: 1 }}>
-                          <Text style={s.cT}>{m.type?.replace(/_/g, " ")}</Text>
-                          <Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
+                          <Text style={[s.cT, { color: theme.textPrimary }]}>{m.type?.replace(/_/g, " ")}</Text>
+                          <Text style={[s.cS, { color: theme.textSecondary }]}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
                         </View>
-                        <Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: theme.accent }}>
                           {m.value}{m.value_secondary ? `/${m.value_secondary}` : ""}
-                          <Text style={{ fontSize: 10, color: TM }}> {m.unit}</Text>
+                          <Text style={{ fontSize: 10, color: theme.textSecondary }}> {m.unit}</Text>
                         </Text>
                       </View>
                     </View>
                   ))}
                 </>
               ) : (
-                <View style={s.empty}>
-                  <Ionicons name="pulse-outline" size={28} color={AC} />
-                  <Text style={s.emT}>No measurements yet</Text>
-                  <Text style={s.emS}>Tap a category above to log one</Text>
+                <View style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+                  <Ionicons name="pulse-outline" size={28} color={theme.accent} />
+                  <Text style={[s.emT, { color: theme.textPrimary }]}>No measurements yet</Text>
+                  <Text style={[s.emS, { color: theme.textSecondary }]}>Tap a category above to log one</Text>
                 </View>
               )}
             </View>
@@ -568,36 +598,36 @@ export default function Treatment() {
           const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES;
           return (
             <View style={{ gap: 10 }}>
-              <Text style={s.secL}>LOG AN ACTIVITY</Text>
+              <Text style={[s.secL, { color: theme.textSecondary }]}>LOG AN ACTIVITY</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingBottom: 4 }}>
                 {aTypes.map((at: any) => (
-                  <TouchableOpacity key={at.key} style={s.chip} onPress={() => openActivityModal(at)}>
-                    <Ionicons name="body-outline" size={12} color={A3} />
-                    <Text style={s.chipT}>{at.label} <Text style={{ color: TM, fontSize: 10 }}>({at.unit})</Text></Text>
+                  <TouchableOpacity key={at.key} style={[s.chip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]} onPress={() => openActivityModal(at)}>
+                    <Ionicons name="body-outline" size={12} color={theme.accent} />
+                    <Text style={[s.chipT, { color: theme.textPrimary }]}>{at.label} <Text style={{ color: theme.textSecondary, fontSize: 10 }}>({at.unit})</Text></Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               {activities.length > 0 ? (
                 <>
-                  <Text style={s.secL}>RECENT</Text>
+                  <Text style={[s.secL, { color: theme.textSecondary }]}>RECENT</Text>
                   {activities.slice(0, 10).map((a: any, i: number) => (
-                    <View key={i} style={s.card}>
+                    <View key={i} style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
                       <View style={s.cRow}>
-                        <View style={s.cI}><Ionicons name="body-outline" size={15} color={A3} /></View>
+                        <View style={[s.cI, { backgroundColor: theme.accentBg }]}><Ionicons name="body-outline" size={15} color={theme.accent} /></View>
                         <View style={{ flex: 1 }}>
-                          <Text style={s.cT}>{a.type?.replace(/_/g, " ")}</Text>
-                          <Text style={s.cS}>{new Date(a.recorded_at).toLocaleDateString()}</Text>
+                          <Text style={[s.cT, { color: theme.textPrimary }]}>{a.type?.replace(/_/g, " ")}</Text>
+                          <Text style={[s.cS, { color: theme.textSecondary }]}>{new Date(a.recorded_at).toLocaleDateString()}</Text>
                         </View>
-                        <Text style={{ fontSize: 16, fontWeight: "700", color: A3 }}>{a.value}<Text style={{ fontSize: 10, color: TM }}> {a.unit}</Text></Text>
+                        <Text style={{ fontSize: 16, fontWeight: "700", color: theme.accent }}>{a.value}<Text style={{ fontSize: 10, color: theme.textSecondary }}> {a.unit}</Text></Text>
                       </View>
                     </View>
                   ))}
                 </>
               ) : (
-                <View style={s.empty}>
-                  <Ionicons name="body-outline" size={28} color={AC} />
-                  <Text style={s.emT}>No activities yet</Text>
-                  <Text style={s.emS}>Tap a category above to log one</Text>
+                <View style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+                  <Ionicons name="body-outline" size={28} color={theme.accent} />
+                  <Text style={[s.emT, { color: theme.textPrimary }]}>No activities yet</Text>
+                  <Text style={[s.emS, { color: theme.textSecondary }]}>Tap a category above to log one</Text>
                 </View>
               )}
             </View>
@@ -606,30 +636,39 @@ export default function Treatment() {
 
         {/* MOOD */}
         {tab === 3 && (<View style={{ gap: 10 }}>
-          <View style={s.card}>
-            <Text style={s.cT}>How are you feeling today?</Text>
+          <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <Text style={[s.cT, { color: theme.textPrimary }]}>How are you feeling today?</Text>
             <View style={s.mRow}>
               {[1, 2, 3, 4, 5].map(n => (
-                <TouchableOpacity key={n} onPress={() => setMs(n)} style={[s.mBtn, ms === n && { borderColor: MC[n], backgroundColor: `${MC[n]}22` }]}>
+                <TouchableOpacity key={n} onPress={() => setMs(n)} style={[s.mBtn, { borderColor: theme.surfaceBorder }, ms === n && { borderColor: MC[n], backgroundColor: `${MC[n]}22` }]}>
                   <Text style={{ fontSize: 22 }}>{ME[n]}</Text>
-                  <Text style={[s.mNum, ms === n && { color: MC[n] }]}>{n}</Text>
+                  <Text style={[s.mNum, { color: theme.textSecondary }, ms === n && { color: MC[n] }]}>{n}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <TextInput value={mn} onChangeText={setMn} placeholder="Add a note (optional)" placeholderTextColor={TM} style={s.inp} multiline />
-            <TouchableOpacity style={s.subBtn} onPress={saveMood} disabled={saving}><Text style={s.subT}>{saving ? "Saving…" : "Log Mood"}</Text></TouchableOpacity>
+            <TextInput
+              value={mn}
+              onChangeText={setMn}
+              placeholder="Add a note (optional)"
+              placeholderTextColor={theme.textDisabled}
+              style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]}
+              multiline
+            />
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent }]} onPress={saveMood} disabled={saving}>
+              <Text style={s.subT}>{saving ? "Saving…" : "Log Mood"}</Text>
+            </TouchableOpacity>
           </View>
           {mood.length > 0 && (
             <>
-              <Text style={s.secL}>Recent Logs</Text>
+              <Text style={[s.secL, { color: theme.textSecondary }]}>Recent Logs</Text>
               {mood.slice(0, 6).map((m: any, i: number) => (
-                <View key={i} style={[s.card, { flexDirection: "row", alignItems: "center", gap: 12 }]}>
+                <View key={i} style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder, flexDirection: "row", alignItems: "center", gap: 12 }]}>
                   <Text style={{ fontSize: 24 }}>{ME[m.score] || "😐"}</Text>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.cT}>Mood {m.score}/5 ({MOOD_LABELS[m.score] || "Neutral"})</Text>
-                    <Text style={s.cS}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
+                    <Text style={[s.cT, { color: theme.textPrimary }]}>Mood {m.score}/5 ({MOOD_LABELS[m.score] || "Neutral"})</Text>
+                    <Text style={[s.cS, { color: theme.textSecondary }]}>{new Date(m.recorded_at).toLocaleDateString()}</Text>
                   </View>
-                  {m.note && <Text style={[s.cS, { maxWidth: 100, textAlign: "right" }]}>{m.note}</Text>}
+                  {m.note && <Text style={[s.cS, { color: theme.textSecondary, maxWidth: 100, textAlign: "right" }]}>{m.note}</Text>}
                 </View>
               ))}
             </>
@@ -637,7 +676,9 @@ export default function Treatment() {
         </View>)}
       </ScrollView>
 
-      <TouchableOpacity style={s.fab} onPress={() => setSheet(true)}><Ionicons name="add" size={24} color={BG} /></TouchableOpacity>
+      <TouchableOpacity style={[s.fab, { backgroundColor: theme.accent }]} onPress={() => setSheet(true)}>
+        <Ionicons name="add" size={24} color="#FFF" />
+      </TouchableOpacity>
 
       {/* Action Sheet */}
       <ActionSheetModal
@@ -649,37 +690,39 @@ export default function Treatment() {
       {/* Yoga Detail Modal */}
       <Modal visible={yogaOpen} transparent animationType="slide" onRequestClose={() => setYogaOpen(false)}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setYogaOpen(false)}>
-          <View style={[s.sBox, { maxHeight: "92%" }]}>
+          <View style={[s.sBox, { backgroundColor: theme.surface, maxHeight: "92%" }]}>
             {/* Header row with close X */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="sparkles" size={10} color={A3} />
-                <Text style={{ fontSize: 9, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text>
+                <Ionicons name="sparkles" size={10} color={theme.accent} />
+                <Text style={{ fontSize: 9, letterSpacing: 1, color: theme.accent, fontWeight: "700" }}>
+                  {t("treatment.aiRecommendedYoga", "AI RECOMMENDED YOGA")}
+                </Text>
               </View>
-              <TouchableOpacity onPress={() => setYogaOpen(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(233,233,237,0.1)", alignItems: "center", justifyContent: "center" }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={16} color={TM} />
+              <TouchableOpacity onPress={() => setYogaOpen(false)} style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)", alignItems: "center", justifyContent: "center" }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Ionicons name="close" size={16} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
-            <Text style={s.sTitle}>{yoga?.title || "Gentle Flow"}</Text>
+            <Text style={[s.sTitle, { color: theme.textPrimary }]}>{yoga?.title || "Gentle Flow"}</Text>
             <View style={{ flexDirection: "row", gap: 8 }}>
-              <View style={s.chip}><Ionicons name="time-outline" size={11} color={A3} /><Text style={s.chipT}>{yoga?.duration || "12 min"}</Text></View>
-              <View style={s.chip}><Ionicons name="speedometer-outline" size={11} color={A3} /><Text style={s.chipT}>{yoga?.level || "Beginner"}</Text></View>
+              <View style={[s.chip, { backgroundColor: theme.accentBg, borderColor: theme.accent }]}><Ionicons name="time-outline" size={11} color={theme.accent} /><Text style={[s.chipT, { color: theme.accent }]}>{yoga?.duration || "12 min"}</Text></View>
+              <View style={[s.chip, { backgroundColor: theme.accentBg, borderColor: theme.accent }]}><Ionicons name="speedometer-outline" size={11} color={theme.accent} /><Text style={[s.chipT, { color: theme.accent }]}>{yoga?.level || "Beginner"}</Text></View>
             </View>
-            <Text style={[s.cS, { lineHeight: 17 }]}>{yoga?.description || ""}</Text>
-            <Text style={[s.secL, { marginTop: 4 }]}>ROUTINE · {safeCompletedSteps.length}/{(yoga?.steps || []).length} done today</Text>
+            <Text style={[s.cS, { color: theme.textSecondary, lineHeight: 17 }]}>{yoga?.description || ""}</Text>
+            <Text style={[s.secL, { color: theme.textSecondary, marginTop: 4 }]}>ROUTINE · {safeCompletedSteps.length}/{(yoga?.steps || []).length} done today</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
               {(yoga?.steps || []).map((step: any) => {
                 const stepDone = isStepDone(step.num);
                 return (
-                  <View key={step.num} style={[s.card, { gap: 8, marginBottom: 8 }]}>
+                  <View key={step.num} style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder, gap: 8, marginBottom: 8 }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                      <View style={[s.cI, { borderRadius: 13 }, stepDone && { backgroundColor: "rgba(74,222,128,0.18)" }]}>
-                        {stepDone ? <Ionicons name="checkmark" size={14} color="#4ade80" /> : <Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text>}
+                      <View style={[s.cI, { borderRadius: 13, backgroundColor: theme.accentBg }, stepDone && { backgroundColor: "rgba(74,222,128,0.18)" }]}>
+                        {stepDone ? <Ionicons name="checkmark" size={14} color="#10B981" /> : <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "700" }}>{step.num}</Text>}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.cT}>{step.name}</Text>
-                        <Text style={s.cS}>{step.duration}</Text>
-                        {step.benefit ? <Text style={[s.cS, { color: A3, marginTop: 2 }]}>{step.benefit}</Text> : null}
+                        <Text style={[s.cT, { color: theme.textPrimary }]}>{step.name}</Text>
+                        <Text style={[s.cS, { color: theme.textSecondary }]}>{step.duration}</Text>
+                        {step.benefit ? <Text style={[s.cS, { color: theme.accent, marginTop: 2 }]}>{step.benefit}</Text> : null}
                       </View>
                     </View>
                     <TouchableOpacity
@@ -692,36 +735,38 @@ export default function Treatment() {
                         step: step,
                       })}>
                       <Ionicons name="play-circle" size={16} color="#FF0000" />
-                      <Text style={{ fontSize: 11, color: TX, flex: 1, fontWeight: "700" }}>Watch Inside App</Text>
-                      <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "Swami Ramdev"}</Text>
-                      <Ionicons name="chevron-forward" size={12} color={A3} />
+                      <Text style={{ fontSize: 11, color: theme.textPrimary, flex: 1, fontWeight: "700" }}>Watch Inside App</Text>
+                      <Text style={{ fontSize: 9, color: theme.accent, fontWeight: "600" }}>{step.channel || "Swami Ramdev"}</Text>
+                      <Ionicons name="chevron-forward" size={12} color={theme.accent} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, backgroundColor: stepDone ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)", borderRadius: 8, padding: 8, borderWidth: 1, borderColor: stepDone ? "rgba(74,222,128,0.3)" : BD }} onPress={() => toggleStepDone(step)}>
-                      <Ionicons name={stepDone ? "checkmark-circle" : "ellipse-outline"} size={14} color={stepDone ? "#4ade80" : TM} />
-                      <Text style={{ fontSize: 10, color: stepDone ? "#4ade80" : TM, fontWeight: "600" }}>{stepDone ? "Marked as Done" : "Mark as Done"}</Text>
+                    <TouchableOpacity
+                      style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 4, backgroundColor: stepDone ? "rgba(74,222,128,0.15)" : (isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)"), borderRadius: 8, padding: 8, borderWidth: 1, borderColor: stepDone ? "rgba(74,222,128,0.3)" : theme.surfaceBorder }}
+                      onPress={() => toggleStepDone(step)}>
+                      <Ionicons name={stepDone ? "checkmark-circle" : "ellipse-outline"} size={14} color={stepDone ? "#10B981" : theme.textSecondary} />
+                      <Text style={{ fontSize: 10, color: stepDone ? "#10B981" : theme.textSecondary, fontWeight: "600" }}>{stepDone ? "Marked as Done" : "Mark as Done"}</Text>
                     </TouchableOpacity>
                   </View>
                 );
               })}
-              <Text style={[s.secL, { marginTop: 10, marginBottom: 8 }]}>VERIFIED SOURCES</Text>
+              <Text style={[s.secL, { color: theme.textSecondary, marginTop: 10, marginBottom: 8 }]}>VERIFIED SOURCES</Text>
               {(yoga?.channels || [
                 { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
                 { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
                 { name: "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", url: "https://www.youtube.com/@sadhguru", verified: true },
               ]).map((ch: any) => (
                 <TouchableOpacity key={ch.url}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: BD }}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: theme.surfaceBorder }}
                   onPress={() => Linking.openURL(ch.url)}>
                   <Ionicons name="logo-youtube" size={16} color="#FF0000" />
-                  <Text style={{ fontSize: 11, color: TX, flex: 1 }}>{ch.name}</Text>
+                  <Text style={{ fontSize: 11, color: theme.textPrimary, flex: 1 }}>{ch.name}</Text>
                   {ch.verified && <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: "rgba(74,222,128,0.15)", borderRadius: 4 }}>
-                    <Text style={{ fontSize: 8, color: "#4ade80", fontWeight: "700" }}>✓ VERIFIED</Text>
+                    <Text style={{ fontSize: 8, color: "#10B981", fontWeight: "700" }}>✓ VERIFIED</Text>
                   </View>}
                 </TouchableOpacity>
               ))}
-              <Text style={[s.cS, { fontStyle: "italic", marginTop: 10, marginBottom: 12, lineHeight: 15 }]}>{yoga?.disclaimer || ""}</Text>
+              <Text style={[s.cS, { color: theme.textSecondary, fontStyle: "italic", marginTop: 10, marginBottom: 12, lineHeight: 15 }]}>{yoga?.disclaimer || ""}</Text>
             </ScrollView>
-            {/* Reminder button — shows current time if set, allows editing */}
+            {/* Reminder button */}
             {savedReminderTime ? (
               <TouchableOpacity
                 style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(74,222,128,0.15)", borderColor: "rgba(74,222,128,0.3)", borderWidth: 1 }]}
@@ -729,14 +774,14 @@ export default function Treatment() {
                   setYogaOpen(false);
                   setTimeout(() => setYogaTimePicker(true), 350);
                 }}>
-                <Ionicons name="checkmark-circle" size={16} color="#4ade80" />
-                <Text style={[s.subT, { color: "#4ade80" }]}>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={[s.subT, { color: "#10B981" }]}>
                   {"Daily reminder at " + savedReminderTime + "  —  Edit"}
                 </Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity
-                style={[s.subBtn, { flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }]}
+                style={[s.subBtn, { backgroundColor: theme.accent, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" }]}
                 onPress={() => {
                   setYogaOpen(false);
                   setTimeout(() => setYogaTimePicker(true), 350);
@@ -750,56 +795,57 @@ export default function Treatment() {
       </Modal>
 
       {yogaTimePicker && (
-      <DateTimePicker
-        value={yogaTime || (() => { const d = new Date(); d.setHours(8, 0, 0, 0); return d; })()}
-        mode="time"
-        is24Hour={false}
-        display={Platform.OS === "ios" ? "spinner" : "default"}
-        onChange={(_, selected) => {
-          setYogaTimePicker(false);
-          if (selected) scheduleYogaReminder(selected);
-        }}
+        <DateTimePicker
+          value={yogaTime || (() => { const d = new Date(); d.setHours(8, 0, 0, 0); return d; })()}
+          mode="time"
+          is24Hour={false}
+          display={Platform.OS === "ios" ? "spinner" : "default"}
+          onChange={(_, selected) => {
+            setYogaTimePicker(false);
+            if (selected) scheduleYogaReminder(selected);
+          }}
         />
       )}
+
       {/* Measurement Modal */}
       <Modal visible={mModal.open} transparent animationType="slide" onRequestClose={() => setMModal({ open: false, type: null })}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setMModal({ open: false, type: null })}>
-          <View style={s.sBox}>
+          <View style={[s.sBox, { backgroundColor: theme.surface }]}>
             <View style={s.hand} />
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={s.sTitle}>Log {mModal.type?.label}</Text>
+              <Text style={[s.sTitle, { color: theme.textPrimary }]}>Log {mModal.type?.label}</Text>
               <TouchableOpacity onPress={() => setMModal({ open: false, type: null })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
+                <Ionicons name="close" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 2 }}>
-              <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Unit:</Text>
+              <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "600" }}>Unit:</Text>
               {(mModal.type?.units || [mModal.type?.unit || ""]).map((u: string) => (
-                <TouchableOpacity key={u} onPress={() => setSelectedMUnit(u)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: selectedMUnit === u ? AB : SF, borderWidth: 1, borderColor: selectedMUnit === u ? AC : BD }}>
-                  <Text style={{ fontSize: 11, color: selectedMUnit === u ? A3 : TM, fontWeight: "700" }}>{u}</Text>
+                <TouchableOpacity key={u} onPress={() => setSelectedMUnit(u)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: selectedMUnit === u ? theme.accentBg : theme.surface, borderWidth: 1, borderColor: selectedMUnit === u ? theme.accent : theme.surfaceBorder }}>
+                  <Text style={{ fontSize: 11, color: selectedMUnit === u ? theme.accent : theme.textSecondary, fontWeight: "700" }}>{u}</Text>
                 </TouchableOpacity>
               ))}
             </View>
             {mModal.type?.composite || mModal.type?.key === "blood_pressure" ? (
               <View style={{ gap: 8 }}>
                 <View style={{ gap: 4 }}>
-                  <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Systolic (Upper number, e.g. 120)</Text>
-                  <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder="120" placeholderTextColor={TM} style={s.inp} />
+                  <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>Systolic (Upper number, e.g. 120)</Text>
+                  <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder="120" placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
                 </View>
                 <View style={{ gap: 4 }}>
-                  <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Diastolic (Lower number, e.g. 80)</Text>
-                  <TextInput value={vS} onChangeText={setVS} keyboardType="decimal-pad" placeholder="80" placeholderTextColor={TM} style={s.inp} />
+                  <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>Diastolic (Lower number, e.g. 80)</Text>
+                  <TextInput value={vS} onChangeText={setVS} keyboardType="decimal-pad" placeholder="80" placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
                 </View>
               </View>
             ) : (
               <View style={{ gap: 4 }}>
-                <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Value ({selectedMUnit || mModal.type?.unit})</Text>
-                <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter value in ${selectedMUnit || mModal.type?.unit || ""}`} placeholderTextColor={TM} style={s.inp} />
+                <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>Value ({selectedMUnit || mModal.type?.unit})</Text>
+                <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter value in ${selectedMUnit || mModal.type?.unit || ""}`} placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
               </View>
             )}
-            <TextInput value={vN} onChangeText={setVN} placeholder="Notes / Observations (optional)" placeholderTextColor={TM} style={s.inp} />
-            <TouchableOpacity style={s.subBtn} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
-            <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
+            <TextInput value={vN} onChangeText={setVN} placeholder="Notes / Observations (optional)" placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent }]} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
+            <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: theme.textSecondary }}>Cancel</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -807,29 +853,29 @@ export default function Treatment() {
       {/* Activity Modal */}
       <Modal visible={aModal.open} transparent animationType="slide" onRequestClose={() => setAModal({ open: false, type: null })}>
         <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={() => setAModal({ open: false, type: null })}>
-          <View style={s.sBox}>
+          <View style={[s.sBox, { backgroundColor: theme.surface }]}>
             <View style={s.hand} />
             <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-              <Text style={s.sTitle}>Log {aModal.type?.label}</Text>
+              <Text style={[s.sTitle, { color: theme.textPrimary }]}>Log {aModal.type?.label}</Text>
               <TouchableOpacity onPress={() => setAModal({ open: false, type: null })} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
+                <Ionicons name="close" size={20} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap", marginVertical: 2 }}>
-              <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Unit:</Text>
+              <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "600" }}>Unit:</Text>
               {(aModal.type?.units || [aModal.type?.unit || ""]).map((u: string) => (
-                <TouchableOpacity key={u} onPress={() => setSelectedAUnit(u)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: selectedAUnit === u ? AB : SF, borderWidth: 1, borderColor: selectedAUnit === u ? AC : BD }}>
-                  <Text style={{ fontSize: 11, color: selectedAUnit === u ? A3 : TM, fontWeight: "700" }}>{u}</Text>
+                <TouchableOpacity key={u} onPress={() => setSelectedAUnit(u)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: selectedAUnit === u ? theme.accentBg : theme.surface, borderWidth: 1, borderColor: selectedAUnit === u ? theme.accent : theme.surfaceBorder }}>
+                  <Text style={{ fontSize: 11, color: selectedAUnit === u ? theme.accent : theme.textSecondary, fontWeight: "700" }}>{u}</Text>
                 </TouchableOpacity>
               ))}
             </View>
             <View style={{ gap: 4 }}>
-              <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>Value ({selectedAUnit || aModal.type?.unit})</Text>
-              <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter amount in ${selectedAUnit || aModal.type?.unit || ""}`} placeholderTextColor={TM} style={s.inp} />
+              <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>Value ({selectedAUnit || aModal.type?.unit})</Text>
+              <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter amount in ${selectedAUnit || aModal.type?.unit || ""}`} placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
             </View>
-            <TextInput value={vN} onChangeText={setVN} placeholder="Notes (optional)" placeholderTextColor={TM} style={s.inp} />
-            <TouchableOpacity style={s.subBtn} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
-            <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: TM }}>Cancel</Text></TouchableOpacity>
+            <TextInput value={vN} onChangeText={setVN} placeholder="Notes (optional)" placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent }]} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
+            <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: theme.textSecondary }}>Cancel</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
