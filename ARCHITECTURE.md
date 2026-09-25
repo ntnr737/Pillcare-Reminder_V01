@@ -153,4 +153,27 @@ Allows broadcasting instant in-app promotions, system alerts, or feature release
 
 ---
 
+## 5. Recent System Enhancements (Version 2026.2 / Release v1.0.11)
+
+### A. 100% Internationalization (i18n) Quality Control
+- **Languages Supported**: English (`en`), Hindi (`hi`), Bengali (`bn`), German (`de`), Spanish (`es`), French (`fr`).
+- **Complete Feature Translation**: 100% UI key coverage across all tabs (`Today`, `Treatment`, `Yoga`, `Progress`, `Appointments`, `Support`) and modal sheets (`ActionSheetModal`, `CalendarModal`, `AddMedicationSheet`, `RefillModal`, `DrugFoodGuideModal`).
+- **Dynamic Parameter Interpolation**: Enhanced `t()` function in `LanguageContext.tsx` supports dynamic template variables (`{med}`, `{slot}`, `{count}`, `{avg}`, `{water}`).
+- **Localized Clinical Guidance**: Clinical timing and dosage safety recommendations in `clinicalRules.ts` automatically resolve localized rules based on active user locale.
+
+### B. Google OAuth 2.0 Android Signing & Fingerprint Alignment
+- **Package Name / Application ID**: `com.pillcare.reminder`
+- **Web Client ID**: `1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com`
+- **SHA-1 Fingerprint**: `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`
+- **SHA-256 Fingerprint**: `FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C`
+- Registered in Google Cloud OAuth 2.0 Client Credentials to ensure zero `DEVELOPER_ERROR` during native sign-in.
+
+### C. Release Artifact & Website Download Sync
+- **Current Production Build**: `v1.0.11` ([GitHub Release v1.0.11 Tag](https://github.com/ntnr737/Pillcare-Reminder_V01/releases/tag/v1.0.11))
+- **Direct APK Release Asset**: [`PillCare-v1.0.11-release.apk`](https://github.com/ntnr737/Pillcare-Reminder_V01/releases/download/v1.0.11/PillCare-v1.0.11-release.apk)
+- **Website & Admin Sync**: `pillcare-website` landing page (`index.html`) and admin mission control (`admin/index.html`, `admin.html`) point to the latest release binary.
+
+---
+
 *This document serves as the authoritative architectural record for both `Pillcare.com` and `Pillcare-Reminder_V01` repositories.*
+
