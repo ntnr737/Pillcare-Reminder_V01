@@ -7,19 +7,15 @@ import {
   TouchableOpacity,
   ScrollView,
   Linking,
+  TextStyle,
+  ViewStyle,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import { useTheme } from "@/src/context/ThemeContext";
+import { useTranslation } from "@/src/context/LanguageContext";
 import { get, set, K } from "@/src/lib/store";
-import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
-
-const BG = "#0B0D14";
-const SF = "#161926";
-const TX = "#F9FAFB";
-const TM = "rgba(249, 250, 251, 0.65)";
-const A3 = "#A78BFA";
-const BD = "rgba(255, 255, 255, 0.08)";
 
 export interface YogaStep {
   num: number;
@@ -69,6 +65,8 @@ export function YogaRoutineModal({
   customLevel,
 }: YogaRoutineModalProps) {
   const insets = useSafeAreaInsets();
+  const { theme, isDark } = useTheme();
+  const { t } = useTranslation();
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
 
   const yogaDoneKey = () => {
@@ -98,35 +96,25 @@ export function YogaRoutineModal({
 
     const d = new Date();
     const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const hStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    const logItem = {
+      id: `yoga_${step.num}_${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      date: dStr,
+      step_num: step.num,
+      step_name: step.name,
+      completed: !isDone,
+    };
+    track("yoga_done", { step: step.name, num: step.num, completed: !isDone });
+
     const historyCache = (await get<any[]>(K.history)) || [];
-
-    let dayItem = historyCache.find((item: any) => item.date === dStr);
-    if (!dayItem) {
-      dayItem = { date: dStr, total: 0, taken: 0, entries: [] };
-      historyCache.unshift(dayItem);
-    }
-
-    if (!isDone) {
-      const newEntry = {
-        id: `yoga_${num}_${Date.now()}`,
-        name: `Yoga: ${step.name || "Therapy Pose"}`,
-        generic_name: "AI Yoga Therapy",
-        dosage: "",
-        unit: "",
-        time: hStr,
-        status: "yoga_completed",
-        note: `Completed ${step.duration || "pose"}`,
-      };
-      if (!dayItem.entries.some((e: any) => e.name === newEntry.name)) {
-        dayItem.entries.push(newEntry);
-      }
-      track("yoga_done", { pose: step.name });
-      api.yogaComplete(num, step.name, step.youtube_video || step.youtube_channel).catch(() => {});
-    } else {
-      dayItem.entries = dayItem.entries.filter((e: any) => e.name !== `Yoga: ${step.name}`);
-      api.yogaUncomplete(num, step.name).catch(() => {});
-    }
+    historyCache.unshift({
+      id: logItem.id,
+      timestamp: logItem.timestamp,
+      type: "yoga",
+      title: step.name,
+      description: `Completed ${step.name} (${step.duration})`,
+      status: "completed",
+    });
     await set(K.history, [...historyCache]);
   };
 
@@ -135,62 +123,82 @@ export function YogaRoutineModal({
   const duration = customDuration || routine.duration;
   const level = customLevel || routine.level;
 
+  if (!visible) return null;
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.ovl} activeOpacity={1} onPress={onClose}>
-        <SafeAreaView style={s.safeContainer} edges={["top", "bottom"]}>
-          <View
-            style={[s.sBox, { paddingBottom: Math.max(insets.bottom, 16) }]}
-          >
+      <View style={s.ovl}>
+        <TouchableOpacity style={s.backdrop} activeOpacity={1} onPress={onClose} />
+        <SafeAreaView style={s.safeContainer} edges={["bottom"]}>
+          <View style={[s.sBox, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder, paddingBottom: Math.max(insets.bottom, 16) }]}>
+            
+            {/* Handle Bar */}
+            <View style={[s.handle, { backgroundColor: isDark ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.15)" }]} />
+
             {/* Header row */}
             <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                <Ionicons name="sparkles" size={12} color={A3} />
-                <Text style={{ fontSize: 10, letterSpacing: 1, color: A3, fontWeight: "700" }}>AI RECOMMENDED YOGA</Text>
+                <Ionicons name="sparkles" size={14} color={theme.accent} />
+                <Text style={{ fontSize: 11, letterSpacing: 0.8, color: theme.accent, fontWeight: "700" }}>
+                  {t("yoga.aiRecommended", "AI RECOMMENDED YOGA")}
+                </Text>
               </View>
               <TouchableOpacity
                 onPress={onClose}
-                style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.08)", alignItems: "center", justifyContent: "center" }}
+                style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", alignItems: "center", justifyContent: "center" }}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Ionicons name="close" size={18} color={TM} />
+                <Ionicons name="close" size={18} color={theme.textSecondary} />
               </TouchableOpacity>
             </View>
 
-            <Text style={s.sTitle}>{title}</Text>
+            <Text style={[s.sTitle, { color: theme.textPrimary }]}>{title}</Text>
+            
             <View style={{ flexDirection: "row", gap: 8, marginVertical: 6 }}>
-              <View style={s.chip}>
-                <Ionicons name="time-outline" size={11} color={A3} />
-                <Text style={s.chipT}>{duration}</Text>
+              <View style={[s.chip, { backgroundColor: theme.accentBg }]}>
+                <Ionicons name="time-outline" size={11} color={theme.accent} />
+                <Text style={[s.chipT, { color: theme.accent }]}>{duration}</Text>
               </View>
-              <View style={s.chip}>
-                <Ionicons name="speedometer-outline" size={11} color={A3} />
-                <Text style={s.chipT}>{level}</Text>
+              <View style={[s.chip, { backgroundColor: theme.accentBg }]}>
+                <Ionicons name="speedometer-outline" size={11} color={theme.accent} />
+                <Text style={[s.chipT, { color: theme.accent }]}>{level}</Text>
               </View>
             </View>
 
-            <Text style={[s.cS, { lineHeight: 16, marginBottom: 8 }]}>{routine.description}</Text>
-            <Text style={s.secL}>
-              ROUTINE · {safeCompletedSteps.length}/{routine.steps.length} done today
+            <Text style={[s.cS, { color: theme.textSecondary, lineHeight: 17, marginBottom: 8 }]}>{routine.description}</Text>
+            
+            <Text style={[s.secL, { color: theme.accent }]}>
+              ROUTINE · {safeCompletedSteps.length}/{routine.steps.length} {t("yoga.doneToday", "done today")}
             </Text>
 
-            <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 380 }}>
+            <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1, maxHeight: 380 }}>
               {routine.steps.map((step) => {
                 const stepDone = isStepDone(step.num);
                 return (
-                  <View key={step.num} style={[s.card, { gap: 8, marginBottom: 8 }]}>
+                  <View
+                    key={step.num}
+                    style={[
+                      s.card,
+                      {
+                        backgroundColor: isDark ? "rgba(255,255,255,0.03)" : "#f8fafc",
+                        borderColor: theme.surfaceBorder,
+                        gap: 8,
+                        marginBottom: 8,
+                      },
+                    ]}
+                  >
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                      <View style={[s.cI, { borderRadius: 13 }, stepDone && { backgroundColor: "rgba(74,222,128,0.18)" }]}>
+                      <View style={[s.cI, { backgroundColor: theme.accentBg, borderRadius: 13 }, stepDone && { backgroundColor: "rgba(74,222,128,0.18)" }]}>
                         {stepDone ? (
-                          <Ionicons name="checkmark" size={14} color="#4ade80" />
+                          <Ionicons name="checkmark" size={14} color="#10b981" />
                         ) : (
-                          <Text style={{ fontSize: 11, color: A3, fontWeight: "700" }}>{step.num}</Text>
+                          <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "700" }}>{step.num}</Text>
                         )}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={s.cT}>{step.name}</Text>
-                        <Text style={s.cS}>{step.duration}</Text>
-                        {step.benefit ? <Text style={[s.cS, { color: A3, marginTop: 2 }]}>{step.benefit}</Text> : null}
+                        <Text style={[s.cT, { color: theme.textPrimary }]}>{step.name}</Text>
+                        <Text style={[s.cS, { color: theme.textSecondary }]}>{step.duration}</Text>
+                        {step.benefit ? <Text style={[s.cS, { color: theme.accent, marginTop: 2 }]}>{step.benefit}</Text> : null}
                       </View>
                     </View>
 
@@ -199,12 +207,12 @@ export function YogaRoutineModal({
                       style={{
                         flexDirection: "row",
                         alignItems: "center",
-                        gap: 6,
-                        backgroundColor: "rgba(255,0,0,0.12)",
-                        borderRadius: 8,
-                        padding: 8,
+                        gap: 8,
+                        backgroundColor: isDark ? "rgba(239, 68, 68, 0.12)" : "#fef2f2",
+                        borderRadius: 10,
+                        padding: 10,
                         borderWidth: 1,
-                        borderColor: "rgba(255,0,0,0.3)",
+                        borderColor: isDark ? "rgba(239, 68, 68, 0.3)" : "#fecaca",
                       }}
                       onPress={() =>
                         onOpenVideo({
@@ -216,10 +224,14 @@ export function YogaRoutineModal({
                         })
                       }
                     >
-                      <Ionicons name="play-circle" size={16} color="#FF0000" />
-                      <Text style={{ fontSize: 11, color: TX, flex: 1, fontWeight: "700" }}>Watch Video Inside App</Text>
-                      <Text style={{ fontSize: 9, color: A3, fontWeight: "600" }}>{step.channel || "AYUSH"}</Text>
-                      <Ionicons name="chevron-forward" size={12} color={A3} />
+                      <Ionicons name="play-circle" size={18} color="#ef4444" />
+                      <Text style={{ fontSize: 12, color: theme.textPrimary, flex: 1, fontWeight: "700" }}>
+                        Watch Video Inside App
+                      </Text>
+                      <Text style={{ fontSize: 10, color: theme.accent, fontWeight: "600" }}>
+                        {step.channel || "AYUSH"}
+                      </Text>
+                      <Ionicons name="chevron-forward" size={12} color={theme.accent} />
                     </TouchableOpacity>
 
                     {/* Mark Done Button */}
@@ -230,17 +242,31 @@ export function YogaRoutineModal({
                         justifyContent: "center",
                         gap: 6,
                         marginTop: 2,
-                        backgroundColor: stepDone ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)",
-                        borderRadius: 8,
-                        padding: 8,
+                        backgroundColor: stepDone
+                          ? "rgba(16, 185, 129, 0.12)"
+                          : isDark
+                          ? "rgba(255,255,255,0.06)"
+                          : "#ffffff",
+                        borderRadius: 10,
+                        padding: 9,
                         borderWidth: 1,
-                        borderColor: stepDone ? "rgba(74,222,128,0.3)" : BD,
+                        borderColor: stepDone ? "rgba(16, 185, 129, 0.3)" : theme.surfaceBorder,
                       }}
                       onPress={() => toggleStepDone(step)}
                     >
-                      <Ionicons name={stepDone ? "checkmark-circle" : "ellipse-outline"} size={14} color={stepDone ? "#4ade80" : TM} />
-                      <Text style={{ fontSize: 11, color: stepDone ? "#4ade80" : TM, fontWeight: "600" }}>
-                        {stepDone ? "Marked as Done" : "Mark as Done"}
+                      <Ionicons
+                        name={stepDone ? "checkmark-circle" : "ellipse-outline"}
+                        size={15}
+                        color={stepDone ? "#10b981" : theme.textSecondary}
+                      />
+                      <Text
+                        style={{
+                          fontSize: 12,
+                          color: stepDone ? "#10b981" : theme.textSecondary,
+                          fontWeight: "600",
+                        }}
+                      >
+                        {stepDone ? t("yoga.markedDone", "Marked as Done") : t("yoga.markDone", "Mark as Done")}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -248,27 +274,38 @@ export function YogaRoutineModal({
               })}
 
               {/* Verified Sources */}
-              <Text style={[s.secL, { marginTop: 10, marginBottom: 6 }]}>VERIFIED SOURCES</Text>
+              <Text style={[s.secL, { color: theme.accent, marginTop: 10, marginBottom: 6 }]}>
+                {t("yoga.verifiedChannels", "VERIFIED SOURCES")}
+              </Text>
               {routine.channels.map((ch) => (
                 <TouchableOpacity
                   key={ch.url}
-                  style={{ flexDirection: "row", alignItems: "center", gap: 8, paddingVertical: 7, borderBottomWidth: 1, borderBottomColor: BD }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 8,
+                    paddingVertical: 8,
+                    borderBottomWidth: 1,
+                    borderBottomColor: theme.surfaceBorder,
+                  }}
                   onPress={() => Linking.openURL(ch.url)}
                 >
-                  <Ionicons name="logo-youtube" size={16} color="#FF0000" />
-                  <Text style={{ fontSize: 11, color: TX, flex: 1 }}>{ch.name}</Text>
+                  <Ionicons name="logo-youtube" size={16} color="#ef4444" />
+                  <Text style={{ fontSize: 12, color: theme.textPrimary, flex: 1 }}>{ch.name}</Text>
                   {ch.verified && (
-                    <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: "rgba(74,222,128,0.15)", borderRadius: 4 }}>
-                      <Text style={{ fontSize: 8, color: "#4ade80", fontWeight: "700" }}>✓ VERIFIED</Text>
+                    <View style={{ paddingHorizontal: 6, paddingVertical: 2, backgroundColor: "rgba(16,185,129,0.15)", borderRadius: 4 }}>
+                      <Text style={{ fontSize: 8, color: "#10b981", fontWeight: "700" }}>✓ VERIFIED</Text>
                     </View>
                   )}
                 </TouchableOpacity>
               ))}
-              <Text style={[s.cS, { fontStyle: "italic", marginTop: 8, marginBottom: 12, lineHeight: 15 }]}>{routine.disclaimer}</Text>
+              <Text style={[s.cS, { color: theme.textSecondary, fontStyle: "italic", marginTop: 8, marginBottom: 12, lineHeight: 15 }]}>
+                {routine.disclaimer}
+              </Text>
             </ScrollView>
           </View>
         </SafeAreaView>
-      </TouchableOpacity>
+      </View>
     </Modal>
   );
 }
@@ -276,74 +313,73 @@ export function YogaRoutineModal({
 const s = StyleSheet.create({
   ovl: {
     flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.8)",
     justifyContent: "flex-end",
   },
+  backdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0, 0, 0, 0.55)",
+  },
   safeContainer: {
-    flex: 1,
     justifyContent: "flex-end",
   },
   sBox: {
-    backgroundColor: SF,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderColor: BD,
+    borderTopWidth: 1,
     padding: 18,
     gap: 8,
     maxHeight: "92%",
+    width: "100%",
     zIndex: 10,
     elevation: 10,
   },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 4,
+  },
   sTitle: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
-    color: TX,
   },
   chip: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    backgroundColor: "rgba(139, 92, 246, 0.12)",
     paddingHorizontal: 8,
     paddingVertical: 3,
     borderRadius: 6,
   },
   chipT: {
     fontSize: 10,
-    color: A3,
     fontWeight: "600",
   },
   cS: {
     fontSize: 11,
-    color: TM,
   },
   secL: {
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 0.8,
-    color: A3,
     marginTop: 6,
     marginBottom: 4,
   },
   card: {
-    backgroundColor: "rgba(255, 255, 255, 0.03)",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 12,
     borderWidth: 1,
-    borderColor: BD,
   },
   cI: {
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "rgba(139, 92, 246, 0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
   cT: {
     fontSize: 13,
     fontWeight: "700",
-    color: TX,
   },
 });
