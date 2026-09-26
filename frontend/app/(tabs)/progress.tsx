@@ -733,15 +733,15 @@ export default function Progress() {
                             gap: 4
                           }}>
                           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, paddingRight: 4 }}>
-                              <Ionicons name={tipItem.rule.iconName as any} size={14} color={tipItem.rule.badgeColor} />
-                              <Text style={{ fontSize: 11, fontWeight: "700", color: tipItem.rule.badgeColor, flex: 1 }} numberOfLines={1}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+                              <Ionicons name={tipItem.rule.iconName as any} size={14} color={tipItem.rule.badgeColor} style={{ flexShrink: 0 }} />
+                              <Text style={{ fontSize: 11, fontWeight: "700", color: tipItem.rule.badgeColor, flex: 1 }} numberOfLines={1} ellipsizeMode="tail">
                                 {tipItem.rule.tipTitle(tipItem.medName, t)}
                               </Text>
                             </View>
-                            <View style={{ backgroundColor: `${tipItem.rule.badgeColor}20`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexShrink: 0 }}>
-                              <Text style={{ fontSize: 8, fontWeight: "700", color: tipItem.rule.badgeColor }}>
-                                {tipItem.rule.category(t).split("/")[0]}
+                            <View style={{ backgroundColor: `${tipItem.rule.badgeColor}20`, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, flexShrink: 0, maxWidth: "45%" }}>
+                              <Text style={{ fontSize: 8, fontWeight: "700", color: tipItem.rule.badgeColor }} numberOfLines={1} ellipsizeMode="tail">
+                                {tipItem.rule.category(t).split("/")[0].trim()}
                               </Text>
                             </View>
                           </View>
