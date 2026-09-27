@@ -172,13 +172,23 @@ export default function Nearby() {
     return { lat: 28.6139, lng: 77.2090 };
   };
 
+function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const dlat = (lat2 - lat1) * 111000;
+  const dlng = (lon2 - lon1) * 111000 * Math.cos(lat1 * Math.PI / 180);
+  return Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
+}
+
   useEffect(() => {
     get<Place[]>(`nearby_places_${type}`).then(cached => {
       if (cached && Array.isArray(cached) && cached.length > 0) {
-        setPlaces(cached);
+        const valid = cached
+          .map(p => (coords && p.lat && p.lng) ? { ...p, distance: getDistanceMeters(coords.lat, coords.lng, p.lat, p.lng) } : p)
+          .filter(p => p.distance <= 50000)
+          .sort((a, b) => a.distance - b.distance);
+        if (valid.length > 0) setPlaces(valid);
       }
     });
-  }, [type]);
+  }, [type, coords]);
 
   const search = useCallback(async (c?: { lat: number; lng: number }) => {
     setLoading(true); setLocError("");
@@ -198,8 +208,16 @@ export default function Nearby() {
         if (res.ok) {
           const data = await res.json();
           if (data.places?.length) {
-            setPlaces(data.places);
-            await set(`nearby_places_${type}`, data.places);
+            const formatted = data.places
+              .map((p: Place) => ({
+                ...p,
+                distance: (p.lat && p.lng) ? getDistanceMeters(loc.lat, loc.lng, p.lat, p.lng) : p.distance
+              }))
+              .filter((p: Place) => p.distance <= 50000)
+              .sort((a: Place, b: Place) => a.distance - b.distance);
+
+            setPlaces(formatted);
+            await set(`nearby_places_${type}`, formatted);
             setSource("google");
             setLocError("");
             setLoading(false);
@@ -301,61 +319,66 @@ export default function Nearby() {
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
-      <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
-          <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[s.title, { color: theme.textPrimary }]}>{t("nearby.title", "Nearby Medical Stores")}</Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <TouchableOpacity onPress={openGoogleMaps} style={[s.mapBtn, { backgroundColor: theme.accentBg }]}>
-            <Ionicons name="map-outline" size={18} color={theme.accent} />
+      <View style={{ backgroundColor: theme.bg, zIndex: 10, borderBottomWidth: 1, borderBottomColor: theme.surfaceBorder }}>
+        <View style={s.hdr}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[s.title, { color: theme.textPrimary }]}>{t("nearby.title", "Nearby Medical Stores")}</Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <TouchableOpacity onPress={openGoogleMaps} style={[s.mapBtn, { backgroundColor: theme.accentBg }]}>
+              <Ionicons name="map-outline" size={18} color={theme.accent} />
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Type tabs */}
+        <View style={{ paddingVertical: 4 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.typeTabs} style={{ flexGrow: 0 }}>
+            {(Object.entries(TYPE_CONFIG) as [PlaceType, typeof TYPE_CONFIG[PlaceType]][]).map(([tType, tCfg]) => (
+              <TouchableOpacity key={tType} onPress={() => setType(tType)}
+                style={[
+                  s.typeTab,
+                  { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+                  type === tType && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+                ]}>
+                <Ionicons name={tCfg.icon as any} size={13} color={type === tType ? theme.accent : theme.textSecondary} />
+                <Text style={[s.typeTabTx, { color: theme.textSecondary }, type === tType && { color: theme.accent, fontWeight: "700" }]}>{tCfg.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+
+        {/* Radius selector */}
+        <View style={s.radRow}>
+          <Text style={[s.radLabel, { color: theme.textSecondary }]}>Radius:</Text>
+          {RADII.map(r => (
+            <TouchableOpacity key={r.value} onPress={() => setRadius(r.value)}
+              style={[
+                s.radBtn,
+                { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
+                radius === r.value && { backgroundColor: theme.accentBg, borderColor: theme.accent }
+              ]}>
+              <Text style={[s.radTx, { color: theme.textSecondary }, radius === r.value && { color: theme.accent, fontWeight: "700" }]}>{r.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Quick Filters */}
+        <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}>
+          <TouchableOpacity
+            onPress={() => setOpenOnly(!openOnly)}
+            style={[s.filterChip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, openOnly && { backgroundColor: "rgba(74,222,128,0.15)", borderColor: "#10B981" }]}>
+            <Ionicons name="time-outline" size={12} color={openOnly ? "#10B981" : theme.textSecondary} />
+            <Text style={[s.filterChipTx, { color: theme.textSecondary }, openOnly && { color: "#10B981", fontWeight: "700" }]}>{t("common.openNow", "Open Now")}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setHasPhoneOnly(!hasPhoneOnly)}
+            style={[s.filterChip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, hasPhoneOnly && { backgroundColor: "rgba(37,211,102,0.15)", borderColor: "#25D366" }]}>
+            <Ionicons name="logo-whatsapp" size={12} color={hasPhoneOnly ? "#25D366" : theme.textSecondary} />
+            <Text style={[s.filterChipTx, { color: theme.textSecondary }, hasPhoneOnly && { color: "#25D366", fontWeight: "700" }]}>WhatsApp Ready</Text>
           </TouchableOpacity>
         </View>
-      </View>
-
-      {/* Type tabs */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.typeTabs}>
-        {(Object.entries(TYPE_CONFIG) as [PlaceType, typeof TYPE_CONFIG[PlaceType]][]).map(([tType, tCfg]) => (
-          <TouchableOpacity key={tType} onPress={() => setType(tType)}
-            style={[
-              s.typeTab,
-              { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
-              type === tType && { backgroundColor: theme.accentBg, borderColor: theme.accent }
-            ]}>
-            <Ionicons name={tCfg.icon as any} size={13} color={type === tType ? theme.accent : theme.textSecondary} />
-            <Text style={[s.typeTabTx, { color: theme.textSecondary }, type === tType && { color: theme.accent, fontWeight: "700" }]}>{tCfg.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      {/* Radius selector & Quick Filters */}
-      <View style={s.radRow}>
-        <Text style={[s.radLabel, { color: theme.textSecondary }]}>Radius:</Text>
-        {RADII.map(r => (
-          <TouchableOpacity key={r.value} onPress={() => setRadius(r.value)}
-            style={[
-              s.radBtn,
-              { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
-              radius === r.value && { backgroundColor: theme.accentBg, borderColor: theme.accent }
-            ]}>
-            <Text style={[s.radTx, { color: theme.textSecondary }, radius === r.value && { color: theme.accent, fontWeight: "700" }]}>{r.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <View style={{ flexDirection: "row", gap: 8, paddingHorizontal: 16, paddingBottom: 10 }}>
-        <TouchableOpacity
-          onPress={() => setOpenOnly(!openOnly)}
-          style={[s.filterChip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, openOnly && { backgroundColor: "rgba(74,222,128,0.15)", borderColor: "#10B981" }]}>
-          <Ionicons name="time-outline" size={12} color={openOnly ? "#10B981" : theme.textSecondary} />
-          <Text style={[s.filterChipTx, { color: theme.textSecondary }, openOnly && { color: "#10B981", fontWeight: "700" }]}>{t("common.openNow", "Open Now")}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setHasPhoneOnly(!hasPhoneOnly)}
-          style={[s.filterChip, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }, hasPhoneOnly && { backgroundColor: "rgba(37,211,102,0.15)", borderColor: "#25D366" }]}>
-          <Ionicons name="logo-whatsapp" size={12} color={hasPhoneOnly ? "#25D366" : theme.textSecondary} />
-          <Text style={[s.filterChipTx, { color: theme.textSecondary }, hasPhoneOnly && { color: "#25D366", fontWeight: "700" }]}>WhatsApp Ready</Text>
-        </TouchableOpacity>
       </View>
 
       {/* Results */}
@@ -397,7 +420,7 @@ export default function Nearby() {
 
         {!loading && (() => {
           const filteredPlaces = places.filter(p => p.distance <= radius && (!openOnly || p.open === true) && (!hasPhoneOnly || !!p.phone));
-          const outsidePlaces = places.filter(p => p.distance > radius && (!openOnly || p.open === true) && (!hasPhoneOnly || !!p.phone));
+          const outsidePlaces = places.filter(p => p.distance > radius && p.distance <= 50000 && (!openOnly || p.open === true) && (!hasPhoneOnly || !!p.phone));
 
           if (filteredPlaces.length === 0 && places.length === 0 && !locError) {
             return (
