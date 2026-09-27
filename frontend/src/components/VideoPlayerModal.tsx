@@ -77,6 +77,7 @@ export function VideoPlayerModal({
   useEffect(() => {
     if (visible) {
       setHasError(false);
+      setUseMobileWeb(false);
       setSecondsWatched(0);
       setIsTimerActive(true);
       setModalStep("player");
@@ -107,27 +108,9 @@ export function VideoPlayerModal({
   };
 
   const videoId = extractYouTubeId(videoUrl);
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&origin=https://www.youtube.com`;
-
-  const htmlContent = `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 100%; height: 100%; background: #0B0D14; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    iframe { width: 100%; height: 100%; min-height: 220px; border: 0; border-radius: 12px; }
-  </style>
-</head>
-<body>
-  <iframe
-    src="${embedUrl}"
-    title="${(title || "Yoga Video").replace(/"/g, '&quot;')}"
-    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    allowfullscreen
-  ></iframe>
-</body>
-</html>`;
+  const directEmbedUri = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1`;
+  const mobileWatchUri = `https://m.youtube.com/watch?v=${videoId}`;
+  const [useMobileWeb, setUseMobileWeb] = useState(false);
 
   const handleExternalOpen = () => {
     const rawUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
@@ -227,7 +210,7 @@ export function VideoPlayerModal({
                     </View>
                   ) : Platform.OS === "web" ? (
                     <iframe
-                      src={embedUrl}
+                      src={directEmbedUri}
                       title={title || "Yoga Video"}
                       style={{ width: "100%", height: "100%", border: 0, borderRadius: 12 }}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -235,16 +218,31 @@ export function VideoPlayerModal({
                     />
                   ) : WebView ? (
                     <WebView
-                      source={{ html: htmlContent, baseUrl: "https://www.youtube.com" }}
+                      source={{ uri: useMobileWeb ? mobileWatchUri : directEmbedUri }}
                       style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
                       allowsInlineMediaPlayback
+                      allowsFullscreenVideo
                       mediaPlaybackRequiresUserAction={false}
                       javaScriptEnabled
                       domStorageEnabled
                       originWhitelist={["*"]}
+                      mixedContentMode="always"
+                      userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
                       startInLoadingState={true}
-                      onError={() => setHasError(true)}
-                      onHttpError={() => setHasError(true)}
+                      onError={() => {
+                        if (!useMobileWeb) {
+                          setUseMobileWeb(true);
+                        } else {
+                          setHasError(true);
+                        }
+                      }}
+                      onHttpError={() => {
+                        if (!useMobileWeb) {
+                          setUseMobileWeb(true);
+                        } else {
+                          setHasError(true);
+                        }
+                      }}
                       renderLoading={() => (
                         <View style={s.loadingContainer}>
                           <ActivityIndicator size="small" color={A3} />
