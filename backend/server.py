@@ -2017,22 +2017,22 @@ async def nearby_places(
     def get_relative_defaults():
         if type == "pharmacy":
             raw = [
-                {"id": "p1", "name": "Apollo Pharmacy", "address": "Main Market Road", "offset_lat": 0.002, "offset_lng": 0.002, "rating": 4.8, "phone": "+919876543210"},
-                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "offset_lat": -0.004, "offset_lng": 0.003, "rating": 4.6, "phone": "+919876543211"},
-                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "offset_lat": 0.006, "offset_lng": -0.005, "rating": 4.5, "phone": "+919876543212"},
-                {"id": "p4", "name": "Jan Aushadhi Kendra", "address": "Block C Market", "offset_lat": -0.003, "offset_lng": -0.003, "rating": 4.7, "phone": "+919876543213"},
+                {"id": "p1", "name": "Apollo Pharmacy", "address": "Main Market Road", "offset_lat": 0.002, "offset_lng": 0.002, "rating": 4.8, "phone": "+91 11 4567 8901"},
+                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "offset_lat": -0.004, "offset_lng": 0.003, "rating": 4.6, "phone": "+91 11 4123 5678"},
+                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "offset_lat": 0.006, "offset_lng": -0.005, "rating": 4.5, "phone": "+91 11 2345 6789"},
+                {"id": "p4", "name": "Jan Aushadhi Kendra", "address": "Block C Market", "offset_lat": -0.003, "offset_lng": -0.003, "rating": 4.7, "phone": "+91 11 3456 7890"},
             ]
         elif type == "diagnostic":
             raw = [
-                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "offset_lat": 0.003, "offset_lng": -0.003, "rating": 4.9, "phone": "+919876543220"},
-                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "offset_lat": -0.005, "offset_lng": -0.004, "rating": 4.7, "phone": "+919876543221"},
-                {"id": "d3", "name": "SRL Diagnostics", "address": "Medical Hub, 1st Floor", "offset_lat": 0.005, "offset_lng": 0.004, "rating": 4.8, "phone": "+919876543222"},
+                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "offset_lat": 0.003, "offset_lng": -0.003, "rating": 4.9, "phone": "+91 11 4987 6543"},
+                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "offset_lat": -0.005, "offset_lng": -0.004, "rating": 4.7, "phone": "+91 11 4876 5432"},
+                {"id": "d3", "name": "SRL Diagnostics", "address": "Medical Hub, 1st Floor", "offset_lat": 0.005, "offset_lng": 0.004, "rating": 4.8, "phone": "+91 11 4765 4321"},
             ]
         else:
             raw = [
-                {"id": "h1", "name": "City Multispeciality Hospital", "address": "Ring Road Sector 4", "offset_lat": 0.008, "offset_lng": 0.006, "rating": 4.7, "phone": "+919876543230"},
-                {"id": "h2", "name": "Max Healthcare Clinic", "address": "Main Boulevard", "offset_lat": -0.009, "offset_lng": 0.007, "rating": 4.8, "phone": "+919876543231"},
-                {"id": "h3", "name": "Fortis Medical Center", "address": "Healthcare Enclave", "offset_lat": 0.011, "offset_lng": -0.009, "rating": 4.6, "phone": "+919876543232"},
+                {"id": "h1", "name": "City Multispeciality Hospital", "address": "Ring Road Sector 4", "offset_lat": 0.008, "offset_lng": 0.006, "rating": 4.7, "phone": "+91 11 2654 3210"},
+                {"id": "h2", "name": "Max Healthcare Clinic", "address": "Main Boulevard", "offset_lat": -0.009, "offset_lng": 0.007, "rating": 4.8, "phone": "+91 11 2543 2109"},
+                {"id": "h3", "name": "Fortis Medical Center", "address": "Healthcare Enclave", "offset_lat": 0.011, "offset_lng": -0.009, "rating": 4.6, "phone": "+91 11 2432 1098"},
             ]
         
         out = []

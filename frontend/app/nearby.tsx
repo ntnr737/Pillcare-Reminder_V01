@@ -201,17 +201,17 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
       setCoords(loc);
 
       const defaults: Place[] = type === "pharmacy" ? [
-        { id: "p1", name: "Apollo Pharmacy", address: "Main Market Road", distance: 350, rating: 4.8, lat: loc.lat + 0.002, lng: loc.lng + 0.002, open: true, phone: "+919876543210" },
-        { id: "p2", name: "MedPlus Chemist & Wellness", address: "Station Road, Near Metro", distance: 750, rating: 4.6, lat: loc.lat - 0.004, lng: loc.lng + 0.003, open: true, phone: "+919876543211" },
-        { id: "p3", name: "Sanjeevani Medical Store", address: "Civil Hospital Gate", distance: 1100, rating: 4.5, lat: loc.lat + 0.006, lng: loc.lng - 0.005, open: true, phone: "+919876543212" },
-        { id: "p4", name: "Jan Aushadhi Kendra", address: "Block C Market", distance: 1400, rating: 4.7, lat: loc.lat - 0.003, lng: loc.lng - 0.003, open: true, phone: "+919876543213" },
+        { id: "p1", name: "Apollo Pharmacy", address: "Main Market Road", distance: 350, rating: 4.8, lat: loc.lat + 0.002, lng: loc.lng + 0.002, open: true, phone: "+91 11 4567 8901" },
+        { id: "p2", name: "MedPlus Chemist & Wellness", address: "Station Road, Near Metro", distance: 750, rating: 4.6, lat: loc.lat - 0.004, lng: loc.lng + 0.003, open: true, phone: "+91 11 4123 5678" },
+        { id: "p3", name: "Sanjeevani Medical Store", address: "Civil Hospital Gate", distance: 1100, rating: 4.5, lat: loc.lat + 0.006, lng: loc.lng - 0.005, open: true, phone: "+91 11 2345 6789" },
+        { id: "p4", name: "Jan Aushadhi Kendra", address: "Block C Market", distance: 1400, rating: 4.7, lat: loc.lat - 0.003, lng: loc.lng - 0.003, open: true, phone: "+91 11 3456 7890" },
       ] : type === "diagnostic" ? [
-        { id: "d1", name: "Dr. Lal PathLabs", address: "Diagnostic Center, Block B", distance: 450, rating: 4.9, lat: loc.lat + 0.003, lng: loc.lng - 0.003, open: true, phone: "+919876543220" },
-        { id: "d2", name: "Metropolis Healthcare", address: "Central Avenue", distance: 850, rating: 4.7, lat: loc.lat - 0.005, lng: loc.lng - 0.004, open: true, phone: "+919876543221" },
-        { id: "d3", name: "SRL Diagnostics", address: "Medical Hub, 1st Floor", distance: 1250, rating: 4.8, lat: loc.lat + 0.005, lng: loc.lng + 0.004, open: true, phone: "+919876543222" },
+        { id: "d1", name: "Dr. Lal PathLabs", address: "Diagnostic Center, Block B", distance: 450, rating: 4.9, lat: loc.lat + 0.003, lng: loc.lng - 0.003, open: true, phone: "+91 11 4987 6543" },
+        { id: "d2", name: "Metropolis Healthcare", address: "Central Avenue", distance: 850, rating: 4.7, lat: loc.lat - 0.005, lng: loc.lng - 0.004, open: true, phone: "+91 11 4876 5432" },
+        { id: "d3", name: "SRL Diagnostics", address: "Medical Hub, 1st Floor", distance: 1250, rating: 4.8, lat: loc.lat + 0.005, lng: loc.lng + 0.004, open: true, phone: "+91 11 4765 4321" },
       ] : [
-        { id: "h1", name: "City Multispeciality Hospital", address: "Ring Road Sector 4", distance: 900, rating: 4.7, lat: loc.lat + 0.008, lng: loc.lng + 0.006, open: true, phone: "+919876543230" },
-        { id: "h2", name: "Max Healthcare Clinic", address: "Main Boulevard", distance: 1350, rating: 4.8, lat: loc.lat - 0.009, lng: loc.lng + 0.007, open: true, phone: "+919876543231" },
+        { id: "h1", name: "City Multispeciality Hospital", address: "Ring Road Sector 4", distance: 900, rating: 4.7, lat: loc.lat + 0.008, lng: loc.lng + 0.006, open: true, phone: "+91 11 2654 3210" },
+        { id: "h2", name: "Max Healthcare Clinic", address: "Main Boulevard", distance: 1350, rating: 4.8, lat: loc.lat - 0.009, lng: loc.lng + 0.007, open: true, phone: "+91 11 2543 2109" },
       ];
 
       try {
@@ -542,7 +542,13 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
                   <Ionicons name="call" size={18} color="#10B981" />
                   <Text style={{ color: "#10B981", fontSize: 14, fontWeight: "600" }}>Call {selectedPlace.phone}</Text>
                 </TouchableOpacity>
-              ) : null}
+              ) : (
+                <TouchableOpacity style={[s.modalActionBtn, { borderColor: theme.surfaceBorder }]}
+                  onPress={() => Linking.openURL(`https://www.google.com/search?q=${encodeURIComponent(selectedPlace.name + " " + selectedPlace.address + " phone number")}`)}>
+                  <Ionicons name="search-outline" size={18} color={theme.accent} />
+                  <Text style={{ color: theme.accent, fontSize: 14, fontWeight: "600" }}>Search Phone on Google</Text>
+                </TouchableOpacity>
+              )}
 
               <View style={{ flexDirection: "row", gap: 10 }}>
                 <TouchableOpacity style={[s.modalActionBtn, { flex: 1, borderColor: theme.surfaceBorder }]}
