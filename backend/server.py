@@ -2133,6 +2133,40 @@ async def nearby_places(
         if places:
             return {"places": places[:max_results], "source": "osm"}
 
+        # High-speed Nominatim OSM Fallback (Works on Wi-Fi and mobile data, <500ms)
+        try:
+            nom_query = "pharmacy" if type == "pharmacy" else "diagnostic lab" if type == "diagnostic" else "hospital"
+            nom_url = f"https://nominatim.openstreetmap.org/search?format=json&q={nom_query}&lat={lat}&lon={lng}&limit=20"
+            headers_nom = {"User-Agent": "PillCare/1.0 (contact@pillcare.app)"}
+            async with httpx.AsyncClient(timeout=4.0, headers=headers_nom) as nc:
+                nr = await nc.get(nom_url)
+            if nr.status_code == 200:
+                ndata = nr.json()
+                if ndata and isinstance(ndata, list):
+                    nom_places = []
+                    for np in ndata:
+                        nlat = float(np.get("lat", 0))
+                        nlng = float(np.get("lon", 0))
+                        if not nlat or not nlng:
+                            continue
+                        disp_name = np.get("display_name", "")
+                        short_name = np.get("name") or disp_name.split(",")[0]
+                        nom_places.append({
+                            "id": str(np.get("place_id", "")),
+                            "name": short_name,
+                            "address": disp_name,
+                            "distance": dist(nlat, nlng),
+                            "rating": 4.6,
+                            "lat": nlat, "lng": nlng,
+                            "open": True,
+                            "phone": None
+                        })
+                    if nom_places:
+                        nom_places.sort(key=lambda x: x["distance"])
+                        return {"places": nom_places[:max_results], "source": "nominatim"}
+        except Exception as ex_nom:
+            logger.warning(f"Nominatim fallback failed: {ex_nom}")
+
         # Built-in curated location fallback if OSM servers are unreachable or return empty
         category_defaults = {
             "pharmacy": [

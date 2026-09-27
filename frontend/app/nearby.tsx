@@ -7,7 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { track } from "@/src/lib/analytics";
-import { get, K } from "@/src/lib/store";
+import { get, set, K } from "@/src/lib/store";
 import * as Location from "expo-location";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
@@ -172,6 +172,14 @@ export default function Nearby() {
     return { lat: 28.6139, lng: 77.2090 };
   };
 
+  useEffect(() => {
+    get<Place[]>(`nearby_places_${type}`).then(cached => {
+      if (cached && Array.isArray(cached) && cached.length > 0) {
+        setPlaces(cached);
+      }
+    });
+  }, [type]);
+
   const search = useCallback(async (c?: { lat: number; lng: number }) => {
     setLoading(true); setLocError("");
     try {
@@ -181,7 +189,7 @@ export default function Nearby() {
 
       const searchRadius = Math.max(radius, 5000);
 
-      // Try backend endpoint first (Google Places / Server Overpass)
+      // 1. Try backend endpoint first (Google Places / Server Overpass / Nominatim)
       try {
         const token = await (await import("@/src/lib/auth")).getStoredToken().catch(() => null);
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -194,6 +202,7 @@ export default function Nearby() {
           const data = await res.json();
           if (data.places?.length) {
             setPlaces(data.places);
+            await set(`nearby_places_${type}`, data.places);
             setSource(data.source === "osm" ? "osm" : "google");
             setLocError("");
             setLoading(false);
@@ -202,7 +211,43 @@ export default function Nearby() {
         }
       } catch {}
 
-      // Fallback: Comprehensive Overpass API (OpenStreetMap)
+      // 2. High-speed Nominatim OSM Client Fallback (Works on Wi-Fi and mobile data)
+      try {
+        const nomQuery = type === "pharmacy" ? "pharmacy" : type === "diagnostic" ? "diagnostic lab" : "hospital";
+        const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${nomQuery}&lat=${loc.lat}&lon=${loc.lng}&limit=20`;
+        const nres = await fetchWithTimeout(nomUrl, { headers: { "User-Agent": "PillCare/1.0" } }, 4000);
+        if (nres.ok) {
+          const ndata = await nres.json();
+          if (Array.isArray(ndata) && ndata.length > 0) {
+            const nomPlaces: Place[] = ndata.map((np: any) => {
+              const nlat = parseFloat(np.lat);
+              const nlng = parseFloat(np.lon);
+              const dlat = (nlat - loc.lat) * 111000;
+              const dlng = (nlng - loc.lng) * 111000 * Math.cos(loc.lat * Math.PI / 180);
+              const dist = Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
+              return {
+                id: String(np.place_id),
+                name: np.name || (np.display_name || "").split(",")[0] || "Medical Store",
+                address: np.display_name || "Location near you",
+                phone: undefined,
+                distance: dist,
+                lat: nlat,
+                lng: nlng,
+                rating: 4.6,
+                open: true
+              };
+            }).sort((a, b) => a.distance - b.distance);
+            setPlaces(nomPlaces);
+            setSource("osm");
+            await set(`nearby_places_${type}`, nomPlaces);
+            setLocError("");
+            setLoading(false);
+            return;
+          }
+        }
+      } catch {}
+
+      // 3. Fallback: Comprehensive Overpass API (OpenStreetMap)
       const fetchRadius = Math.max(radius, 2000);
       let query = "";
       if (type === "pharmacy") {
@@ -264,6 +309,7 @@ export default function Nearby() {
         .sort((a: Place, b: Place) => a.distance - b.distance);
 
       setPlaces(results);
+      if (results.length) await set(`nearby_places_${type}`, results);
       setSource("osm");
       setLocError("");
       if (!results.length) setLocError("No results found nearby. Try expanding your search radius.");
