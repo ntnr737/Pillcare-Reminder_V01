@@ -3117,16 +3117,50 @@ input[type=search]{width:220px;padding:7px 12px;background:var(--sf2);border:1px
       </div>
     </div>
 
-    <!-- USERS -->
+    <!-- USERS DIRECTORY & LIVE CONNECTIVITY -->
     <div class="page" id="pg-users">
       <div class="topbar">
-        <h2>Users</h2>
-        <input type="search" placeholder="Search name or email..." oninput="filterUsers(this.value)">
+        <h2>Users Directory & Live Connectivity</h2>
+        <input type="search" placeholder="Search name, email, or location..." oninput="filterUsers(this.value)">
       </div>
+
+      <!-- LIVE TELEMETRY & STATUS FILTER BAR -->
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:1.25rem;flex-wrap:wrap;background:var(--sf2);padding:10px 16px;border-radius:12px;border:1px solid var(--bd)">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <button class="user-status-filter-btn active" id="usr-flt-all" onclick="filterUsersByStatus('all')" style="padding:6px 14px;border-radius:20px;border:1px solid var(--bd);background:var(--sf);color:var(--tx);font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">
+            All Users <span id="cnt-usr-all" style="background:var(--sf2);padding:2px 8px;border-radius:10px;font-size:11px">0</span>
+          </button>
+          <button class="user-status-filter-btn" id="usr-flt-online" onclick="filterUsersByStatus('online')" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(74,222,128,0.4);background:rgba(74,222,128,0.1);color:var(--gr);font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block;animation:pulseDot 1.5s infinite"></span> Online / Active <span id="cnt-usr-online" style="background:rgba(74,222,128,0.2);padding:2px 8px;border-radius:10px;font-size:11px">0</span>
+          </button>
+          <button class="user-status-filter-btn" id="usr-flt-idle" onclick="filterUsersByStatus('idle')" style="padding:6px 14px;border-radius:20px;border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.1);color:var(--yw);font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#fbbf24;display:inline-block"></span> Idle (&lt;30m) <span id="cnt-usr-idle" style="background:rgba(251,191,36,0.2);padding:2px 8px;border-radius:10px;font-size:11px">0</span>
+          </button>
+          <button class="user-status-filter-btn" id="usr-flt-offline" onclick="filterUsersByStatus('offline')" style="padding:6px 14px;border-radius:20px;border:1px solid var(--bd);background:var(--sf);color:var(--tm);font-weight:700;font-size:12px;cursor:pointer;display:flex;align-items:center;gap:6px">
+            <span style="width:7px;height:7px;border-radius:50%;background:#94a3b8;display:inline-block"></span> Offline <span id="cnt-usr-offline" style="background:var(--sf2);padding:2px 8px;border-radius:10px;font-size:11px">0</span>
+          </button>
+        </div>
+        <div style="font-size:12px;color:var(--tm);display:flex;align-items:center;gap:6px;font-weight:600">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4ade80;animation:pulseDot 1.5s infinite"></span> Real-time Internet & App Telemetry
+        </div>
+      </div>
+
       <div class="card">
         <table>
-          <thead><tr><th>Name</th><th>Email</th><th>Location</th><th>Meds</th><th>Adherence</th><th>Plan</th><th>Last login</th><th>Action</th></tr></thead>
-          <tbody id="user-table"><tr><td colspan="8" class="empty">Loading...</td></tr></tbody>
+          <thead>
+            <tr>
+              <th>User Name</th>
+              <th>Email</th>
+              <th>App Connectivity Status</th>
+              <th>Location</th>
+              <th>Meds</th>
+              <th>Adherence</th>
+              <th>Plan</th>
+              <th>Last Active</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="user-table"><tr><td colspan="9" class="empty">Loading users...</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -4084,10 +4118,10 @@ const FALLBACK = {
     ]
   },
   users: [
-    { nickname: "Nitin Kumar", email: "nitinrai264@gmail.com", gender: "Male", year_of_birth: 1996, location: "Delhi, DL", plan: "premium", billing_cycle: "annual", medications: 8, doses_taken: 142, has_caregiver: true, user_id: "usr_nitin_001", last_login: "2026-09-23T01:00:00Z" },
-    { nickname: "Priya Sharma", email: "priya.sharma@gmail.com", gender: "Female", year_of_birth: 1994, location: "Mumbai, MH", plan: "premium", billing_cycle: "monthly", medications: 4, doses_taken: 88, has_caregiver: true, user_id: "usr_priya_002", last_login: "2026-09-22T18:30:00Z" },
-    { nickname: "Amit Patel", email: "amit.patel@yahoo.com", gender: "Male", year_of_birth: 1988, location: "Ahmedabad, GJ", plan: "basic", billing_cycle: "monthly", medications: 3, doses_taken: 45, has_caregiver: false, user_id: "usr_amit_003", last_login: "2026-09-21T12:10:00Z" },
-    { nickname: "Dr. Rajesh Gupta", email: "dr.gupta@care.in", gender: "Male", year_of_birth: 1982, location: "Bengaluru, KA", plan: "enterprise", billing_cycle: "annual", medications: 12, doses_taken: 210, has_caregiver: true, user_id: "usr_gupta_004", last_login: "2026-09-22T20:45:00Z" }
+    { nickname: "Nitin Kumar", email: "nitinrai264@gmail.com", gender: "Male", year_of_birth: 1996, location: "Delhi, DL", plan: "premium", billing_cycle: "annual", medications: 8, doses_taken: 142, has_caregiver: true, user_id: "usr_nitin_001", last_login: new Date().toISOString(), is_online: true, online_status: "online", network_type: "WiFi (5G)", app_version: "v1.0.16" },
+    { nickname: "Priya Sharma", email: "priya.sharma@gmail.com", gender: "Female", year_of_birth: 1994, location: "Mumbai, MH", plan: "premium", billing_cycle: "monthly", medications: 4, doses_taken: 88, has_caregiver: true, user_id: "usr_priya_002", last_login: new Date(Date.now() - 12 * 60 * 1000).toISOString(), is_online: false, online_status: "idle", network_type: "Cellular 4G", app_version: "v1.0.16" },
+    { nickname: "Amit Patel", email: "amit.patel@yahoo.com", gender: "Male", year_of_birth: 1988, location: "Ahmedabad, GJ", plan: "basic", billing_cycle: "monthly", medications: 3, doses_taken: 45, has_caregiver: false, user_id: "usr_amit_003", last_login: new Date(Date.now() - 140 * 60 * 1000).toISOString(), is_online: false, online_status: "offline", network_type: "WiFi", app_version: "v1.0.15" },
+    { nickname: "Dr. Rajesh Gupta", email: "dr.gupta@care.in", gender: "Male", year_of_birth: 1982, location: "Bengaluru, KA", plan: "enterprise", billing_cycle: "annual", medications: 12, doses_taken: 210, has_caregiver: true, user_id: "usr_gupta_004", last_login: new Date(Date.now() - 2 * 60 * 1000).toISOString(), is_online: true, online_status: "online", network_type: "WiFi (5G)", app_version: "v1.0.16" }
   ],
   subs: [
     { name: "Nitin Kumar", email: "nitinrai264@gmail.com", plan: "premium", billing_cycle: "annual", status: "active", expires_at: "2027-09-23T00:00:00Z", overrides: {}, user_id: "usr_nitin_001" },
@@ -4235,22 +4269,133 @@ function planPill(p, c) {
   return `<span class="pill pill-${p||'free'}">${(p||'free').toUpperCase()}</span>${cycleTag}`;
 }
 
-function renderUsers(list) {
-  document.getElementById('user-table').innerHTML=list.length
-    ?list.map(u=>`<tr>
-      <td><strong>${u.nickname||'—'}</strong></td>
-      <td style="color:var(--tm);font-size:12px">${u.email||''}</td>
-      <td style="font-size:12px;color:var(--tm)">${u.location||'—'}</td>
-      <td style="text-align:center">${u.medications||0}</td>
-      <td style="text-align:center">${u.doses_taken||0} taken</td>
-      <td>${planPill(u.plan, u.billing_cycle)}</td>
-      <td style="font-size:11px;color:var(--tm)">${u.last_login?new Date(u.last_login).toLocaleDateString('en-IN'):'Never'}</td>
-      <td><button class="btn" onclick="openModal('${u.user_id}','${(u.nickname||'User').replace(/'/g,'')}','${u.plan||'free'}')">Manage</button></td>
-    </tr>`).join('')
-    :'<tr><td colspan="8" class="empty">No users yet</td></tr>';
+let currentStatusFilter = 'all';
+
+function getUserOnlineStatus(u) {
+  if (u.is_online || u.online_status === 'online') return 'online';
+  if (u.online_status === 'idle') return 'idle';
+  
+  const lastActive = u.last_login || u.last_active || u.updated_at;
+  if (!lastActive) return 'offline';
+  
+  const diffMins = Math.floor((Date.now() - new Date(lastActive).getTime()) / 60000);
+  if (diffMins < 5) return 'online';
+  if (diffMins < 30) return 'idle';
+  return 'offline';
 }
 
-function filterUsers(q) { renderUsers(allUsers.filter(u=>(u.nickname||'').toLowerCase().includes(q.toLowerCase())||(u.email||'').toLowerCase().includes(q.toLowerCase()))); }
+function getStatusBadgeMarkup(u) {
+  const status = getUserOnlineStatus(u);
+  const lastActive = u.last_login || u.last_active || u.updated_at;
+  const diffMs = lastActive ? (Date.now() - new Date(lastActive).getTime()) : Infinity;
+  const diffMins = Math.floor(diffMs / 60000);
+
+  if (status === 'online') {
+    return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(74,222,128,0.15);border:1px solid rgba(74,222,128,0.4);color:#4ade80;box-shadow:0 0 10px rgba(74,222,128,0.2)">
+      <span style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block;animation:pulseDot 1.5s infinite"></span>
+      Connected (Active Now)
+    </span>`;
+  } else if (status === 'idle') {
+    return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.4);color:#fbbf24">
+      <span style="width:7px;height:7px;border-radius:50%;background:#fbbf24;display:inline-block"></span>
+      Idle (${diffMins > 0 ? diffMins + 'm ago' : 'Just now'})
+    </span>`;
+  } else {
+    let text = 'Offline';
+    if (diffMins < 1440 && diffMins > 0) text = `Offline (${Math.floor(diffMins / 60)}h ago)`;
+    else if (diffMins >= 1440) text = `Offline (${Math.floor(diffMins / 1440)}d ago)`;
+    else if (!lastActive) text = 'Offline (Never)';
+    
+    return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;background:rgba(148,163,184,0.1);border:1px solid rgba(148,163,184,0.25);color:#94a3b8">
+      <span style="width:7px;height:7px;border-radius:50%;background:#94a3b8;display:inline-block"></span>
+      ${text}
+    </span>`;
+  }
+}
+
+function formatRelativeTime(isoStr) {
+  if (!isoStr) return 'Never';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return isoStr;
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  return d.toLocaleDateString('en-IN');
+}
+
+function filterUsersByStatus(status) {
+  currentStatusFilter = status;
+  document.querySelectorAll('.user-status-filter-btn').forEach(b => {
+    b.classList.remove('active');
+    b.style.borderColor = 'var(--bd)';
+  });
+  const activeBtn = document.getElementById('usr-flt-' + status);
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+    if (status === 'online') activeBtn.style.borderColor = '#4ade80';
+    else if (status === 'idle') activeBtn.style.borderColor = '#fbbf24';
+  }
+  applyUserFilters();
+}
+
+function applyUserFilters() {
+  const q = (document.querySelector('#pg-users input[type="search"]')?.value || '').toLowerCase();
+  const filtered = allUsers.filter(u => {
+    const matchesQuery = (u.nickname||'').toLowerCase().includes(q) || (u.email||'').toLowerCase().includes(q) || (u.location||'').toLowerCase().includes(q);
+    const status = getUserOnlineStatus(u);
+    let matchesStatus = true;
+    if (currentStatusFilter === 'online') matchesStatus = (status === 'online');
+    else if (currentStatusFilter === 'idle') matchesStatus = (status === 'idle');
+    else if (currentStatusFilter === 'offline') matchesStatus = (status === 'offline');
+    return matchesQuery && matchesStatus;
+  });
+  renderUsers(filtered, false);
+}
+
+function filterUsers(q) {
+  applyUserFilters();
+}
+
+function renderUsers(list, updateCounts = true) {
+  if (updateCounts) {
+    let onlineCount = 0, idleCount = 0, offlineCount = 0;
+    allUsers.forEach(u => {
+      const st = getUserOnlineStatus(u);
+      if (st === 'online') onlineCount++;
+      else if (st === 'idle') idleCount++;
+      else offlineCount++;
+    });
+    const cntAll = document.getElementById('cnt-usr-all');
+    const cntOnline = document.getElementById('cnt-usr-online');
+    const cntIdle = document.getElementById('cnt-usr-idle');
+    const cntOffline = document.getElementById('cnt-usr-offline');
+    if (cntAll) cntAll.textContent = allUsers.length;
+    if (cntOnline) cntOnline.textContent = onlineCount;
+    if (cntIdle) cntIdle.textContent = idleCount;
+    if (cntOffline) cntOffline.textContent = offlineCount;
+  }
+
+  const table = document.getElementById('user-table');
+  if (!table) return;
+
+  table.innerHTML = list.length
+    ? list.map(u => `<tr>
+        <td><strong>${u.nickname||'—'}</strong></td>
+        <td style="color:var(--tm);font-size:12px">${u.email||''}</td>
+        <td>${getStatusBadgeMarkup(u)}</td>
+        <td style="font-size:12px;color:var(--tm)">${u.location||'—'}</td>
+        <td style="text-align:center">${u.medications||0}</td>
+        <td style="text-align:center">${u.doses_taken||0} taken</td>
+        <td>${planPill(u.plan, u.billing_cycle)}</td>
+        <td style="font-size:11px;color:var(--tm)">${u.last_login ? formatRelativeTime(u.last_login) : 'Never'}</td>
+        <td><button class="btn" onclick="openModal('${u.user_id}','${(u.nickname||'User').replace(/'/g,'')}','${u.plan||'free'}')">Manage</button></td>
+      </tr>`).join('')
+    : '<tr><td colspan="9" class="empty">No users found matching current filters</td></tr>';
+}
 
 async function loadSubs(plan) {
   let data;
@@ -5043,20 +5188,70 @@ async def admin_users(limit: int = 200, skip: int = 0, _: None = Depends(require
         {"$group": {"_id": "$user_id", "ts": {"$first": "$ts"}}}
     ]).to_list(len(uids))
 
-    med_counts, dose_counts, subs, audits = await asyncio.gather(
-        med_task, dose_task, sub_task, audit_task
+    analytics_task = db.analytics.aggregate([
+        {"$match": {"user_id": {"$in": uids}}},
+        {"$sort": {"ts": -1}},
+        {"$group": {"_id": "$user_id", "ts": {"$first": "$ts"}}}
+    ]).to_list(len(uids))
+
+    med_counts, dose_counts, subs, audits, analytics_events = await asyncio.gather(
+        med_task, dose_task, sub_task, audit_task, analytics_task
     )
 
     med_map = {m["_id"]: m["count"] for m in med_counts if m.get("_id")}
     dose_map = {d["_id"]: d["count"] for d in dose_counts if d.get("_id")}
     sub_map = {s["user_id"]: s for s in subs if s.get("user_id")}
     audit_map = {a["_id"]: a["ts"] for a in audits if a.get("_id")}
+    analytics_map = {an["_id"]: an["ts"] for an in analytics_events if an.get("_id")}
 
+    now_utc = datetime.now(timezone.utc)
     result = []
     for u in profiles:
         uid = u.get("user_id") or u.get("id", "")
         sub = sub_map.get(uid, {})
-        last_ts = audit_map.get(uid)
+        
+        # Collect all activity timestamps for this user
+        ts_candidates = []
+        if uid in audit_map:
+            ts_candidates.append(audit_map[uid])
+        if uid in analytics_map:
+            ts_candidates.append(analytics_map[uid])
+        if u.get("last_active_at"):
+            ts_candidates.append(u.get("last_active_at"))
+        if u.get("updated_at"):
+            ts_candidates.append(u.get("updated_at"))
+
+        valid_dts = []
+        for ts in ts_candidates:
+            if isinstance(ts, datetime):
+                dt = ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+                valid_dts.append(dt)
+            elif isinstance(ts, str):
+                try:
+                    dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if not dt.tzinfo:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    valid_dts.append(dt)
+                except Exception:
+                    pass
+
+        latest_ts = max(valid_dts) if valid_dts else None
+        
+        is_online = False
+        online_status = "offline"
+        diff_mins = None
+
+        if latest_ts:
+            diff_sec = (now_utc - latest_ts).total_seconds()
+            diff_mins = max(0, int(diff_sec // 60))
+            if diff_sec <= 300:  # Active within last 5 minutes
+                is_online = True
+                online_status = "online"
+            elif diff_sec <= 1800:  # Active within 30 minutes
+                online_status = "idle"
+            else:
+                online_status = "offline"
+
         result.append({
             "user_id": uid,
             "nickname": u.get("nickname") or u.get("name", ""),
@@ -5070,7 +5265,12 @@ async def admin_users(limit: int = 200, skip: int = 0, _: None = Depends(require
             "medications": med_map.get(uid, 0),
             "doses_taken": dose_map.get(uid, 0),
             "has_caregiver": bool(u.get("caregiver_phone")),
-            "last_login": last_ts.isoformat() if isinstance(last_ts, datetime) else str(last_ts) if last_ts else None,
+            "last_login": latest_ts.isoformat() if latest_ts else None,
+            "is_online": is_online,
+            "online_status": online_status,
+            "diff_mins": diff_mins,
+            "network_type": u.get("network_type", "WiFi/Mobile"),
+            "app_version": u.get("app_version", "v1.0.16")
         })
     total = await db.profile.count_documents({}) or await db.users.count_documents({})
     return {"users": result, "total": total, "page": skip // limit + 1}
@@ -6018,6 +6218,28 @@ async def track_user_event(payload: dict = Body(...), user_id: str = Depends(get
         return {"ok": False}
     await track_event(event, user_id, props)
     return {"ok": True}
+
+@api.post("/analytics/heartbeat")
+@app.post("/api/users/heartbeat")
+async def user_heartbeat_ping(payload: dict = Body(default={}), user_id: str = Depends(get_current_user_id)):
+    """Live heartbeat ping sent periodically by active app users."""
+    now_dt = datetime.now(timezone.utc)
+    net_type = payload.get("network_type", "WiFi/5G")
+    app_ver = payload.get("app_version", "v1.0.16")
+    if user_id:
+        await db.profile.update_one(
+            {"$or": [{"user_id": user_id}, {"id": user_id}]},
+            {"$set": {"last_active_at": now_dt, "network_type": net_type, "app_version": app_ver}},
+            upsert=False
+        )
+        await db.audit_log.insert_one({
+            "user_id": user_id,
+            "action": "heartbeat",
+            "network_type": net_type,
+            "app_version": app_ver,
+            "ts": now_dt
+        })
+    return {"status": "online", "is_online": True, "ts": now_dt.isoformat()}
 
 # ── Rich Analytics & Export ───────────────────────────────
 
