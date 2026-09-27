@@ -15,6 +15,7 @@ import {
 } from "@/src/lib/notifications";
 import { loadCachedFeatures, fetchFeatures } from "@/src/lib/features";
 import { getStoredToken } from "@/src/lib/auth";
+import { api } from "@/src/lib/api";
 
 import { ThemeProvider, useTheme } from "@/src/context/ThemeContext";
 import { LanguageProvider } from "@/src/context/LanguageContext";
@@ -89,12 +90,26 @@ export default function RootLayout() {
       })
       .catch(() => {});
 
+    // Periodic heartbeat ping to sync active connectivity & Tag Manager dwell telemetry
+    const sendHeartbeat = () => {
+      getStoredToken().then((token) => {
+        if (token) {
+          api.heartbeatPing().catch(() => {});
+        }
+      }).catch(() => {});
+    };
+    sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 60000);
+
     const unsubNotifs = setupNotificationListeners((path) => {
       try {
         router.push(path as any);
       } catch {}
     });
-    return () => unsubNotifs();
+    return () => {
+      clearInterval(interval);
+      unsubNotifs();
+    };
   }, []);
 
   useEffect(() => {
@@ -103,7 +118,11 @@ export default function RootLayout() {
         resyncReminders().catch(() => {});
         getStoredToken()
           .then((token) => {
-            if (token) fetchFeatures(token).catch(() => {});
+            if (token) {
+              fetchFeatures(token).catch(() => {});
+              api.heartbeatPing().catch(() => {});
+              api.trackEvent("app_open", { screen: "Home & Dosage Tracker" }).catch(() => {});
+            }
           })
           .catch(() => {});
       }

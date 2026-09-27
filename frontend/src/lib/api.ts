@@ -93,6 +93,7 @@ export const api = {
   updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
   savePushToken: (push_token: string) => req<any>("/profile/push-token", { method: "POST", body: JSON.stringify({ push_token }) }),
   trackEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
+  heartbeatPing: (network_type: string = "WiFi/5G", app_version: string = "v1.0.16") => req<any>("/users/heartbeat", { method: "POST", body: JSON.stringify({ network_type, app_version }) }).catch(() => null),
   getSubscription: () => req<any>("/me/subscription"),
   upgradePlan: (plan: string = "premium", days: number = 30) => req<any>("/me/upgrade", { method: "POST", body: JSON.stringify({ plan, days }) }),
   createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
