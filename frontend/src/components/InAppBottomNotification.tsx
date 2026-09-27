@@ -88,28 +88,34 @@ export function InAppBottomNotification({
     try {
       const data = await api.getActiveAnnouncements();
       if (Array.isArray(data) && data.length > 0) {
+        // Evaluate ONLY the newest overall active announcement from admin
+        const newestOverall = data[0];
+        if (!newestOverall || !newestOverall.id) {
+          setServerNotif(null);
+          return;
+        }
+
         const seenIds = await getSeenNotifIds();
-        const unseen = data.filter((item) => item.id && !seenIds.includes(item.id));
-        if (unseen.length > 0) {
-          const newest = unseen[0];
-          const notifId = newest.id;
-          const titleText = newest.title || "PillCare Notification";
-          const bodyText = getInAppBody(newest) || "New update received from PillCare.";
+        if (!seenIds.includes(newestOverall.id)) {
+          const notifId = newestOverall.id;
+          const titleText = newestOverall.title || "PillCare Notification";
+          const bodyText = getInAppBody(newestOverall) || "New update received from PillCare.";
 
           setServerNotif({
             id: notifId,
             title: titleText,
             body: bodyText,
-            type: newest.type || "offer",
-            link_url: newest.link_url,
+            type: newestOverall.type || "offer",
+            link_url: newestOverall.link_url,
           });
 
-          // Dispatch live OS status bar push notification alert
+          // Dispatch live OS status bar push notification alert ONCE per unique ID
           if (notifId && !notifiedIdsRef.current.has(notifId)) {
             notifiedIdsRef.current.add(notifId);
-            sendSystemNotificationBarAlert(titleText, bodyText, { id: notifId, link_url: newest.link_url }).catch(() => {});
+            sendSystemNotificationBarAlert(titleText, bodyText, { id: notifId, link_url: newestOverall.link_url }).catch(() => {});
           }
         } else {
+          // User already acknowledged/dismissed the newest active announcement -> do not cycle through old backlog
           setServerNotif(null);
         }
       } else {
