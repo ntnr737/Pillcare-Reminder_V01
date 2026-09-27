@@ -5990,8 +5990,10 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                 "sound": "default",
                 "priority": "high",
                 "channelId": "broadcasts",
+                "badge": 1,
+                "ttl": 86400,
                 "_displayInForeground": True,
-                "data": {"type": "broadcast"},
+                "data": {"type": "broadcast", "title": title, "body": body},
             } for token in batch]
             
             try:

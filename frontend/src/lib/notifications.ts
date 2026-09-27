@@ -188,10 +188,14 @@ export async function ensureChannels(): Promise<void> {
 
     await Notifications.setNotificationChannelAsync("broadcasts", {
       name: "Updates & Announcements",
-      importance: Notifications.AndroidImportance.DEFAULT,
+      description: "Live alerts and push broadcasts from PillCare Admin",
+      importance: Notifications.AndroidImportance.MAX,
       sound: "default",
       enableVibrate: true,
+      vibrationPattern: [0, 400, 200, 400],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      bypassDnd: true,
+      showBadge: true,
     });
   } catch (e) {
     console.warn("Channel setup failed:", e);
