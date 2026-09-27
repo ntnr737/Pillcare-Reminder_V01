@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import * as WebBrowser from "expo-web-browser";
 
 // Web platform WebView import fallback
 let WebView: any = null;
@@ -106,7 +107,7 @@ export function VideoPlayerModal({
   };
 
   const videoId = extractYouTubeId(videoUrl);
-  const embedUrl = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1`;
+  const embedUrl = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&origin=https://www.youtube.com`;
 
   const htmlContent = `<!DOCTYPE html>
 <html>
@@ -115,7 +116,7 @@ export function VideoPlayerModal({
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; background: #0B0D14; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    iframe { width: 100%; height: 100%; border: 0; border-radius: 12px; }
+    iframe { width: 100%; height: 100%; min-height: 220px; border: 0; border-radius: 12px; }
   </style>
 </head>
 <body>
@@ -123,7 +124,6 @@ export function VideoPlayerModal({
     src="${embedUrl}"
     title="${(title || "Yoga Video").replace(/"/g, '&quot;')}"
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-    referrerpolicy="strict-origin-when-cross-origin"
     allowfullscreen
   ></iframe>
 </body>
@@ -132,6 +132,20 @@ export function VideoPlayerModal({
   const handleExternalOpen = () => {
     const rawUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
     Linking.openURL(rawUrl).catch(() => {});
+  };
+
+  const handleInAppBrowser = async () => {
+    try {
+      const targetUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
+      await WebBrowser.openBrowserAsync(targetUrl, {
+        toolbarColor: "#161926",
+        controlsColor: "#A78BFA",
+        showTitle: true,
+        enableBarCollapsing: true,
+      });
+    } catch {
+      handleExternalOpen();
+    }
   };
 
   const handleProceedToFeedback = () => {
@@ -199,11 +213,17 @@ export function VideoPlayerModal({
                 <View style={s.playerWrapper}>
                   {hasError ? (
                     <View style={s.fallbackContainer}>
-                      <Ionicons name="logo-youtube" size={44} color="#FF0000" />
-                      <Text style={s.fallbackText}>Playback Restricted on WebView</Text>
-                      <TouchableOpacity onPress={handleExternalOpen} style={s.playBtn}>
-                        <Text style={s.playBtnText}>Play in YouTube App</Text>
-                      </TouchableOpacity>
+                      <Ionicons name="logo-youtube" size={40} color="#FF0000" />
+                      <Text style={s.fallbackText}>Playback Restricted on Iframe</Text>
+                      <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                        <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
+                          <Ionicons name="globe-outline" size={14} color="#FFF" style={{ marginRight: 4 }} />
+                          <Text style={s.playBtnText}>In-App Browser 🌐</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleExternalOpen} style={s.playBtn}>
+                          <Text style={s.playBtnText}>YouTube App</Text>
+                        </TouchableOpacity>
+                      </View>
                     </View>
                   ) : Platform.OS === "web" ? (
                     <iframe
@@ -211,7 +231,6 @@ export function VideoPlayerModal({
                       title={title || "Yoga Video"}
                       style={{ width: "100%", height: "100%", border: 0, borderRadius: 12 }}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerPolicy="strict-origin-when-cross-origin"
                       allowFullScreen
                     />
                   ) : WebView ? (
@@ -223,7 +242,6 @@ export function VideoPlayerModal({
                       javaScriptEnabled
                       domStorageEnabled
                       originWhitelist={["*"]}
-                      userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                       startInLoadingState={true}
                       onError={() => setHasError(true)}
                       onHttpError={() => setHasError(true)}
@@ -235,10 +253,10 @@ export function VideoPlayerModal({
                     />
                   ) : (
                     <View style={s.fallbackContainer}>
-                      <Ionicons name="logo-youtube" size={48} color="#FF0000" />
+                      <Ionicons name="logo-youtube" size={44} color="#FF0000" />
                       <Text style={s.fallbackText}>Tap below to play video</Text>
-                      <TouchableOpacity onPress={handleExternalOpen} style={s.playBtn}>
-                        <Text style={s.playBtnText}>Open Video Player</Text>
+                      <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
+                        <Text style={s.playBtnText}>Play In-App Browser 🌐</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -254,9 +272,9 @@ export function VideoPlayerModal({
 
                 {/* Footer Controls */}
                 <View style={s.footerRow}>
-                  <TouchableOpacity onPress={handleExternalOpen} style={s.externalBtn} activeOpacity={0.7}>
-                    <Ionicons name="open-outline" size={13} color={TM} />
-                    <Text style={s.externalBtnText}>Open YouTube</Text>
+                  <TouchableOpacity onPress={handleInAppBrowser} style={s.externalBtn} activeOpacity={0.7}>
+                    <Ionicons name="globe-outline" size={14} color={A3} />
+                    <Text style={[s.externalBtnText, { color: A3 }]}>In-App Browser 🌐</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={handleProceedToFeedback} style={s.completeBtn} activeOpacity={0.8}>
@@ -334,9 +352,9 @@ const s = StyleSheet.create({
     borderTopRightRadius: 24,
     borderWidth: 1,
     borderColor: BD,
-    padding: 18,
-    gap: 14,
-    maxHeight: "90%",
+    padding: 16,
+    gap: 12,
+    maxHeight: "94%",
   },
   headerRow: {
     flexDirection: "row",
@@ -394,7 +412,8 @@ const s = StyleSheet.create({
   },
   playerWrapper: {
     width: "100%",
-    aspectRatio: 16 / 9,
+    height: 240,
+    minHeight: 220,
     backgroundColor: BG,
     borderRadius: 14,
     overflow: "hidden",
@@ -406,13 +425,16 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 10,
+    padding: 12,
   },
   fallbackText: {
     fontSize: 13,
     color: TM,
   },
   playBtn: {
-    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 14,
     paddingVertical: 8,
     backgroundColor: "#FF0000",
     borderRadius: 8,
@@ -420,7 +442,7 @@ const s = StyleSheet.create({
   playBtnText: {
     color: "#FFF",
     fontWeight: "700",
-    fontSize: 13,
+    fontSize: 12,
   },
   benefitCard: {
     flexDirection: "row",
@@ -442,7 +464,7 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 12,
+    gap: 10,
     paddingTop: 4,
   },
   externalBtn: {
@@ -452,11 +474,13 @@ const s = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: "rgba(167, 139, 250, 0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(167, 139, 250, 0.3)",
   },
   externalBtnText: {
-    fontSize: 11,
-    color: TM,
+    fontSize: 12,
+    color: A3,
     fontWeight: "600",
   },
   completeBtn: {
