@@ -4688,11 +4688,34 @@ async def security_headers(request, call_next):
         pass
     return response
 
+@app.middleware("http")
+async def handle_cors_preflight(request: Request, call_next):
+    origin = request.headers.get("origin", "")
+    if request.method == "OPTIONS":
+        res = Response(status_code=200)
+        res.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+        res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Admin-Secret, x-admin-secret, Accept"
+        res.headers["Access-Control-Allow-Credentials"] = "true"
+        return res
+    response = await call_next(request)
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    return response
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origin_regex=r".*",
-    allow_origins=["*"],
+    allow_origins=[
+        "https://admin.pillcare.in",
+        "https://pillcare.in",
+        "http://localhost:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:8000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_origin_regex=r"https://.*\.pillcare\.in",
     allow_methods=["*"],
     allow_headers=["*"],
 )
