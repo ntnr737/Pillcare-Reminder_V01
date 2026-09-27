@@ -444,6 +444,25 @@ export async function scheduleWaterReminders(): Promise<void> {
     }
     console.log("Scheduled 6 daily hydration reminders");
   } catch (e) {
-    console.warn("Water reminder setup failed:", e);
+    console.warn("Water reminder schedule failed:", e);
   }
+}
+
+export function addForegroundNotificationReceivedListener(
+  onNotification: (notif: { title: string; body: string; data?: any; type?: string }) => void
+) {
+  const sub = Notifications.addNotificationReceivedListener((event) => {
+    try {
+      const content = event.request.content;
+      onNotification({
+        title: content.title || "PillCare Notification",
+        body: content.body || "",
+        data: content.data,
+        type: (content.data as any)?.type || "info",
+      });
+    } catch (e) {
+      console.warn("Foreground notification parse failed:", e);
+    }
+  });
+  return () => sub.remove();
 }
