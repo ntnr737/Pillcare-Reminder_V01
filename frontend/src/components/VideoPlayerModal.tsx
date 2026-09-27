@@ -112,6 +112,31 @@ export function VideoPlayerModal({
   const mobileWatchUri = `https://m.youtube.com/watch?v=${videoId}`;
   const [useMobileWeb, setUseMobileWeb] = useState(false);
 
+  const getYouTubeEmbedHtml = (vidId: string) => `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; background-color: #0B0D14; }
+        html, body { width: 100%; height: 100%; overflow: hidden; background: #0B0D14; display: flex; align-items: center; justify-content: center; }
+        .player-wrapper { position: relative; width: 100%; height: 100%; }
+        iframe { width: 100%; height: 100%; border: none; border-radius: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="player-wrapper">
+        <iframe 
+          src="https://www.youtube.com/embed/${vidId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&controls=1" 
+          frameborder="0" 
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+          allowfullscreen>
+        </iframe>
+      </div>
+    </body>
+    </html>
+  `;
+
   const handleExternalOpen = () => {
     const rawUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
     Linking.openURL(rawUrl).catch(() => {});
@@ -218,7 +243,11 @@ export function VideoPlayerModal({
                     />
                   ) : WebView ? (
                     <WebView
-                      source={{ uri: useMobileWeb ? mobileWatchUri : directEmbedUri }}
+                      source={
+                        useMobileWeb
+                          ? { uri: mobileWatchUri }
+                          : { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }
+                      }
                       style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
                       allowsInlineMediaPlayback
                       allowsFullscreenVideo
@@ -233,14 +262,14 @@ export function VideoPlayerModal({
                         if (!useMobileWeb) {
                           setUseMobileWeb(true);
                         } else {
-                          setHasError(true);
+                          handleInAppBrowser();
                         }
                       }}
                       onHttpError={() => {
                         if (!useMobileWeb) {
                           setUseMobileWeb(true);
                         } else {
-                          setHasError(true);
+                          handleInAppBrowser();
                         }
                       }}
                       renderLoading={() => (

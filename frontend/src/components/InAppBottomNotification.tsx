@@ -30,10 +30,33 @@ export interface InAppNotificationPayload {
 
 export function getInAppBody(n: any): string {
   if (!n) return "";
-  const txt = n.body || n.message || n.description || n.content || n.text || n.details;
-  if (typeof txt === "string" && txt.trim().length > 0) {
-    return txt.trim();
+  const direct =
+    n.body ||
+    n.message ||
+    n.description ||
+    n.content ||
+    n.text ||
+    n.details ||
+    n.subtitle ||
+    n.summary;
+  if (typeof direct === "string" && direct.trim().length > 0) {
+    return direct.trim();
   }
+
+  if (n.data && typeof n.data === "object") {
+    const nested =
+      n.data.body ||
+      n.data.message ||
+      n.data.description ||
+      n.data.content ||
+      n.data.text ||
+      n.data.details ||
+      n.data.summary;
+    if (typeof nested === "string" && nested.trim().length > 0) {
+      return nested.trim();
+    }
+  }
+
   return "";
 }
 
@@ -206,10 +229,10 @@ export function InAppBottomNotification({
                 </View>
                 <Text style={s.tapHint}>Tap to view full text 🔍</Text>
               </View>
-              <Text style={s.title} numberOfLines={1}>
+              <Text style={s.title} numberOfLines={2}>
                 {activeNotif.title}
               </Text>
-              <Text style={s.body} numberOfLines={2}>
+              <Text style={s.body} numberOfLines={4}>
                 {bodyText || "Tap to view full notification details"}
               </Text>
             </View>
