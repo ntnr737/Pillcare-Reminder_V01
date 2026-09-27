@@ -1,6 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Linking } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Linking,
+  Animated,
+  Modal,
+  ScrollView,
+} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../lib/api";
 
 interface FlashAnnouncement {
@@ -15,9 +25,14 @@ interface FlashAnnouncement {
 }
 
 export function FlashAnnouncementBanner() {
+  const insets = useSafeAreaInsets();
   const [announcements, setAnnouncements] = useState<FlashAnnouncement[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const [fullDetailOpen, setFullDetailOpen] = useState(false);
+
+  const translateY = useRef(new Animated.Value(180)).current;
+  const opacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     fetchAnnouncements();
@@ -38,15 +53,48 @@ export function FlashAnnouncementBanner() {
     (item) => !dismissedIds.includes(item.id)
   );
 
+  useEffect(() => {
+    if (visibleAnnouncements.length > 0) {
+      Animated.parallel([
+        Animated.spring(translateY, {
+          toValue: 0,
+          useNativeDriver: true,
+          tension: 65,
+          friction: 9,
+        }),
+        Animated.timing(opacity, {
+          toValue: 1,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visibleAnnouncements.length]);
+
   if (visibleAnnouncements.length === 0) return null;
 
   const current = visibleAnnouncements[currentIndex % visibleAnnouncements.length];
 
   const handleDismiss = () => {
-    setDismissedIds((prev) => [...prev, current.id]);
+    setFullDetailOpen(false);
+    Animated.parallel([
+      Animated.timing(translateY, {
+        toValue: 180,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setDismissedIds((prev) => [...prev, current.id]);
+    });
   };
 
   const handlePressAction = () => {
+    setFullDetailOpen(false);
     if (current.link_url) {
       Linking.openURL(current.link_url).catch(() => {});
     }
@@ -56,31 +104,39 @@ export function FlashAnnouncementBanner() {
     switch (type) {
       case "offer":
         return {
-          bg: "#4F46E5",
-          border: "#6366F1",
+          bg: "#1e1b4b",
+          border: "#6366f1",
           icon: "gift-outline" as const,
-          iconColor: "#FDE047",
+          accent: "#a78bfa",
+          badge: "SPECIAL OFFER",
+          btnBg: "#6366f1",
         };
       case "warning":
         return {
-          bg: "#D97706",
-          border: "#F59E0B",
+          bg: "#451a03",
+          border: "#f59e0b",
           icon: "warning-outline" as const,
-          iconColor: "#FFF",
+          accent: "#fbbf24",
+          badge: "WARNING",
+          btnBg: "#d97706",
         };
       case "alert":
         return {
-          bg: "#DC2626",
-          border: "#EF4444",
+          bg: "#450a0a",
+          border: "#ef4444",
           icon: "alert-circle-outline" as const,
-          iconColor: "#FFF",
+          accent: "#f87171",
+          badge: "ALERT",
+          btnBg: "#dc2626",
         };
       default:
         return {
-          bg: "#0284C7",
-          border: "#38BDF8",
+          bg: "#0c4a6e",
+          border: "#38bdf8",
           icon: "megaphone-outline" as const,
-          iconColor: "#E0F2FE",
+          accent: "#38bdf8",
+          badge: "ANNOUNCEMENT",
+          btnBg: "#0284c7",
         };
     }
   };
@@ -88,61 +144,153 @@ export function FlashAnnouncementBanner() {
   const theme = getTypeTheme(current.type);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.bg, borderColor: theme.border }]}>
-      <View style={styles.contentRow}>
-        <View style={styles.iconBadge}>
-          <Ionicons name={theme.icon} size={20} color={theme.iconColor} />
-        </View>
-        <View style={styles.textContainer}>
-          <Text style={styles.title} numberOfLines={1}>
-            {current.title}
-          </Text>
-          <Text style={styles.body} numberOfLines={2}>
-            {current.body}
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.closeButton} onPress={handleDismiss}>
-          <Ionicons name="close" size={18} color="#FFFFFF" />
+    <>
+      {/* Bottom Floating Announcement Banner */}
+      <Animated.View
+        style={[
+          styles.bottomFloatingContainer,
+          {
+            bottom: Math.max(insets.bottom + 65, 80),
+            transform: [{ translateY }],
+            opacity,
+            backgroundColor: theme.bg,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        <TouchableOpacity activeOpacity={0.85} onPress={() => setFullDetailOpen(true)}>
+          <View style={styles.contentRow}>
+            <View style={[styles.iconBadge, { backgroundColor: `${theme.accent}20` }]}>
+              <Ionicons name={theme.icon} size={20} color={theme.accent} />
+            </View>
+
+            <View style={styles.textContainer}>
+              <View style={styles.topBadgeRow}>
+                <View style={[styles.badgeTag, { backgroundColor: `${theme.accent}25` }]}>
+                  <Text style={[styles.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
+                </View>
+                <Text style={styles.tapHintText}>Tap to view full text 🔍</Text>
+              </View>
+
+              <Text style={styles.title} numberOfLines={1}>
+                {current.title}
+              </Text>
+              <Text style={styles.body} numberOfLines={2}>
+                {current.body}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={handleDismiss}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="close-circle" size={24} color="rgba(255, 255, 255, 0.6)" />
+            </TouchableOpacity>
+          </View>
         </TouchableOpacity>
-      </View>
-      {current.link_url ? (
-        <TouchableOpacity style={styles.actionRow} onPress={handlePressAction}>
-          <Text style={styles.actionText}>Tap to learn more</Text>
-          <Ionicons name="chevron-forward" size={14} color="#FFFFFF" />
+      </Animated.View>
+
+      {/* Full Untruncated Announcement Modal */}
+      <Modal
+        visible={fullDetailOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setFullDetailOpen(false)}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setFullDetailOpen(false)}>
+          <SafeAreaView style={styles.modalSafe} edges={["bottom"]}>
+            <TouchableOpacity activeOpacity={1} style={[styles.modalCard, { backgroundColor: "#161926", borderColor: theme.border }]}>
+              <View style={styles.modalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                  <View style={[styles.iconBadge, { backgroundColor: `${theme.accent}20` }]}>
+                    <Ionicons name={theme.icon} size={20} color={theme.accent} />
+                  </View>
+                  <View style={[styles.badgeTag, { backgroundColor: `${theme.accent}25` }]}>
+                    <Text style={[styles.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
+                  </View>
+                </View>
+
+                <TouchableOpacity onPress={() => setFullDetailOpen(false)} style={styles.modalCloseBtn}>
+                  <Ionicons name="close" size={20} color="rgba(255, 255, 255, 0.7)" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalBodyContent}>
+                <Text style={styles.modalFullTitle}>{current.title}</Text>
+                <Text style={styles.modalFullBody}>{current.body}</Text>
+              </ScrollView>
+
+              <View style={styles.modalFooter}>
+                {current.link_url ? (
+                  <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: theme.btnBg }]} onPress={handlePressAction} activeOpacity={0.8}>
+                    <Text style={styles.primaryBtnText}>Upgrade & Learn More</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={styles.secondaryBtn} onPress={() => setFullDetailOpen(false)} activeOpacity={0.7}>
+                  <Text style={styles.secondaryBtnText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </SafeAreaView>
         </TouchableOpacity>
-      ) : null}
-    </View>
+      </Modal>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    marginHorizontal: 16,
-    marginVertical: 8,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 12,
+  bottomFloatingContainer: {
+    position: "absolute",
+    left: 14,
+    right: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 13,
+    zIndex: 9999,
+    elevation: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
   },
   contentRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: 10,
   },
   iconBadge: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
   },
   textContainer: {
     flex: 1,
+  },
+  topBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 3,
+  },
+  badgeTag: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+  tapHintText: {
+    fontSize: 10,
+    color: "rgba(255, 255, 255, 0.55)",
+    fontWeight: "600",
   },
   title: {
     fontSize: 14,
@@ -151,27 +299,83 @@ const styles = StyleSheet.create({
   },
   body: {
     fontSize: 12,
-    color: "rgba(255, 255, 255, 0.95)",
+    color: "rgba(255, 255, 255, 0.85)",
     marginTop: 2,
     lineHeight: 16,
   },
   closeButton: {
-    padding: 4,
-    marginLeft: 6,
+    padding: 2,
+    alignSelf: "flex-start",
   },
-  actionRow: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    justifyContent: "flex-end",
+  },
+  modalSafe: {
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+    maxHeight: "80%",
+  },
+  modalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
-    marginTop: 8,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "space-between",
   },
-  actionText: {
-    fontSize: 12,
-    fontWeight: "600",
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalBodyContent: {
+    gap: 10,
+    paddingVertical: 6,
+  },
+  modalFullTitle: {
+    fontSize: 18,
+    fontWeight: "800",
     color: "#FFFFFF",
-    marginRight: 4,
+    lineHeight: 24,
+  },
+  modalFullBody: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.85)",
+    lineHeight: 21,
+  },
+  modalFooter: {
+    gap: 8,
+    marginTop: 6,
+  },
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  primaryBtnText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 14,
+  },
+  secondaryBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
+  secondaryBtnText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

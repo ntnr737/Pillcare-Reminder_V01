@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,9 +7,11 @@ import {
   Animated,
   Dimensions,
   Linking,
+  Modal,
+  ScrollView,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 
 export interface InAppNotificationPayload {
   id?: string;
@@ -34,8 +36,9 @@ export function InAppBottomNotification({
   onPressAction,
 }: InAppBottomNotificationProps) {
   const insets = useSafeAreaInsets();
-  const translateY = useRef(new Animated.Value(180)).current;
+  const translateY = useRef(new Animated.Value(200)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
 
   useEffect(() => {
     if (notification) {
@@ -53,23 +56,18 @@ export function InAppBottomNotification({
           useNativeDriver: true,
         }),
       ]).start();
-
-      // Auto dismiss after 8 seconds if user doesn't tap
-      const timer = setTimeout(() => {
-        handleDismiss();
-      }, 8000);
-
-      return () => clearTimeout(timer);
     } else {
-      translateY.setValue(180);
+      translateY.setValue(200);
       opacity.setValue(0);
+      setDetailModalOpen(false);
     }
   }, [notification]);
 
   const handleDismiss = () => {
+    setDetailModalOpen(false);
     Animated.parallel([
       Animated.timing(translateY, {
-        toValue: 180,
+        toValue: 200,
         duration: 220,
         useNativeDriver: true,
       }),
@@ -89,21 +87,22 @@ export function InAppBottomNotification({
   const getTheme = () => {
     switch (notifType) {
       case "offer":
-        return { bg: "#1e1b4b", border: "#6366f1", icon: "gift-outline", accent: "#a78bfa", badge: "SPECIAL OFFER" };
+        return { bg: "#1e1b4b", border: "#6366f1", icon: "gift-outline", accent: "#a78bfa", badge: "SPECIAL OFFER", btnBg: "#6366f1" };
       case "warning":
-        return { bg: "#451a03", border: "#f59e0b", icon: "warning-outline", accent: "#fbbf24", badge: "WARNING" };
+        return { bg: "#451a03", border: "#f59e0b", icon: "warning-outline", accent: "#fbbf24", badge: "WARNING", btnBg: "#d97706" };
       case "alert":
-        return { bg: "#450a0a", border: "#ef4444", icon: "alert-circle-outline", accent: "#f87171", badge: "ALERT" };
+        return { bg: "#450a0a", border: "#ef4444", icon: "alert-circle-outline", accent: "#f87171", badge: "ALERT", btnBg: "#dc2626" };
       case "medication":
-        return { bg: "#064e3b", border: "#10b981", icon: "medical-outline", accent: "#34d399", badge: "MEDICATION" };
+        return { bg: "#064e3b", border: "#10b981", icon: "medical-outline", accent: "#34d399", badge: "MEDICATION", btnBg: "#10b981" };
       default:
-        return { bg: "#161926", border: "#9184d9", icon: "notifications-outline", accent: "#a78bfa", badge: "NOTIFICATION" };
+        return { bg: "#161926", border: "#9184d9", icon: "notifications-outline", accent: "#a78bfa", badge: "NOTIFICATION", btnBg: "#8b5cf6" };
     }
   };
 
   const theme = getTheme();
 
-  const handlePress = () => {
+  const handleActionClick = () => {
+    setDetailModalOpen(false);
     if (onPressAction) {
       onPressAction();
     } else if (notification.link_url) {
@@ -113,57 +112,99 @@ export function InAppBottomNotification({
   };
 
   return (
-    <Animated.View
-      style={[
-        s.floatingContainer,
-        {
-          bottom: Math.max(insets.bottom + 65, 80),
-          transform: [{ translateY }],
-          opacity,
-          backgroundColor: theme.bg,
-          borderColor: theme.border,
-        },
-      ]}
-    >
-      <View style={s.topRow}>
-        <View style={[s.iconBox, { backgroundColor: `${theme.accent}20` }]}>
-          <Ionicons name={theme.icon as any} size={20} color={theme.accent} />
-        </View>
-
-        <View style={s.textWrapper}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 2 }}>
-            <View style={[s.badgeTag, { backgroundColor: `${theme.accent}25` }]}>
-              <Text style={[s.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
+    <>
+      {/* Floating Bottom Notification Banner */}
+      <Animated.View
+        style={[
+          s.floatingContainer,
+          {
+            bottom: Math.max(insets.bottom + 65, 80),
+            transform: [{ translateY }],
+            opacity,
+            backgroundColor: theme.bg,
+            borderColor: theme.border,
+          },
+        ]}
+      >
+        <TouchableOpacity activeOpacity={0.85} onPress={() => setDetailModalOpen(true)}>
+          <View style={s.topRow}>
+            <View style={[s.iconBox, { backgroundColor: `${theme.accent}20` }]}>
+              <Ionicons name={theme.icon as any} size={20} color={theme.accent} />
             </View>
-            <Text style={s.timeText}>Just now</Text>
+
+            <View style={s.textWrapper}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+                <View style={[s.badgeTag, { backgroundColor: `${theme.accent}25` }]}>
+                  <Text style={[s.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
+                </View>
+                <Text style={s.tapHint}>Tap to view full text 🔍</Text>
+              </View>
+              <Text style={s.title} numberOfLines={1}>
+                {notification.title}
+              </Text>
+              <Text style={s.body} numberOfLines={2}>
+                {notification.body}
+              </Text>
+            </View>
+
+            {/* Cancel / Close Button on the Right */}
+            <TouchableOpacity
+              style={s.cancelButton}
+              onPress={handleDismiss}
+              activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            >
+              <Ionicons name="close-circle" size={24} color="rgba(255, 255, 255, 0.6)" />
+            </TouchableOpacity>
           </View>
-          <Text style={s.title} numberOfLines={1}>
-            {notification.title}
-          </Text>
-          <Text style={s.body} numberOfLines={2}>
-            {notification.body}
-          </Text>
-        </View>
-
-        {/* Cancel / Close Button on the Right */}
-        <TouchableOpacity
-          style={s.cancelButton}
-          onPress={handleDismiss}
-          activeOpacity={0.7}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-        >
-          <Ionicons name="close-circle" size={24} color="rgba(255, 255, 255, 0.6)" />
         </TouchableOpacity>
-      </View>
+      </Animated.View>
 
-      {/* Action Footer (if link or action provided) */}
-      {(notification.link_url || onPressAction) && (
-        <TouchableOpacity style={s.actionFooter} onPress={handlePress} activeOpacity={0.8}>
-          <Text style={[s.actionBtnText, { color: theme.accent }]}>View Details & Open</Text>
-          <Ionicons name="arrow-forward" size={14} color={theme.accent} />
+      {/* Full Detail Modal when clicked */}
+      <Modal
+        visible={detailModalOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setDetailModalOpen(false)}
+      >
+        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setDetailModalOpen(false)}>
+          <SafeAreaView style={s.modalSafe} edges={["bottom"]}>
+            <TouchableOpacity activeOpacity={1} style={[s.modalCard, { backgroundColor: "#161926", borderColor: theme.border }]}>
+              <View style={s.modalHeader}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
+                  <View style={[s.iconBox, { backgroundColor: `${theme.accent}20` }]}>
+                    <Ionicons name={theme.icon as any} size={20} color={theme.accent} />
+                  </View>
+                  <View style={[s.badgeTag, { backgroundColor: `${theme.accent}25` }]}>
+                    <Text style={[s.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
+                  </View>
+                </View>
+                <TouchableOpacity onPress={() => setDetailModalOpen(false)} style={s.modalCloseBtn}>
+                  <Ionicons name="close" size={20} color="rgba(255, 255, 255, 0.7)" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.modalBodyContent}>
+                <Text style={s.modalFullTitle}>{notification.title}</Text>
+                <Text style={s.modalFullBody}>{notification.body}</Text>
+              </ScrollView>
+
+              <View style={s.modalFooter}>
+                {(notification.link_url || onPressAction) ? (
+                  <TouchableOpacity style={[s.primaryBtn, { backgroundColor: theme.btnBg }]} onPress={handleActionClick} activeOpacity={0.8}>
+                    <Text style={s.primaryBtnText}>View & Take Action</Text>
+                    <Ionicons name="arrow-forward" size={16} color="#FFF" />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity style={s.secondaryBtn} onPress={() => setDetailModalOpen(false)} activeOpacity={0.7}>
+                  <Text style={s.secondaryBtnText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </SafeAreaView>
         </TouchableOpacity>
-      )}
-    </Animated.View>
+      </Modal>
+    </>
   );
 }
 
@@ -207,9 +248,10 @@ const s = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.5,
   },
-  timeText: {
+  tapHint: {
     fontSize: 10,
-    color: "rgba(255, 255, 255, 0.45)",
+    color: "rgba(255, 255, 255, 0.55)",
+    fontWeight: "600",
   },
   title: {
     fontSize: 14,
@@ -226,18 +268,75 @@ const s = StyleSheet.create({
     padding: 2,
     alignSelf: "flex-start",
   },
-  actionFooter: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.75)",
+    justifyContent: "flex-end",
+  },
+  modalSafe: {
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    borderWidth: 1,
+    padding: 20,
+    gap: 14,
+    maxHeight: "80%",
+  },
+  modalHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 4,
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(255, 255, 255, 0.1)",
+    justifyContent: "space-between",
   },
-  actionBtnText: {
-    fontSize: 12,
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255, 255, 255, 0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalBodyContent: {
+    gap: 10,
+    paddingVertical: 6,
+  },
+  modalFullTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    lineHeight: 24,
+  },
+  modalFullBody: {
+    fontSize: 14,
+    color: "rgba(255, 255, 255, 0.85)",
+    lineHeight: 21,
+  },
+  modalFooter: {
+    gap: 8,
+    marginTop: 6,
+  },
+  primaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 13,
+    borderRadius: 12,
+  },
+  primaryBtnText: {
+    color: "#FFF",
     fontWeight: "700",
+    fontSize: 14,
+  },
+  secondaryBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+  },
+  secondaryBtnText: {
+    color: "rgba(255, 255, 255, 0.6)",
+    fontSize: 13,
+    fontWeight: "600",
   },
 });

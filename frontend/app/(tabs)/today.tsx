@@ -265,8 +265,6 @@ export default function Today() {
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}>
 
-        <FlashAnnouncementBanner />
-
         {/* Overview card */}
         <View style={[s.ov, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={{ flex: 1, gap: 5 }}>
@@ -514,6 +512,7 @@ export default function Today() {
           setDate(newDate);
         }}
       />
+      <FlashAnnouncementBanner />
     </SafeAreaView>
   );
 }
