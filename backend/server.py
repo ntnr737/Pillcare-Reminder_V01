@@ -1969,7 +1969,7 @@ async def caregiver_log(limit: int = 50, user_id: str = Depends(get_current_user
 
 
 # ─── Nearby Places ───────────────────────────────────────────────
-GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", "")
+GOOGLE_PLACES_KEY = os.getenv("GOOGLE_PLACES_KEY", "") or os.getenv("GOOGLE_MAPS_API_KEY", "")
 
 @api.get("/place-phone")
 @limiter.limit("60/minute")
@@ -1998,7 +1998,7 @@ async def nearby_places(
     lat: float, lng: float, radius: int = 1000,
     type: str = "pharmacy",
 ):
-    import httpx, math
+    import httpx, math, asyncio
 
     # Validate coordinates — prevents SSRF and ensures real-world locations
     if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
@@ -2014,181 +2014,86 @@ async def nearby_places(
         dlng = (elng - lng) * 111000 * math.cos(lat * math.pi / 180)
         return int(math.sqrt(dlat**2 + dlng**2))
 
-    # Try Google Places first
-    if GOOGLE_PLACES_KEY:
-        keyword_map = {
-            "pharmacy":   ("pharmacy",  "pharmacy medical store chemist"),
-            "diagnostic": (None,        "diagnostic lab pathology blood test center laboratory"),
-            "hospital":   ("hospital",  "hospital clinic nursing home medical center"),
+    if not GOOGLE_PLACES_KEY:
+        logger.warning("GOOGLE_PLACES_KEY is not configured on backend server.")
+        return {
+            "places": [],
+            "source": "google",
+            "error": "Google Places API key is not configured on backend server."
         }
-        gtype, keyword = keyword_map.get(type, ("pharmacy", "medical store"))
-        type_param = f"&type={gtype}" if gtype else ""
-        url = (
-            f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-            f"?location={lat},{lng}&radius={radius}{type_param}"
-            f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
-        )
-        try:
-            async with httpx.AsyncClient(timeout=5) as client:
-                r = await client.get(url)
-            data = r.json()
-            if data.get("status") == "OK" and data.get("results"):
-                places = []
-                for p in (data.get("results") or [])[:20]:
-                    pname = p.get("name", "")
-                    if type == "diagnostic":
-                        plower = pname.lower()
-                        if any(w in plower for w in ["pharmacy", "chemist", "medicos", "medical store"]) and not any(w in plower for w in ["lab", "pathology", "diagnostic", "test", "scan"]):
-                            continue
-                    loc = p.get("geometry", {}).get("location", {})
-                    elat, elng = loc.get("lat", 0), loc.get("lng", 0)
-                    places.append({
-                        "id": p.get("place_id", ""), "name": pname,
-                        "address": p.get("vicinity", ""), "distance": dist(elat, elng),
-                        "rating": p.get("rating"), "lat": elat, "lng": elng,
-                        "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
-                    })
-                places.sort(key=lambda x: x["distance"])
-                top_places = places[:max_results]
-                async def _fetch_phone(place_id):
-                    if not place_id:
-                        return None
-                    try:
-                        async with httpx.AsyncClient(timeout=5) as pc:
-                            pr = await pc.get(
-                                "https://maps.googleapis.com/maps/api/place/details/json",
-                                params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number", "key": GOOGLE_PLACES_KEY},
-                            )
-                        pd = pr.json()
-                        res = pd.get("result", {})
-                        return res.get("international_phone_number") or res.get("formatted_phone_number")
-                    except Exception:
-                        return None
+
+    keyword_map = {
+        "pharmacy":   ("pharmacy",  "pharmacy medical store chemist"),
+        "diagnostic": (None,        "diagnostic lab pathology blood test center laboratory"),
+        "hospital":   ("hospital",  "hospital clinic nursing home medical center"),
+    }
+    gtype, keyword = keyword_map.get(type, ("pharmacy", "medical store"))
+    type_param = f"&type={gtype}" if gtype else ""
+    url = (
+        f"https://maps.googleapis.com/maps/api/place/nearbysearch/json"
+        f"?location={lat},{lng}&radius={radius}{type_param}"
+        f"&keyword={keyword.replace(' ', '+')}&key={GOOGLE_PLACES_KEY}"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            r = await client.get(url)
+        data = r.json()
+        status = data.get("status")
+
+        if status in ("OK", "ZERO_RESULTS"):
+            raw_results = data.get("results") or []
+            places = []
+            for p in raw_results[:25]:
+                pname = p.get("name", "")
+                if type == "diagnostic":
+                    plower = pname.lower()
+                    if any(w in plower for w in ["pharmacy", "chemist", "medicos", "medical store"]) and not any(w in plower for w in ["lab", "pathology", "diagnostic", "test", "scan"]):
+                        continue
+                loc = p.get("geometry", {}).get("location", {})
+                elat, elng = loc.get("lat", 0), loc.get("lng", 0)
+                places.append({
+                    "id": p.get("place_id", ""), "name": pname,
+                    "address": p.get("vicinity", ""), "distance": dist(elat, elng),
+                    "rating": p.get("rating", 4.5), "lat": elat, "lng": elng,
+                    "open": p.get("opening_hours", {}).get("open_now"), "phone": None,
+                })
+            places.sort(key=lambda x: x["distance"])
+            top_places = places[:max_results]
+
+            async def _fetch_phone(place_id):
+                if not place_id:
+                    return None
+                try:
+                    async with httpx.AsyncClient(timeout=5) as pc:
+                        pr = await pc.get(
+                            "https://maps.googleapis.com/maps/api/place/details/json",
+                            params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number", "key": GOOGLE_PLACES_KEY},
+                        )
+                    pd = pr.json()
+                    res = pd.get("result", {})
+                    return res.get("international_phone_number") or res.get("formatted_phone_number")
+                except Exception:
+                    return None
+
+            if top_places:
                 phones = await asyncio.gather(*[_fetch_phone(pl["id"]) for pl in top_places])
                 for pl, ph in zip(top_places, phones):
                     pl["phone"] = ph
-                return {"places": top_places, "source": "google"}
-        except Exception as e:
-            logger.warning(f"Google Places failed: {e}")
 
-    # Fallback to OpenStreetMap Overpass API (free, no key needed)
-    try:
-        # Use radius or auto-expand to 5000 if initial radius is smaller
-        search_radius = max(radius, 5000) if radius < 3000 else radius
-        osm_queries = {
-            "pharmacy":   f'[out:json][timeout:10];(node["amenity"="pharmacy"](around:{search_radius},{lat},{lng});node["shop"="chemist"](around:{search_radius},{lat},{lng});way["amenity"="pharmacy"](around:{search_radius},{lat},{lng}););out center 20;',
-            "diagnostic": f'[out:json][timeout:10];(node["healthcare"="laboratory"](around:{search_radius},{lat},{lng});node["amenity"="clinic"](around:{search_radius},{lat},{lng});node["amenity"="hospital"](around:{search_radius},{lat},{lng}););out center 20;',
-            "hospital":   f'[out:json][timeout:10];(node["amenity"="hospital"](around:{search_radius},{lat},{lng});node["amenity"="clinic"](around:{search_radius},{lat},{lng});way["amenity"="hospital"](around:{search_radius},{lat},{lng}););out center 20;',
-        }
-        query = osm_queries.get(type, osm_queries["pharmacy"])
-        overpass_mirrors = [
-            "https://overpass-api.de/api/interpreter",
-            "https://overpass.kumi.systems/api/interpreter",
-            "https://overpass.openstreetmap.ru/api/interpreter",
-        ]
-        headers = {
-            "User-Agent": "PillCare/1.0 (contact@pillcare.app)",
-            "Accept": "application/json, */*",
-            "Content-Type": "application/x-www-form-urlencoded",
-        }
-
-        data = None
-        async def fetch_mirror(m_url):
-            try:
-                async with httpx.AsyncClient(timeout=3.5, headers=headers) as c:
-                    resp = await c.post(m_url, data={"data": query})
-                    if resp.status_code == 200:
-                        return resp.json()
-            except Exception:
-                pass
-            return None
-
-        results = await asyncio.gather(*[fetch_mirror(url) for url in overpass_mirrors], return_exceptions=True)
-        for res in results:
-            if isinstance(res, dict) and res.get("elements"):
-                data = res
-                break
-
-        places = []
-        if data and data.get("elements"):
-            for el in (data.get("elements") or [])[:15]:
-                tags = el.get("tags", {})
-                elat = el.get("lat") or (el.get("center", {}).get("lat", 0))
-                elng = el.get("lon") or (el.get("center", {}).get("lon", 0))
-                if not elat or not elng:
-                    continue
-                name = tags.get("name") or tags.get("name:en") or tags.get("brand") or tags.get("operator") or tags.get("amenity", type).title()
-                addr_parts = [tags.get("addr:housenumber", ""), tags.get("addr:street", ""), tags.get("addr:city", "")]
-                address = ", ".join(p for p in addr_parts if p) or tags.get("addr:full", "") or "Nearby"
-                oh = str(tags.get("opening_hours", "")).lower()
-                isOpen = True if "24/7" in oh else None
-                places.append({
-                    "id": str(el.get("id", "")), "name": name,
-                    "address": address, "distance": dist(elat, elng),
-                    "rating": 4.5, "lat": elat, "lng": elng,
-                    "open": isOpen, "phone": tags.get("phone") or tags.get("contact:phone") or tags.get("mobile"),
-                })
-            places.sort(key=lambda x: x["distance"])
-
-        if places:
-            return {"places": places[:max_results], "source": "osm"}
-
-        # High-speed Nominatim OSM Fallback (Works on Wi-Fi and mobile data, <500ms)
-        try:
-            nom_query = "pharmacy" if type == "pharmacy" else "diagnostic lab" if type == "diagnostic" else "hospital"
-            nom_url = f"https://nominatim.openstreetmap.org/search?format=json&q={nom_query}&lat={lat}&lon={lng}&limit=20"
-            headers_nom = {"User-Agent": "PillCare/1.0 (contact@pillcare.app)"}
-            async with httpx.AsyncClient(timeout=4.0, headers=headers_nom) as nc:
-                nr = await nc.get(nom_url)
-            if nr.status_code == 200:
-                ndata = nr.json()
-                if ndata and isinstance(ndata, list):
-                    nom_places = []
-                    for np in ndata:
-                        nlat = float(np.get("lat", 0))
-                        nlng = float(np.get("lon", 0))
-                        if not nlat or not nlng:
-                            continue
-                        disp_name = np.get("display_name", "")
-                        short_name = np.get("name") or disp_name.split(",")[0]
-                        nom_places.append({
-                            "id": str(np.get("place_id", "")),
-                            "name": short_name,
-                            "address": disp_name,
-                            "distance": dist(nlat, nlng),
-                            "rating": 4.6,
-                            "lat": nlat, "lng": nlng,
-                            "open": True,
-                            "phone": None
-                        })
-                    if nom_places:
-                        nom_places.sort(key=lambda x: x["distance"])
-                        return {"places": nom_places[:max_results], "source": "nominatim"}
-        except Exception as ex_nom:
-            logger.warning(f"Nominatim fallback failed: {ex_nom}")
-
-        # Built-in curated location fallback if OSM servers are unreachable or return empty
-        category_defaults = {
-            "pharmacy": [
-                {"id": "p1", "name": "Apollo Pharmacy", "address": "Main Market Road", "distance": 450, "rating": 4.8, "lat": lat + 0.003, "lng": lng + 0.002, "open": None, "phone": "+919876543210"},
-                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "distance": 820, "rating": 4.6, "lat": lat - 0.005, "lng": lng + 0.004, "open": None, "phone": "+919876543211"},
-                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "distance": 1200, "rating": 4.5, "lat": lat + 0.008, "lng": lng - 0.006, "open": None, "phone": "+919876543212"},
-            ],
-            "diagnostic": [
-                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "distance": 600, "rating": 4.9, "lat": lat + 0.004, "lng": lng - 0.003, "open": None, "phone": "+919876543220"},
-                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "distance": 950, "rating": 4.7, "lat": lat - 0.006, "lng": lng - 0.005, "open": None, "phone": "+919876543221"},
-            ],
-            "hospital": [
-                {"id": "h1", "name": "City Multispeciality Hospital", "address": "Ring Road Sector 4", "distance": 1400, "rating": 4.7, "lat": lat + 0.010, "lng": lng + 0.008, "open": True, "phone": "+919876543230"},
-                {"id": "h2", "name": "Max Healthcare Clinic", "address": "Main Boulevard", "distance": 1850, "rating": 4.8, "lat": lat - 0.012, "lng": lng + 0.010, "open": True, "phone": "+919876543231"},
-            ]
-        }
-        fallback_list = category_defaults.get(type, category_defaults["pharmacy"])
-        return {"places": fallback_list[:max_results], "source": "curated_fallback"}
+            return {"places": top_places, "source": "google"}
+        else:
+            err_msg = data.get("error_message") or f"Status: {status}"
+            logger.warning(f"Google Places API returned status '{status}': {err_msg}")
+            return {
+                "places": [],
+                "source": "google",
+                "error": f"Google Places API error ({status})"
+            }
 
     except Exception as e:
-        logger.warning(f"Nearby places search failed: {e}")
-        return {"places": [], "source": "error", "message": "Could not fetch nearby places."}
+        logger.warning(f"Google Places request failed: {e}")
+        return {"places": [], "source": "google", "error": f"Google Places request failed: {e}"}
 
 # Daily caregiver report - triggered by Cloud Scheduler at 10 PM IST.
 # Runs for every registered user who has a caregiver phone number set,

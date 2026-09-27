@@ -187,135 +187,39 @@ export default function Nearby() {
       if (!loc) { setLoading(false); return; }
       setCoords(loc);
 
-      const searchRadius = Math.max(radius, 5000);
-
-      // 1. Try backend endpoint first (Google Places / Server Overpass / Nominatim)
       try {
         const token = await (await import("@/src/lib/auth")).getStoredToken().catch(() => null);
         const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
         const res = await fetchWithTimeout(
           `${BACKEND}/api/nearby?lat=${loc.lat}&lng=${loc.lng}&radius=${radius}&type=${type}`,
           { headers },
-          7000
+          8000
         );
         if (res.ok) {
           const data = await res.json();
           if (data.places?.length) {
             setPlaces(data.places);
             await set(`nearby_places_${type}`, data.places);
-            setSource(data.source === "osm" ? "osm" : "google");
+            setSource("google");
             setLocError("");
             setLoading(false);
             return;
+          } else if (data.error) {
+            if (!places.length) setLocError(data.error);
+          } else {
+            if (!places.length) setLocError("No nearby places found.");
           }
+        } else {
+          if (!places.length) setLocError("Failed to fetch nearby places from server.");
         }
-      } catch {}
-
-      // 2. High-speed Nominatim OSM Client Fallback (Works on Wi-Fi and mobile data)
-      try {
-        const nomQuery = type === "pharmacy" ? "pharmacy" : type === "diagnostic" ? "diagnostic lab" : "hospital";
-        const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${nomQuery}&lat=${loc.lat}&lon=${loc.lng}&limit=20`;
-        const nres = await fetchWithTimeout(nomUrl, { headers: { "User-Agent": "PillCare/1.0" } }, 4000);
-        if (nres.ok) {
-          const ndata = await nres.json();
-          if (Array.isArray(ndata) && ndata.length > 0) {
-            const nomPlaces: Place[] = ndata.map((np: any) => {
-              const nlat = parseFloat(np.lat);
-              const nlng = parseFloat(np.lon);
-              const dlat = (nlat - loc.lat) * 111000;
-              const dlng = (nlng - loc.lng) * 111000 * Math.cos(loc.lat * Math.PI / 180);
-              const dist = Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
-              return {
-                id: String(np.place_id),
-                name: np.name || (np.display_name || "").split(",")[0] || "Medical Store",
-                address: np.display_name || "Location near you",
-                phone: undefined,
-                distance: dist,
-                lat: nlat,
-                lng: nlng,
-                rating: 4.6,
-                open: true
-              };
-            }).sort((a, b) => a.distance - b.distance);
-            setPlaces(nomPlaces);
-            setSource("osm");
-            await set(`nearby_places_${type}`, nomPlaces);
-            setLocError("");
-            setLoading(false);
-            return;
-          }
+      } catch (e) {
+        if (!places.length) {
+          setLocError("Could not fetch nearby places. Please check network connection.");
         }
-      } catch {}
-
-      // 3. Fallback: Comprehensive Overpass API (OpenStreetMap)
-      const fetchRadius = Math.max(radius, 2000);
-      let query = "";
-      if (type === "pharmacy") {
-        query = `[out:json][timeout:8];(node["amenity"="pharmacy"](around:${fetchRadius},${loc.lat},${loc.lng});node["shop"="chemist"](around:${fetchRadius},${loc.lat},${loc.lng});node["shop"="pharmacy"](around:${fetchRadius},${loc.lat},${loc.lng});way["amenity"="pharmacy"](around:${fetchRadius},${loc.lat},${loc.lng}););out center 25;`;
-      } else if (type === "diagnostic") {
-        query = `[out:json][timeout:8];(node["healthcare"="laboratory"](around:${fetchRadius},${loc.lat},${loc.lng});node["healthcare"="pathology"](around:${fetchRadius},${loc.lat},${loc.lng});node["amenity"="laboratory"](around:${fetchRadius},${loc.lat},${loc.lng});node["shop"="medical_lab"](around:${fetchRadius},${loc.lat},${loc.lng});way["healthcare"="laboratory"](around:${fetchRadius},${loc.lat},${loc.lng});way["amenity"="clinic"](around:${fetchRadius},${loc.lat},${loc.lng}););out center 25;`;
-      } else {
-        query = `[out:json][timeout:8];(node["amenity"="hospital"](around:${fetchRadius},${loc.lat},${loc.lng});node["amenity"="clinic"](around:${fetchRadius},${loc.lat},${loc.lng});node["healthcare"="hospital"](around:${fetchRadius},${loc.lat},${loc.lng});way["amenity"="hospital"](around:${fetchRadius},${loc.lat},${loc.lng}););out center 25;`;
       }
-
-      const overpassMirrors = [
-        "https://overpass-api.de/api/interpreter",
-        "https://overpass.kumi.systems/api/interpreter",
-        "https://overpass.openstreetmap.ru/api/interpreter",
-      ];
-      let osmData: any = null;
-      const mirrorResults = await Promise.allSettled(overpassMirrors.map(mirrorUrl =>
-        fetchWithTimeout(mirrorUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: `data=${encodeURIComponent(query)}`,
-        }, 5000).then(r => { if (!r.ok) throw new Error("bad status"); return r.json(); })
-      ));
-      const firstOk = mirrorResults.find(r => r.status === "fulfilled") as PromiseFulfilledResult<any> | undefined;
-      if (firstOk) osmData = firstOk.value;
-      if (!osmData) throw new Error("Overpass failed");
-
-      const results: Place[] = (osmData.elements || [])
-        .map((el: any) => {
-          const elLat = el.lat || el.center?.lat;
-          const elLng = el.lon || el.center?.lon;
-          const dlat = (elLat - loc.lat) * 111000;
-          const dlng = (elLng - loc.lng) * 111000 * Math.cos(loc.lat * Math.PI / 180);
-          const dist = Math.round(Math.sqrt(dlat * dlat + dlng * dlng));
-          const tags = el.tags || {};
-          const storeName = tags.name || tags["name:en"] || tags.brand || tags.operator || tags.official_name || (type === "pharmacy" ? "Medical Store / Pharmacy" : type === "diagnostic" ? "Diagnostic & Pathology Lab" : "Hospital / Clinic");
-          const phone = tags.phone || tags["contact:phone"] || tags["contact:mobile"] || tags.mobile || null;
-          const oh = String(tags.opening_hours || "").toLowerCase();
-          const isOpen = oh.includes("24/7") ? true : undefined;
-          return {
-            id: String(el.id),
-            name: storeName,
-            address: [tags["addr:street"], tags["addr:suburb"], tags["addr:city"]].filter(Boolean).join(", ") || tags["addr:full"] || "Location near you",
-            phone: phone,
-            distance: dist, lat: elLat, lng: elLng,
-            open: isOpen, rating: 4.5,
-          };
-        })
-        .filter((p: Place) => {
-          if (type === "diagnostic") {
-            const plower = p.name.toLowerCase();
-            const isPharm = (plower.includes("pharmacy") || plower.includes("chemist") || plower.includes("medicos") || plower.includes("medical store")) &&
-                            !plower.includes("lab") && !plower.includes("pathology") && !plower.includes("diagnostic") && !plower.includes("test") && !plower.includes("scan");
-            if (isPharm) return false;
-          }
-          return true;
-        })
-        .slice(0, 20)
-        .sort((a: Place, b: Place) => a.distance - b.distance);
-
-      setPlaces(results);
-      if (results.length) await set(`nearby_places_${type}`, results);
-      setSource("osm");
-      setLocError("");
-      if (!results.length) setLocError("No results found nearby. Try expanding your search radius.");
     } catch (e) {
       if (!places.length) {
-        setLocError("Could not fetch nearby places. Please check your network and try again.");
+        setLocError("Could not fetch nearby places. Please check network connection.");
       }
     } finally { setLoading(false); setRefreshing(false); }
   }, [radius, type, coords]);
@@ -542,7 +446,7 @@ export default function Nearby() {
 
         {places.length > 0 && (
           <View style={{ paddingVertical: 8, alignItems: "center", gap: 4 }}>
-            <Text style={[s.cS, { color: theme.textSecondary }]}>{source === "osm" ? "Data from OpenStreetMap contributors" : "Data from Google"}</Text>
+            <Text style={[s.cS, { color: theme.textSecondary }]}>Powered by Google Maps</Text>
             <TouchableOpacity onPress={openGoogleMaps}>
               <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "600" }}>See all on Google Maps →</Text>
             </TouchableOpacity>
