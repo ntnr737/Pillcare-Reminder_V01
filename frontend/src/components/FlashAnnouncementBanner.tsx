@@ -13,11 +13,16 @@ import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../lib/api";
 import { getSeenNotifIds, markNotifSeen } from "../lib/store";
+import { sendSystemNotificationBarAlert } from "../lib/notifications";
 
 interface FlashAnnouncement {
   id: string;
   title: string;
-  body: string;
+  body?: string;
+  message?: string;
+  description?: string;
+  content?: string;
+  text?: string;
   type: "info" | "warning" | "offer" | "alert";
   target_plan: string;
   link_url?: string;
@@ -25,10 +30,20 @@ interface FlashAnnouncement {
   created_at: string;
 }
 
+export function getAnnouncementBody(item: any): string {
+  if (!item) return "";
+  const text = item.body || item.message || item.description || item.content || item.text || item.details;
+  if (typeof text === "string" && text.trim().length > 0) {
+    return text.trim();
+  }
+  return "";
+}
+
 export function FlashAnnouncementBanner() {
   const insets = useSafeAreaInsets();
   const [activeAnnouncement, setActiveAnnouncement] = useState<FlashAnnouncement | null>(null);
   const [fullDetailOpen, setFullDetailOpen] = useState(false);
+  const notifiedIdsRef = useRef<Set<string>>(new Set());
 
   const translateY = useRef(new Animated.Value(180)).current;
   const opacity = useRef(new Animated.Value(0)).current;
@@ -36,10 +51,10 @@ export function FlashAnnouncementBanner() {
   useEffect(() => {
     fetchAnnouncements();
 
-    // Poll server every 12s for newly pushed admin notifications
+    // Poll server every 10s for newly pushed admin notifications
     const interval = setInterval(() => {
       fetchAnnouncements();
-    }, 12000);
+    }, 10000);
 
     return () => clearInterval(interval);
   }, []);
@@ -54,8 +69,19 @@ export function FlashAnnouncementBanner() {
         if (unseen.length > 0) {
           // Select strictly the newest unseen notification
           const newest = unseen[0];
+          const notifId = newest.id;
+          const titleText = newest.title || "PillCare Notification";
+          const bodyText = getAnnouncementBody(newest) || "New update received from PillCare.";
+
           setActiveAnnouncement(newest);
-          // Slide up animation
+
+          // Trigger live System Notification Bar alert (OS Status Bar push) if not yet fired
+          if (notifId && !notifiedIdsRef.current.has(notifId)) {
+            notifiedIdsRef.current.add(notifId);
+            sendSystemNotificationBarAlert(titleText, bodyText, { id: notifId, link_url: newest.link_url }).catch(() => {});
+          }
+
+          // Slide up animation for in-app banner
           Animated.parallel([
             Animated.spring(translateY, {
               toValue: 0,
@@ -83,6 +109,7 @@ export function FlashAnnouncementBanner() {
   if (!activeAnnouncement) return null;
 
   const current = activeAnnouncement;
+  const bodyText = getAnnouncementBody(current);
 
   const handleDismiss = async () => {
     setFullDetailOpen(false);
@@ -193,7 +220,7 @@ export function FlashAnnouncementBanner() {
                 {current.title}
               </Text>
               <Text style={styles.body} numberOfLines={2}>
-                {current.body}
+                {bodyText || "Tap to view notification details"}
               </Text>
             </View>
 
@@ -236,7 +263,9 @@ export function FlashAnnouncementBanner() {
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.modalBodyContent}>
                 <Text style={styles.modalFullTitle}>{current.title}</Text>
-                <Text style={styles.modalFullBody}>{current.body}</Text>
+                <Text style={styles.modalFullBody}>
+                  {bodyText || "No additional details provided."}
+                </Text>
               </ScrollView>
 
               <View style={styles.modalFooter}>

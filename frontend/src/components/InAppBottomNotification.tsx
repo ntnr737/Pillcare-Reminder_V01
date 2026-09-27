@@ -17,10 +17,22 @@ import { markNotifSeen } from "../lib/store";
 export interface InAppNotificationPayload {
   id?: string;
   title: string;
-  body: string;
+  body?: string;
+  message?: string;
+  description?: string;
+  content?: string;
   type?: string;
   link_url?: string;
   data?: any;
+}
+
+export function getInAppBody(n: any): string {
+  if (!n) return "";
+  const txt = n.body || n.message || n.description || n.content || n.text || n.details;
+  if (typeof txt === "string" && txt.trim().length > 0) {
+    return txt.trim();
+  }
+  return "";
 }
 
 interface InAppBottomNotificationProps {
@@ -88,6 +100,8 @@ export function InAppBottomNotification({
   if (!notification) return null;
 
   const notifType = notification.type || "info";
+  const bodyText = getInAppBody(notification);
+
   const getTheme = () => {
     switch (notifType) {
       case "offer":
@@ -150,7 +164,7 @@ export function InAppBottomNotification({
                 {notification.title}
               </Text>
               <Text style={s.body} numberOfLines={2}>
-                {notification.body}
+                {bodyText || "Tap to view full notification details"}
               </Text>
             </View>
 
@@ -193,7 +207,9 @@ export function InAppBottomNotification({
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.modalBodyContent}>
                 <Text style={s.modalFullTitle}>{notification.title}</Text>
-                <Text style={s.modalFullBody}>{notification.body}</Text>
+                <Text style={s.modalFullBody}>
+                  {bodyText || "No additional description provided for this notification."}
+                </Text>
               </ScrollView>
 
               <View style={s.modalFooter}>

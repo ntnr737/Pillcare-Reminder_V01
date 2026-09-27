@@ -221,6 +221,32 @@ export async function sendTestNotificationNow(title = "PillCare Alert Test", bod
 }
 
 /**
+ * Post a real-time notification directly to the OS System Notification Bar (Android/iOS status bar).
+ */
+export async function sendSystemNotificationBarAlert(
+  title: string,
+  body: string,
+  data: any = {}
+): Promise<void> {
+  try {
+    await ensureChannels();
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: title || "PillCare Notification",
+        body: body || "You have a new update from PillCare.",
+        sound: "default",
+        channelId: "broadcasts",
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        data: data,
+      } as any,
+      trigger: null,
+    });
+  } catch (e) {
+    console.warn("Failed to dispatch system notification bar alert:", e);
+  }
+}
+
+/**
  * Request permission and get Expo push token.
  * Saves token to backend so admin can send notifications to all users.
  */
