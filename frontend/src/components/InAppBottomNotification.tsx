@@ -229,11 +229,10 @@ export function InAppBottomNotification({
             </View>
 
             <View style={s.textWrapper}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 2 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
                 <View style={[s.badgeTag, { backgroundColor: `${theme.accent}25` }]}>
                   <Text style={[s.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
                 </View>
-                <Text style={s.tapHint}>Tap to view full text 🔍</Text>
               </View>
               <Text style={s.title} numberOfLines={2}>
                 {activeNotif.title}
