@@ -530,30 +530,30 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
               </View>
 
               {/* Action buttons — WhatsApp Prescription Order & Phone Call */}
-              <TouchableOpacity style={[s.actionBtn, { paddingVertical: 14, justifyContent: "center", borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
+              <TouchableOpacity style={[s.modalActionBtn, { borderColor: "rgba(37,211,102,0.4)", backgroundColor: "rgba(37,211,102,0.12)" }]}
                 onPress={() => sendWhatsAppPrescription(selectedPlace)}>
                 <Ionicons name="logo-whatsapp" size={18} color="#25D366" />
-                <Text style={[s.actionTx, { color: "#25D366", fontSize: 15, fontWeight: "700" }]}>Send Prescription via WhatsApp</Text>
+                <Text style={{ color: "#25D366", fontSize: 14, fontWeight: "700" }}>Send Prescription via WhatsApp</Text>
               </TouchableOpacity>
 
               {selectedPlace.phone ? (
-                <TouchableOpacity style={[s.actionBtn, { paddingVertical: 14, justifyContent: "center", borderColor: "rgba(74,222,128,0.4)", backgroundColor: "rgba(74,222,128,0.1)" }]}
+                <TouchableOpacity style={[s.modalActionBtn, { borderColor: "rgba(74,222,128,0.4)", backgroundColor: "rgba(74,222,128,0.1)" }]}
                   onPress={() => Linking.openURL(`tel:${(selectedPlace.phone||"").replace(/[\s\-()]/g,"")}`)}> 
                   <Ionicons name="call" size={18} color="#10B981" />
-                  <Text style={[s.actionTx, { color: "#10B981", fontSize: 15 }]}>Call {selectedPlace.phone}</Text>
+                  <Text style={{ color: "#10B981", fontSize: 14, fontWeight: "600" }}>Call {selectedPlace.phone}</Text>
                 </TouchableOpacity>
               ) : null}
 
               <View style={{ flexDirection: "row", gap: 10 }}>
-                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center", borderColor: theme.surfaceBorder }]}
+                <TouchableOpacity style={[s.modalActionBtn, { flex: 1, borderColor: theme.surfaceBorder }]}
                   onPress={() => openMaps(selectedPlace)}>
                   <Ionicons name="navigate" size={16} color={theme.accent} />
-                  <Text style={[s.actionTx, { color: theme.accent, fontSize: 13 }]}>Walking directions</Text>
+                  <Text style={{ color: theme.accent, fontSize: 12, fontWeight: "600" }}>Walking directions</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[s.actionBtn, { flex: 1, paddingVertical: 12, justifyContent: "center", borderColor: theme.surfaceBorder }]}
+                <TouchableOpacity style={[s.modalActionBtn, { flex: 1, borderColor: theme.surfaceBorder }]}
                   onPress={() => Linking.openURL(`https://www.google.com/maps/search/${encodeURIComponent(selectedPlace.name)}/@${selectedPlace.lat},${selectedPlace.lng},17z`)}>
                   <Ionicons name="car-outline" size={16} color={theme.accent} />
-                  <Text style={[s.actionTx, { color: theme.accent, fontSize: 13 }]}>Driving route</Text>
+                  <Text style={{ color: theme.accent, fontSize: 12, fontWeight: "600" }}>Driving route</Text>
                 </TouchableOpacity>
               </View>
               <View style={{ height: 8 }} />
@@ -648,6 +648,7 @@ const s = StyleSheet.create({
   distBadge: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: AB, borderRadius: 999 },
   cardActions: { flexDirection: "row", gap: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: BD },
   actionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 12, height: 32, borderRadius: 9, backgroundColor: "rgba(233,233,237,0.06)", borderWidth: 1, borderColor: BD },
+  modalActionBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 14, minHeight: 44, borderRadius: 12, borderWidth: 1, backgroundColor: "rgba(233,233,237,0.06)" },
   actionTx: { fontSize: 11, color: A3, fontWeight: "600" },
   retryBtn: { paddingHorizontal: 20, height: 36, borderRadius: 10, backgroundColor: AB, borderWidth: 1, borderColor: AC, alignItems: "center", justifyContent: "center" },
   secL: { fontSize: 10, letterSpacing: 1, color: A3, fontWeight: "700", marginVertical: 6 },
