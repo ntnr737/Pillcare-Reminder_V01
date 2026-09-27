@@ -512,7 +512,6 @@ export default function Today() {
           setDate(newDate);
         }}
       />
-      <FlashAnnouncementBanner />
     </SafeAreaView>
   );
 }

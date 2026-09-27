@@ -12,7 +12,9 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { markNotifSeen } from "../lib/store";
+import { api } from "../lib/api";
+import { getSeenNotifIds, markNotifSeen } from "../lib/store";
+import { sendSystemNotificationBarAlert } from "../lib/notifications";
 
 export interface InAppNotificationPayload {
   id?: string;
@@ -36,12 +38,10 @@ export function getInAppBody(n: any): string {
 }
 
 interface InAppBottomNotificationProps {
-  notification: InAppNotificationPayload | null;
-  onDismiss: () => void;
+  notification?: InAppNotificationPayload | null;
+  onDismiss?: () => void;
   onPressAction?: () => void;
 }
-
-const { width } = Dimensions.get("window");
 
 export function InAppBottomNotification({
   notification,
@@ -52,10 +52,53 @@ export function InAppBottomNotification({
   const translateY = useRef(new Animated.Value(200)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [serverNotif, setServerNotif] = useState<InAppNotificationPayload | null>(null);
+  const notifiedIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (notification) {
-      // Slide up from bottom
+    fetchActiveAnnouncements();
+    const interval = setInterval(fetchActiveAnnouncements, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchActiveAnnouncements = async () => {
+    try {
+      const data = await api.getActiveAnnouncements();
+      if (Array.isArray(data) && data.length > 0) {
+        const seenIds = await getSeenNotifIds();
+        const unseen = data.filter((item) => item.id && !seenIds.includes(item.id));
+        if (unseen.length > 0) {
+          const newest = unseen[0];
+          const notifId = newest.id;
+          const titleText = newest.title || "PillCare Notification";
+          const bodyText = getInAppBody(newest) || "New update received from PillCare.";
+
+          setServerNotif({
+            id: notifId,
+            title: titleText,
+            body: bodyText,
+            type: newest.type || "offer",
+            link_url: newest.link_url,
+          });
+
+          // Dispatch live OS status bar push notification alert
+          if (notifId && !notifiedIdsRef.current.has(notifId)) {
+            notifiedIdsRef.current.add(notifId);
+            sendSystemNotificationBarAlert(titleText, bodyText, { id: notifId, link_url: newest.link_url }).catch(() => {});
+          }
+        } else {
+          setServerNotif(null);
+        }
+      } else {
+        setServerNotif(null);
+      }
+    } catch {}
+  };
+
+  const activeNotif = notification || serverNotif;
+
+  useEffect(() => {
+    if (activeNotif) {
       Animated.parallel([
         Animated.spring(translateY, {
           toValue: 0,
@@ -74,12 +117,12 @@ export function InAppBottomNotification({
       opacity.setValue(0);
       setDetailModalOpen(false);
     }
-  }, [notification]);
+  }, [activeNotif]);
 
   const handleDismiss = async () => {
     setDetailModalOpen(false);
-    if (notification?.id) {
-      await markNotifSeen(notification.id);
+    if (activeNotif?.id) {
+      await markNotifSeen(activeNotif.id);
     }
     Animated.parallel([
       Animated.timing(translateY, {
@@ -93,14 +136,17 @@ export function InAppBottomNotification({
         useNativeDriver: true,
       }),
     ]).start(() => {
-      onDismiss();
+      if (notification && onDismiss) {
+        onDismiss();
+      }
+      setServerNotif(null);
     });
   };
 
-  if (!notification) return null;
+  if (!activeNotif) return null;
 
-  const notifType = notification.type || "info";
-  const bodyText = getInAppBody(notification);
+  const notifType = activeNotif.type || "info";
+  const bodyText = getInAppBody(activeNotif);
 
   const getTheme = () => {
     switch (notifType) {
@@ -121,20 +167,20 @@ export function InAppBottomNotification({
 
   const handleActionClick = async () => {
     setDetailModalOpen(false);
-    if (notification?.id) {
-      await markNotifSeen(notification.id);
+    if (activeNotif?.id) {
+      await markNotifSeen(activeNotif.id);
     }
     if (onPressAction) {
       onPressAction();
-    } else if (notification.link_url) {
-      Linking.openURL(notification.link_url).catch(() => {});
+    } else if (activeNotif.link_url) {
+      Linking.openURL(activeNotif.link_url).catch(() => {});
     }
     handleDismiss();
   };
 
   return (
     <>
-      {/* Floating Bottom Notification Banner */}
+      {/* Floating Bottom Notification Banner (Single Instance) */}
       <Animated.View
         style={[
           s.floatingContainer,
@@ -161,7 +207,7 @@ export function InAppBottomNotification({
                 <Text style={s.tapHint}>Tap to view full text 🔍</Text>
               </View>
               <Text style={s.title} numberOfLines={1}>
-                {notification.title}
+                {activeNotif.title}
               </Text>
               <Text style={s.body} numberOfLines={2}>
                 {bodyText || "Tap to view full notification details"}
@@ -206,14 +252,14 @@ export function InAppBottomNotification({
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.modalBodyContent}>
-                <Text style={s.modalFullTitle}>{notification.title}</Text>
+                <Text style={s.modalFullTitle}>{activeNotif.title}</Text>
                 <Text style={s.modalFullBody}>
                   {bodyText || "No additional description provided for this notification."}
                 </Text>
               </ScrollView>
 
               <View style={s.modalFooter}>
-                {(notification.link_url || onPressAction) ? (
+                {(activeNotif.link_url || onPressAction) ? (
                   <TouchableOpacity style={[s.primaryBtn, { backgroundColor: theme.btnBg }]} onPress={handleActionClick} activeOpacity={0.8}>
                     <Text style={s.primaryBtnText}>View & Take Action</Text>
                     <Ionicons name="arrow-forward" size={16} color="#FFF" />
