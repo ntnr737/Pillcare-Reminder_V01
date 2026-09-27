@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { markNotifSeen } from "../lib/store";
 
 export interface InAppNotificationPayload {
   id?: string;
@@ -63,8 +64,11 @@ export function InAppBottomNotification({
     }
   }, [notification]);
 
-  const handleDismiss = () => {
+  const handleDismiss = async () => {
     setDetailModalOpen(false);
+    if (notification?.id) {
+      await markNotifSeen(notification.id);
+    }
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: 200,
@@ -101,8 +105,11 @@ export function InAppBottomNotification({
 
   const theme = getTheme();
 
-  const handleActionClick = () => {
+  const handleActionClick = async () => {
     setDetailModalOpen(false);
+    if (notification?.id) {
+      await markNotifSeen(notification.id);
+    }
     if (onPressAction) {
       onPressAction();
     } else if (notification.link_url) {
@@ -179,7 +186,7 @@ export function InAppBottomNotification({
                     <Text style={[s.badgeText, { color: theme.accent }]}>{theme.badge}</Text>
                   </View>
                 </View>
-                <TouchableOpacity onPress={() => setDetailModalOpen(false)} style={s.modalCloseBtn}>
+                <TouchableOpacity onPress={handleDismiss} style={s.modalCloseBtn}>
                   <Ionicons name="close" size={20} color="rgba(255, 255, 255, 0.7)" />
                 </TouchableOpacity>
               </View>
@@ -196,8 +203,8 @@ export function InAppBottomNotification({
                     <Ionicons name="arrow-forward" size={16} color="#FFF" />
                   </TouchableOpacity>
                 ) : null}
-                <TouchableOpacity style={s.secondaryBtn} onPress={() => setDetailModalOpen(false)} activeOpacity={0.7}>
-                  <Text style={s.secondaryBtnText}>Close</Text>
+                <TouchableOpacity style={s.secondaryBtn} onPress={handleDismiss} activeOpacity={0.7}>
+                  <Text style={s.secondaryBtnText}>Dismiss</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>

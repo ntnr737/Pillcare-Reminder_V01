@@ -12,6 +12,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../lib/api";
+import { getSeenNotifIds, markNotifSeen } from "../lib/store";
 
 interface FlashAnnouncement {
   id: string;
@@ -26,9 +27,7 @@ interface FlashAnnouncement {
 
 export function FlashAnnouncementBanner() {
   const insets = useSafeAreaInsets();
-  const [announcements, setAnnouncements] = useState<FlashAnnouncement[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [dismissedIds, setDismissedIds] = useState<string[]>([]);
+  const [activeAnnouncement, setActiveAnnouncement] = useState<FlashAnnouncement | null>(null);
   const [fullDetailOpen, setFullDetailOpen] = useState(false);
 
   const translateY = useRef(new Animated.Value(180)).current;
@@ -36,47 +35,61 @@ export function FlashAnnouncementBanner() {
 
   useEffect(() => {
     fetchAnnouncements();
+
+    // Poll server every 12s for newly pushed admin notifications
+    const interval = setInterval(() => {
+      fetchAnnouncements();
+    }, 12000);
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchAnnouncements = async () => {
     try {
       const data = await api.getActiveAnnouncements();
-      if (Array.isArray(data)) {
-        setAnnouncements(data);
+      if (Array.isArray(data) && data.length > 0) {
+        const seenIds = await getSeenNotifIds();
+        // Filter out any notification already permanently seen by this user
+        const unseen = data.filter((item) => item.id && !seenIds.includes(item.id));
+        if (unseen.length > 0) {
+          // Select strictly the newest unseen notification
+          const newest = unseen[0];
+          setActiveAnnouncement(newest);
+          // Slide up animation
+          Animated.parallel([
+            Animated.spring(translateY, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 65,
+              friction: 9,
+            }),
+            Animated.timing(opacity, {
+              toValue: 1,
+              duration: 250,
+              useNativeDriver: true,
+            }),
+          ]).start();
+        } else {
+          setActiveAnnouncement(null);
+        }
+      } else {
+        setActiveAnnouncement(null);
       }
     } catch (err) {
       // Quiet fail if network unavailable
     }
   };
 
-  const visibleAnnouncements = announcements.filter(
-    (item) => !dismissedIds.includes(item.id)
-  );
+  if (!activeAnnouncement) return null;
 
-  useEffect(() => {
-    if (visibleAnnouncements.length > 0) {
-      Animated.parallel([
-        Animated.spring(translateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 65,
-          friction: 9,
-        }),
-        Animated.timing(opacity, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [visibleAnnouncements.length]);
+  const current = activeAnnouncement;
 
-  if (visibleAnnouncements.length === 0) return null;
-
-  const current = visibleAnnouncements[currentIndex % visibleAnnouncements.length];
-
-  const handleDismiss = () => {
+  const handleDismiss = async () => {
     setFullDetailOpen(false);
+    // Mark as permanently seen so it NEVER loops or repeats on app launch
+    if (current.id) {
+      await markNotifSeen(current.id);
+    }
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: 180,
@@ -89,15 +102,19 @@ export function FlashAnnouncementBanner() {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      setDismissedIds((prev) => [...prev, current.id]);
+      setActiveAnnouncement(null);
     });
   };
 
-  const handlePressAction = () => {
+  const handlePressAction = async () => {
     setFullDetailOpen(false);
+    if (current.id) {
+      await markNotifSeen(current.id);
+    }
     if (current.link_url) {
       Linking.openURL(current.link_url).catch(() => {});
     }
+    setActiveAnnouncement(null);
   };
 
   const getTypeTheme = (type: string) => {
@@ -212,7 +229,7 @@ export function FlashAnnouncementBanner() {
                   </View>
                 </View>
 
-                <TouchableOpacity onPress={() => setFullDetailOpen(false)} style={styles.modalCloseBtn}>
+                <TouchableOpacity onPress={handleDismiss} style={styles.modalCloseBtn}>
                   <Ionicons name="close" size={20} color="rgba(255, 255, 255, 0.7)" />
                 </TouchableOpacity>
               </View>
@@ -229,8 +246,8 @@ export function FlashAnnouncementBanner() {
                     <Ionicons name="arrow-forward" size={16} color="#FFF" />
                   </TouchableOpacity>
                 ) : null}
-                <TouchableOpacity style={styles.secondaryBtn} onPress={() => setFullDetailOpen(false)} activeOpacity={0.7}>
-                  <Text style={styles.secondaryBtnText}>Close</Text>
+                <TouchableOpacity style={styles.secondaryBtn} onPress={handleDismiss} activeOpacity={0.7}>
+                  <Text style={styles.secondaryBtnText}>Dismiss</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>

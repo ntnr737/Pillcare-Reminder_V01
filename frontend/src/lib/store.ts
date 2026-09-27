@@ -42,7 +42,29 @@ export const K = {
   yogaReminderTime: "yoga_reminder_time",
   appointments: "appointments",
   writeQueue: "write_queue",
+  seenNotifIds: "seen_notif_ids",
 };
+
+export async function markNotifSeen(id: string): Promise<void> {
+  if (!id) return;
+  try {
+    const list = (await get<string[]>(K.seenNotifIds)) || [];
+    if (!list.includes(id)) {
+      list.push(id);
+      // Keep max last 200 seen IDs to avoid unlimited growth
+      const trimmed = list.slice(-200);
+      await set(K.seenNotifIds, trimmed);
+    }
+  } catch {}
+}
+
+export async function getSeenNotifIds(): Promise<string[]> {
+  try {
+    return (await get<string[]>(K.seenNotifIds)) || [];
+  } catch {
+    return [];
+  }
+}
 
 // Write queue for offline writes
 export type WriteItem = {
