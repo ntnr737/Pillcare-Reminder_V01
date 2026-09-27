@@ -163,11 +163,11 @@ export default function Support() {
     <SafeAreaView style={[styles.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       {/* Top Header Bar with Support Title & HeaderControls on Top Right */}
       <View style={styles.headerRow}>
-        <View style={{ gap: 2 }}>
-          <Text style={[styles.title, { color: theme.textPrimary }]}>
+        <View style={{ flex: 1, paddingRight: 8, gap: 2 }}>
+          <Text style={[styles.title, { color: theme.textPrimary }]} numberOfLines={1}>
             {t("support.title", "Support & Settings")}
           </Text>
-          <Text style={{ fontSize: 12, color: theme.textSecondary }}>
+          <Text style={{ fontSize: 12, color: theme.textSecondary }} numberOfLines={1}>
             {t("support.subtitle", "Get help, customize theme & app preferences")}
           </Text>
         </View>

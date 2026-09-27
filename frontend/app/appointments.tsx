@@ -10,6 +10,7 @@ import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
 import * as Notifications from "expo-notifications";
 import { get, set } from "@/src/lib/store";
+import { enqueueWrite, flushQueue } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
@@ -46,14 +47,24 @@ export default function Appointments() {
   };
 
   const load = useCallback(async () => {
+    // 1. Instant local read
+    const cached = await get<Appt[]>("appointments");
+    if (cached && Array.isArray(cached)) {
+      setAppts(cached);
+      setLoading(false);
+    }
+    // 2. Background queue flush & server fetch
     try {
+      await flushQueue().catch(() => {});
       const data = await api.listAppointments();
-      setAppts(data || []);
-      set("appointments", data || []);
+      if (data && Array.isArray(data)) {
+        setAppts(data);
+        await set("appointments", data);
+      }
     } catch {
-      const cached = await get<Appt[]>("appointments");
-      if (cached) setAppts(cached);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
@@ -66,34 +77,38 @@ export default function Appointments() {
       Alert.alert(t("common.error", "Error"), t("appointments.dateTimeRequired", "Please select a date and time for the appointment.")); return;
     }
     setSaving(true);
+    const targetId = editing.id || `local_appt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newAppt: Appt = { ...editing, id: targetId };
+
+    // 1. Instant local UI update & storage persistence
+    const existing = (await get<Appt[]>("appointments")) || appts;
+    const updated = editing.id
+      ? existing.map(a => a.id === editing.id ? newAppt : a)
+      : [newAppt, ...existing];
+    setAppts(updated);
+    await set("appointments", updated);
+
+    // 2. Schedule local notification
     try {
-      let saved;
-      if (editing.id) {
-        saved = await api.updateAppointment(editing.id, editing);
-      } else {
-        saved = await api.createAppointment(editing);
-      }
-      const apptIdForNotif = saved?.id || editing.id;
-      if (apptIdForNotif) {
-        try {
-          const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-          const stale = scheduled.filter(n => n.content.data?.appointmentId === apptIdForNotif);
-          await Promise.all(stale.map(n => Notifications.cancelScheduledNotificationAsync(n.identifier)));
-        } catch {}
-      }
-      if (editing.date && editing.time && editing.reminder !== "none") {
-        const [y, mo, d] = editing.date.split("-").map(Number);
-        const [h, min] = editing.time.split(":").map(Number);
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const stale = scheduled.filter(n => n.content.data?.appointmentId === targetId);
+      await Promise.all(stale.map(n => Notifications.cancelScheduledNotificationAsync(n.identifier)));
+    } catch {}
+
+    if (newAppt.date && newAppt.time && newAppt.reminder !== "none") {
+      try {
+        const [y, mo, d] = newAppt.date.split("-").map(Number);
+        const [h, min] = newAppt.time.split(":").map(Number);
         const apptDate = new Date(y, mo - 1, d, h, min, 0);
         const offsets: Record<string, number> = { "1_day": 86400000, "2_hours": 7200000 };
-        const offset = offsets[editing.reminder || "1_day"] || 86400000;
+        const offset = offsets[newAppt.reminder || "1_day"] || 86400000;
         const notifTime = new Date(apptDate.getTime() - offset);
         if (notifTime > new Date()) {
           await Notifications.scheduleNotificationAsync({
             content: {
               title: t("appointments.reminderTitle", "Appointment reminder"),
-              body: `Dr. ${editing.doctor_name}${editing.specialty ? " — " + editing.specialty : ""} at ${editing.time}`,
-              data: { appointmentId: saved?.id || "" },
+              body: `Dr. ${newAppt.doctor_name}${newAppt.specialty ? " — " + newAppt.specialty : ""} at ${newAppt.time}`,
+              data: { appointmentId: targetId },
               sound: "pillcare_reminder",
             },
             trigger: {
@@ -103,26 +118,53 @@ export default function Appointments() {
             },
           });
         }
-      }
-      track("appointment_saved"); setModal(false); setEditing(BLANK); load();
-    } catch (e: any) {
-      const msg = e?.message || "Unknown error";
-      console.error("Appointment save error:", msg);
-      Alert.alert("ERR_3001", `Could not save appointment. ${msg.includes("ERR_") ? msg : "Check your connection and try again."}`);
+      } catch {}
     }
-    finally { setSaving(false); }
+
+    track("appointment_saved");
+    setModal(false);
+    setEditing(BLANK);
+
+    // 3. Network push + offline queue
+    try {
+      if (editing.id) {
+        await api.updateAppointment(editing.id, editing);
+      } else {
+        await api.createAppointment(newAppt);
+      }
+    } catch {
+      if (editing.id) {
+        await enqueueWrite("appointment_update", { id: editing.id, data: editing });
+      } else {
+        await enqueueWrite("appointment", newAppt);
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
   const deleteAppt = (id: string) => {
     Alert.alert(t("common.delete", "Delete"), t("appointments.deleteConfirm", "Remove this appointment?"), [
       { text: t("common.cancel", "Cancel"), style: "cancel" },
       { text: t("common.delete", "Delete"), style: "destructive", onPress: async () => {
+        // 1. Instant local removal
+        const existing = (await get<Appt[]>("appointments")) || appts;
+        const updated = existing.filter(a => a.id !== id);
+        setAppts(updated);
+        await set("appointments", updated);
+
         try {
           const scheduled = await Notifications.getAllScheduledNotificationsAsync();
           const stale = scheduled.filter(n => n.content.data?.appointmentId === id);
           await Promise.all(stale.map(n => Notifications.cancelScheduledNotificationAsync(n.identifier)));
         } catch {}
-        await api.deleteAppointment(id); load();
+
+        // 2. Network delete + offline queue
+        try {
+          await api.deleteAppointment(id);
+        } catch {
+          await enqueueWrite("appointment_delete", { id });
+        }
       } }
     ]);
   };

@@ -11,6 +11,7 @@ async function req<T>(path: string, opts: RequestInit = {}, timeoutMs = 7000): P
     const res = await fetch(`${BASE}/api${path}`, {
       headers: {
         "Content-Type": "application/json",
+        "Accept-Encoding": "gzip, deflate, br",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       signal: controller.signal,

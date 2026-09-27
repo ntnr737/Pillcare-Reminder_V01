@@ -129,6 +129,21 @@ export async function flushQueue(): Promise<void> {
           case "medication":
             await api.createMedication(item.payload);
             break;
+          case "medication_update":
+            await api.updateMedication(item.payload.id, item.payload.data);
+            break;
+          case "medication_delete":
+            await api.deleteMedication(item.payload.id);
+            break;
+          case "appointment":
+            await api.createAppointment(item.payload);
+            break;
+          case "appointment_update":
+            await api.updateAppointment(item.payload.id, item.payload.data);
+            break;
+          case "appointment_delete":
+            await api.deleteAppointment(item.payload.id);
+            break;
         }
         await removeFromQueue(item.id);
       } catch {

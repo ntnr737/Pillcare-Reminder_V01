@@ -21,7 +21,7 @@ import { track, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
-import { backgroundRefresh } from "@/src/lib/sync";
+import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
 function getWD(c: string) {
@@ -137,11 +137,15 @@ export default function Today() {
 
   const fetchServer = async () => {
     try {
+      await flushQueue().catch(() => {});
       const [dos, prof] = await Promise.all([
         api.listDoses(date),
         api.getProfile().catch(() => null),
       ]);
-      setDoses(dos || []);
+      if (dos && Array.isArray(dos)) {
+        setDoses(dos);
+        await set(K.doses(date), dos);
+      }
       if (prof) setProfile(prof);
 
       api.adherence(30).then((data: any) => {
@@ -210,13 +214,26 @@ export default function Today() {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     } catch {}
-    const updated = doses.map((d: any) => d.id === doseId ? { ...d, status: newStatus } : d);
+
+    const taken_at = newStatus === "taken" ? new Date().toISOString() : undefined;
+    const updated = doses.map((d: any) => d.id === doseId ? { ...d, status: newStatus, taken_at } : d);
+
+    // 1. Instant optimistic UI & local storage update
     setDoses(updated);
+    await set(K.doses(date), updated);
+
+    // 2. Track analytics
     try {
       const evtName: EventName = newStatus === "taken" ? "dose_taken" : newStatus === "missed" ? "dose_missed" : "dose_skipped";
       track(evtName, { doseId });
-    } catch {
-      await backgroundRefresh(fetchServer);
+    } catch {}
+
+    // 3. Persist status to backend server and handle offline queue
+    try {
+      await api.setDoseStatus(doseId, newStatus, taken_at);
+    } catch (err) {
+      console.warn("API setDoseStatus failed, queueing offline write:", err);
+      await enqueueWrite("doseStatus", { id: doseId, status: newStatus, taken_at });
     }
   };
 

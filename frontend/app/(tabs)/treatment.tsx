@@ -9,7 +9,7 @@ import { api } from "@/src/lib/api";
 import { track } from "@/src/lib/analytics";
 import { resyncReminders, YOGA_CATEGORY } from "@/src/lib/notifications";
 import { get, set, K, logCourseCompleted } from "@/src/lib/store";
-import { backgroundRefresh } from "@/src/lib/sync";
+import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { VideoPlayerModal } from "@/src/components/VideoPlayerModal";
@@ -201,6 +201,7 @@ export default function Treatment() {
 
   const loadServer = useCallback(async () => {
     try {
+      await flushQueue().catch(() => {});
       const [m, mes, act, mo, mc, ac] = await Promise.all([
         api.listMedications(true), api.listMeasurements(), api.listActivities(),
         api.listMood(), api.measurementCatalog(), api.activityCatalog()
@@ -245,16 +246,73 @@ export default function Treatment() {
   };
 
   const saveMeasure = async () => {
-    if (!mModal.type || !vP) return; setSaving(true);
-    try { await api.createMeasurement({ type: mModal.type.key, value: parseFloat(vP), value_secondary: vS ? parseFloat(vS) : undefined, unit: selectedMUnit || mModal.type.unit || "unit", note: vN || undefined }); setMModal({ open: false, type: null }); setVP(""); setVS(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+    if (!mModal.type || !vP) return;
+    setSaving(true);
+    const payload = {
+      type: mModal.type.key,
+      value: parseFloat(vP),
+      value_secondary: vS ? parseFloat(vS) : undefined,
+      unit: selectedMUnit || mModal.type.unit || "unit",
+      note: vN || undefined,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [payload, ...measurements];
+    setMeasurements(updated);
+    await set(K.measurements, updated);
+    setMModal({ open: false, type: null }); setVP(""); setVS(""); setVN("");
+    try {
+      await api.createMeasurement(payload);
+    } catch {
+      await enqueueWrite("measurement", payload);
+    } finally {
+      setSaving(false);
+      backgroundRefresh(loadServer);
+    }
   };
+
   const saveActivity = async () => {
-    if (!aModal.type || !vP) return; setSaving(true);
-    try { await api.createActivity({ type: aModal.type.key, value: parseFloat(vP), unit: selectedAUnit || aModal.type.unit || "unit", note: vN || undefined }); setAModal({ open: false, type: null }); setVP(""); setVN(""); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+    if (!aModal.type || !vP) return;
+    setSaving(true);
+    const payload = {
+      type: aModal.type.key,
+      value: parseFloat(vP),
+      unit: selectedAUnit || aModal.type.unit || "unit",
+      note: vN || undefined,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [payload, ...activities];
+    setActivities(updated);
+    await set(K.activities, updated);
+    setAModal({ open: false, type: null }); setVP(""); setVN("");
+    try {
+      await api.createActivity(payload);
+    } catch {
+      await enqueueWrite("activity", payload);
+    } finally {
+      setSaving(false);
+      backgroundRefresh(loadServer);
+    }
   };
+
   const saveMood = async () => {
     setSaving(true);
-    try { await api.createMood({ score: ms, note: mn || undefined }); setMn(""); setMs(3); backgroundRefresh(loadServer); } catch {} finally { setSaving(false); }
+    const payload = {
+      score: ms,
+      note: mn || undefined,
+      created_at: new Date().toISOString(),
+    };
+    const updated = [payload, ...mood];
+    setMood(updated);
+    await set(K.mood, updated);
+    setMn(""); setMs(3);
+    try {
+      await api.createMood(payload);
+    } catch {
+      await enqueueWrite("mood", payload);
+    } finally {
+      setSaving(false);
+      backgroundRefresh(loadServer);
+    }
   };
 
   const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold && m.active !== false) : filter === "active" ? meds.filter(m => m.active !== false) : filter === "completed" ? meds.filter(m => m.active === false || m.completed === true) : meds;

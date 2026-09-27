@@ -12,6 +12,7 @@ except ImportError:
 from fastapi.responses import Response
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -126,6 +127,7 @@ app = FastAPI(
     redoc_url=None,     # Disable /redoc in production
     openapi_url=None,   # Disable /openapi.json in production
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)
 api = APIRouter(prefix="/api")
 
 # Rate limiter
@@ -803,18 +805,24 @@ async def list_medications(active: Optional[bool] = None, user_id: str = Depends
                 {"id": item["id"], "user_id": user_id},
                 {"$set": {"stock": 0}}
             )
-    # Smart refill prediction + reminder-time nudges (best-effort, never blocks the list)
-    for item in items:
+    # Smart refill prediction + reminder-time nudges (run concurrently via asyncio.gather)
+    async def _enhance_item(item: dict) -> dict:
         try:
-            item["days_left"] = await _predicted_days_left(user_id, item)
+            days_left, nudges = await asyncio.gather(
+                _predicted_days_left(user_id, item),
+                _reminder_nudges_for_med(user_id, item),
+                return_exceptions=True
+            )
+            item["days_left"] = days_left if isinstance(days_left, (int, float)) else None
+            item["nudges"] = nudges if isinstance(nudges, list) else []
         except Exception as e:
-            logger.warning(f"days_left prediction failed for {item.get('id')}: {e}")
+            logger.warning(f"Enhancement failed for med {item.get('id')}: {e}")
             item["days_left"] = None
-        try:
-            item["nudges"] = await _reminder_nudges_for_med(user_id, item)
-        except Exception as e:
-            logger.warning(f"nudge detection failed for {item.get('id')}: {e}")
             item["nudges"] = []
+        return item
+
+    if items:
+        items = list(await asyncio.gather(*[_enhance_item(item) for item in items]))
     return items
 
 
@@ -824,27 +832,35 @@ async def create_medication(payload: MedicationCreate, user_id: str = Depends(ge
     existing_med_count = await db.medications.count_documents({"user_id": user_id, "active": True})
     if existing_med_count >= features.get("max_medications", 3):
         raise HTTPException(402, "ERR_PLAN: Medication limit reached for your plan. Upgrade at pillcare.in/pricing.")
-    # Optionally resolve generic name if not provided
-    generic = payload.generic_name
-    if not generic and GROQ_API_KEY:
-        try:
-            generic = await _resolve_generic(payload.name)
-            # Combination products (multivitamins, etc.) often have no single
-            # generic name - treat the AI's "unknown" as no match, not a value.
-            if generic.strip().lower() == "unknown":
-                generic = ""
-        except Exception as e:
-            logger.warning(f"Generic resolution failed: {e}")
+    
+    # Save medication immediately for instant <10ms UI response
+    generic = payload.generic_name or ""
     data = payload.model_dump()
     data["generic_name"] = generic
     med = Medication(user_id=user_id, **data)
-    await db.medications.insert_one(med.model_dump())
+    med_dict = med.model_dump()
+    await db.medications.insert_one(med_dict)
+    
+    # Asynchronous background generic resolution (never blocks client response)
+    if not generic and (GROQ_API_KEY or FDA_API_KEY):
+        async def _bg_resolve_generic(med_id: str, brand_name: str, u_id: str):
+            try:
+                gen = await _resolve_generic(brand_name)
+                if gen and gen.strip().lower() != "unknown":
+                    await db.medications.update_one(
+                        {"id": med_id, "user_id": u_id},
+                        {"$set": {"generic_name": gen}}
+                    )
+            except Exception as ex:
+                logger.warning(f"Background generic resolution failed for {med_id}: {ex}")
+        asyncio.create_task(_bg_resolve_generic(med.id, payload.name, user_id))
+
     await track_event("medication_added", user_id, {
         "medication_name": med.name if hasattr(med, 'name') else "",
         "frequency": med.frequency if hasattr(med, 'frequency') else "",
-        "total_medications": await db.medications.count_documents({"user_id": user_id, "active": True}),
+        "total_medications": existing_med_count + 1,
     })
-    return _clean(med.model_dump())
+    return _clean(med_dict)
 
 
 @api.get("/medications/{med_id}")

@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { useFocusEffect } from "expo-router";
 import { get, set, K } from "@/src/lib/store";
+import { enqueueWrite } from "@/src/lib/sync";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation, SUPPORTED_LANGUAGES, SupportedLocale } from "@/src/context/LanguageContext";
 import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
@@ -42,13 +43,16 @@ export default function Profile() {
 
   const save = async () => {
     setSaving(true);
+    // 1. Instant local persistence
+    await set(K.profile, profile);
+    setChanged(false);
+    Alert.alert("Saved", "Your profile has been updated.");
+
+    // 2. Network push + offline queue
     try {
       await api.upsertProfile(profile);
-      set(K.profile, profile);
-      setChanged(false);
-      Alert.alert("Saved", "Your profile has been updated.");
     } catch {
-      Alert.alert("Error", "Could not save profile. Please try again.");
+      await enqueueWrite("profile", profile);
     } finally { setSaving(false); }
   };
 

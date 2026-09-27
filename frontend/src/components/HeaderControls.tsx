@@ -160,6 +160,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    flexShrink: 0,
   },
   btn: {
     flexDirection: "row",
