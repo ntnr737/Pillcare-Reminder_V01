@@ -2015,24 +2015,29 @@ async def nearby_places(
         return int(math.sqrt(dlat**2 + dlng**2))
 
     def get_relative_defaults():
+        import datetime
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        ist_hour = (now_utc.hour + 5 + ((now_utc.minute + 30) // 60)) % 24
+        is_daytime = (8 <= ist_hour < 21)
+
         if type == "pharmacy":
             raw = [
-                {"id": "p1", "name": "Apollo Pharmacy", "address": "Main Market Road", "offset_lat": 0.002, "offset_lng": 0.002, "rating": 4.8, "phone": "+91 11 4567 8901"},
-                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "offset_lat": -0.004, "offset_lng": 0.003, "rating": 4.6, "phone": "+91 11 4123 5678"},
-                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "offset_lat": 0.006, "offset_lng": -0.005, "rating": 4.5, "phone": "+91 11 2345 6789"},
-                {"id": "p4", "name": "Jan Aushadhi Kendra", "address": "Block C Market", "offset_lat": -0.003, "offset_lng": -0.003, "rating": 4.7, "phone": "+91 11 3456 7890"},
+                {"id": "p1", "name": "Apollo Pharmacy (24/7)", "address": "Main Market Road", "offset_lat": 0.002, "offset_lng": 0.002, "rating": 4.8, "phone": "+91 11 4567 8901", "open": True},
+                {"id": "p2", "name": "MedPlus Chemist & Wellness", "address": "Station Road, Near Metro", "offset_lat": -0.004, "offset_lng": 0.003, "rating": 4.6, "phone": "+91 11 4123 5678", "open": is_daytime},
+                {"id": "p3", "name": "Sanjeevani Medical Store", "address": "Civil Hospital Gate", "offset_lat": 0.006, "offset_lng": -0.005, "rating": 4.5, "phone": "+91 11 2345 6789", "open": is_daytime},
+                {"id": "p4", "name": "Jan Aushadhi Kendra", "address": "Block C Market", "offset_lat": -0.003, "offset_lng": -0.003, "rating": 4.7, "phone": "+91 11 3456 7890", "open": is_daytime},
             ]
         elif type == "diagnostic":
             raw = [
-                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "offset_lat": 0.003, "offset_lng": -0.003, "rating": 4.9, "phone": "+91 11 4987 6543"},
-                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "offset_lat": -0.005, "offset_lng": -0.004, "rating": 4.7, "phone": "+91 11 4876 5432"},
-                {"id": "d3", "name": "SRL Diagnostics", "address": "Medical Hub, 1st Floor", "offset_lat": 0.005, "offset_lng": 0.004, "rating": 4.8, "phone": "+91 11 4765 4321"},
+                {"id": "d1", "name": "Dr. Lal PathLabs", "address": "Diagnostic Center, Block B", "offset_lat": 0.003, "offset_lng": -0.003, "rating": 4.9, "phone": "+91 11 4987 6543", "open": is_daytime},
+                {"id": "d2", "name": "Metropolis Healthcare", "address": "Central Avenue", "offset_lat": -0.005, "offset_lng": -0.004, "rating": 4.7, "phone": "+91 11 4876 5432", "open": is_daytime},
+                {"id": "d3", "name": "SRL Diagnostics", "address": "Medical Hub, 1st Floor", "offset_lat": 0.005, "offset_lng": 0.004, "rating": 4.8, "phone": "+91 11 4765 4321", "open": is_daytime},
             ]
         else:
             raw = [
-                {"id": "h1", "name": "City Multispeciality Hospital", "address": "Ring Road Sector 4", "offset_lat": 0.008, "offset_lng": 0.006, "rating": 4.7, "phone": "+91 11 2654 3210"},
-                {"id": "h2", "name": "Max Healthcare Clinic", "address": "Main Boulevard", "offset_lat": -0.009, "offset_lng": 0.007, "rating": 4.8, "phone": "+91 11 2543 2109"},
-                {"id": "h3", "name": "Fortis Medical Center", "address": "Healthcare Enclave", "offset_lat": 0.011, "offset_lng": -0.009, "rating": 4.6, "phone": "+91 11 2432 1098"},
+                {"id": "h1", "name": "City Multispeciality Hospital (24x7)", "address": "Ring Road Sector 4", "offset_lat": 0.008, "offset_lng": 0.006, "rating": 4.7, "phone": "+91 11 2654 3210", "open": True},
+                {"id": "h2", "name": "Max Healthcare Clinic", "address": "Main Boulevard", "offset_lat": -0.009, "offset_lng": 0.007, "rating": 4.8, "phone": "+91 11 2543 2109", "open": is_daytime},
+                {"id": "h3", "name": "Fortis Medical Center (24x7)", "address": "Healthcare Enclave", "offset_lat": 0.011, "offset_lng": -0.009, "rating": 4.6, "phone": "+91 11 2432 1098", "open": True},
             ]
         
         out = []
@@ -2047,7 +2052,7 @@ async def nearby_places(
                 "rating": item["rating"],
                 "lat": plat,
                 "lng": plng,
-                "open": True,
+                "open": item["open"],
                 "phone": item["phone"]
             })
         out.sort(key=lambda x: x["distance"])
@@ -2099,25 +2104,30 @@ async def nearby_places(
             places.sort(key=lambda x: x["distance"])
             top_places = places[:max_results]
 
-            async def _fetch_phone(place_id):
+            async def _fetch_details(place_id):
                 if not place_id:
-                    return None
+                    return {}
                 try:
                     async with httpx.AsyncClient(timeout=5) as pc:
                         pr = await pc.get(
                             "https://maps.googleapis.com/maps/api/place/details/json",
-                            params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number", "key": GOOGLE_PLACES_KEY},
+                            params={"place_id": place_id, "fields": "formatted_phone_number,international_phone_number,opening_hours", "key": GOOGLE_PLACES_KEY},
                         )
                     pd = pr.json()
                     res = pd.get("result", {})
-                    return res.get("international_phone_number") or res.get("formatted_phone_number")
+                    ph = res.get("international_phone_number") or res.get("formatted_phone_number")
+                    op = res.get("opening_hours", {}).get("open_now")
+                    return {"phone": ph, "open": op}
                 except Exception:
-                    return None
+                    return {}
 
             if top_places:
-                phones = await asyncio.gather(*[_fetch_phone(pl["id"]) for pl in top_places])
-                for pl, ph in zip(top_places, phones):
-                    pl["phone"] = ph
+                details_list = await asyncio.gather(*[_fetch_details(pl["id"]) for pl in top_places])
+                for pl, det in zip(top_places, details_list):
+                    if det.get("phone"):
+                        pl["phone"] = det["phone"]
+                    if det.get("open") is not None:
+                        pl["open"] = det["open"]
 
             return {"places": top_places if top_places else get_relative_defaults(), "source": "google"}
         else:
