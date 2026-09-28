@@ -17,7 +17,7 @@ import { CalendarModal } from "@/src/components/CalendarModal";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 import { getFeatures } from "@/src/lib/features";
-import { track, type EventName } from "@/src/lib/analytics";
+import { track, trackScreenView, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
 import { resyncReminders } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
@@ -174,7 +174,10 @@ export default function Today() {
     setRefreshing(false);
   };
 
-  useFocusEffect(useCallback(() => { fetchServer(); }, [date]));
+  useFocusEffect(useCallback(() => {
+    fetchServer();
+    trackScreenView("today");
+  }, [date]));
 
   useEffect(() => {
     const d = new Date().getDay();

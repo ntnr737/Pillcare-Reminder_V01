@@ -6,7 +6,7 @@ import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { RefillModal } from "@/src/components/RefillModal";
 import { api } from "@/src/lib/api";
-import { track } from "@/src/lib/analytics";
+import { track, trackScreenView } from "@/src/lib/analytics";
 import { resyncReminders, YOGA_CATEGORY } from "@/src/lib/notifications";
 import { get, set, K, logCourseCompleted } from "@/src/lib/store";
 import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
@@ -231,6 +231,7 @@ export default function Treatment() {
   useFocusEffect(useCallback(() => {
     loadCache();
     backgroundRefresh(loadServer);
+    trackScreenView("treatment");
   }, [loadCache, loadServer]));
 
   const openMeasurementModal = (mt: any) => {

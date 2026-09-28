@@ -7,7 +7,7 @@ import * as Location from "expo-location";
 import { signOut, getStoredUser, isGuestUser, PillcareUser } from "@/src/lib/auth";
 import { HeaderControls } from "@/src/components/HeaderControls";
 import { api } from "@/src/lib/api";
-import { track } from "@/src/lib/analytics";
+import { track, trackScreenView } from "@/src/lib/analytics";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 
@@ -96,6 +96,7 @@ export default function Support() {
   useFocusEffect(
     useCallback(() => {
       loadAuthUser();
+      trackScreenView("support");
     }, [])
   );
 

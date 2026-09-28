@@ -21,7 +21,7 @@ import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 import { COLORS } from "@/src/constants/theme";
 import { api } from "@/src/lib/api";
-import { track } from "@/src/lib/analytics";
+import { track, trackScreenView } from "@/src/lib/analytics";
 import { get, set, K } from "@/src/lib/store";
 import { YOGA_CATEGORY, scheduleYogaReminderFromStore } from "@/src/lib/notifications";
 import { getFeatures } from "@/src/lib/features";
@@ -320,6 +320,7 @@ export default function YogaTabScreen() {
   useFocusEffect(
     useCallback(() => {
       loadProgress();
+      trackScreenView("yoga");
     }, [activeRoutineIndex, selectedCategory])
   );
 

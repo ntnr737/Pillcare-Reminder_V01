@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
+import { trackScreenView } from "@/src/lib/analytics";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
@@ -99,6 +100,7 @@ export default function Progress() {
     get<any[]>(K.history).then(h => { if (h && Array.isArray(h)) setHistory(h); });
     get<any[]>(K.medications).then(m => { if (m && Array.isArray(m)) setMeds(m); });
     backgroundRefresh(loadServer);
+    trackScreenView("progress");
   }, [loadServer]));
   const onRefresh = async () => { setRefreshing(true); await loadServer(); setRefreshing(false); };
 
