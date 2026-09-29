@@ -4100,174 +4100,6 @@ async function onGoogle(resp) {
   }
 }
 
-function showErr(msg) { const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display='block'; e.style.color='#f87171'; setTimeout(()=>e.style.display='none',8000); }
-
-function hdrs() {
-  const secret = localStorage.getItem('pillcare_admin_secret') || 'pillcare_admin_secret_key_2026';
-  const headers = {
-    'X-Admin-Secret': secret,
-    'Content-Type': 'application/json'
-  };
-  if (TOKEN && TOKEN.length > 20) {
-    headers['Authorization'] = 'Bearer ' + TOKEN;
-  }
-  return headers;
-}
-
-function getApiBase() {
-  const stored = localStorage.getItem('pillcare_api_base');
-  if (stored) return stored;
-  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    return 'http://localhost:8000';
-  }
-  return B;
-}
-
-async function req(path, opts={}) {
-  startProgress();
-  const primaryBase = getApiBase();
-  const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-  
-  const pathFallbackMap = {
-    '/admin/stats': FALLBACK.stats,
-    '/admin/revenue': FALLBACK.revenue,
-    '/admin/analytics/doses': FALLBACK.doses,
-    '/admin/users': { users: FALLBACK.users, total: FALLBACK.users.length, page: 1 },
-    '/admin/subscriptions': { subscriptions: FALLBACK.subs, total: FALLBACK.subs.length },
-    '/admin/analytics/location': FALLBACK.location,
-    '/admin/analytics/devices': FALLBACK.devices,
-    '/admin/analytics/financials': { mrr_inr: 2772, arr_inr: 33264, arpu_inr: 99.0, ltv_inr: 1188, active_subscribers: 28, total_users: 32, paid_conversion_rate: 87.5 },
-    '/admin/analytics/real-time': FALLBACK.realtime,
-    '/admin/analytics/cohorts': { cohorts: FALLBACK.cohorts },
-    '/admin/analytics/filter': { users: FALLBACK.users.map(u => ({ email: u.email, plan: u.plan, metric_value: u.doses_taken, user_id: u.user_id })) },
-    '/admin/analytics/users/comprehensive': { users: FALLBACK.user_insights },
-    '/admin/analytics/healthcare-intelligence': FALLBACK.healthcare_intel,
-    '/admin/analytics/tag-manager': FALLBACK.tag_manager,
-    '/admin/blocked-ips': { blocked: FALLBACK.security },
-    '/admin/announcements': FALLBACK.announcements,
-    '/admin/push-tokens': {
-      total_tokens: 3,
-      tokens: [
-        { token: "ExponentPushToken[SimulatedAdminDevice01]", email: "admin@pillcare.in", plan: "premium", updated: "Just now" },
-        { token: "ExponentPushToken[SimulatedUserDevice02]", email: "user_mumbai@pillcare.in", plan: "free", updated: "2 hrs ago" }
-      ],
-      recent_broadcasts: [
-        { title: "💊 PillCare Evening Dose Reminder", body: "Don't forget your 8:00 PM Metformin dose!", target_plan: "all", sent: 2, failed: 0, total_tokens: 2, ts: new Date().toISOString() }
-      ]
-    }
-  };
-
-  async function doFetch(baseUrl) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
-    try {
-      const url = baseUrl + path;
-      const r = await fetch(url, {
-        ...opts,
-        signal: controller.signal,
-        headers: { ...hdrs(), ...(opts.headers || {}) }
-      });
-      clearTimeout(timeoutId);
-      if (r.status === 401) {
-        const secret = localStorage.getItem('pillcare_admin_secret') || 'pillcare_admin_secret_key_2026';
-        const retry = await fetch(url, {
-          ...opts,
-          headers: { 'X-Admin-Secret': secret, 'Content-Type': 'application/json' }
-        });
-        if (!retry.ok) throw new Error('API error ' + retry.status);
-        return retry.json();
-      }
-      if (!r.ok) throw new Error('API error ' + r.status);
-      return r.json();
-    } catch(err) {
-      clearTimeout(timeoutId);
-      throw err;
-    }
-  }
-
-  try {
-    const data = await doFetch(primaryBase);
-    endProgress(true);
-    return data;
-  } catch(e1) {
-    console.warn(`Primary API fetch (${primaryBase}${path}) failed:`, e1);
-    if (isLocalHost) {
-      try {
-        const fallbackBase = 'http://localhost:8000';
-        const data = await doFetch(fallbackBase);
-        endProgress(true);
-        return data;
-      } catch(e2) {
-        console.warn('Localhost failover failed:', e2);
-      }
-    }
-    
-    const key = Object.keys(pathFallbackMap).find(k => path.startsWith(k));
-    if (key && pathFallbackMap[key]) {
-      endProgress(true);
-      return pathFallbackMap[key];
-    }
-    
-    endProgress(false);
-    throw e1;
-  }
-}
-
-function go(id, el) {
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
-  document.querySelectorAll('.nav').forEach(n=>n.classList.remove('on'));
-  const pg = document.getElementById('pg-'+id);
-  if (pg) pg.classList.add('on');
-  
-  if (el) {
-    el.classList.add('on');
-  } else {
-    const navBtn = Array.from(document.querySelectorAll('.nav')).find(b => b.getAttribute('onclick') && b.getAttribute('onclick').includes(`go('${id}'`));
-    if (navBtn) navBtn.classList.add('on');
-  }
-
-  startProgress('Loading ' + id + ' telemetry & metrics...');
-  const loaders = {
-    dashboard: loadAll,
-    analytics: loadAnalytics,
-    users: loadUsers,
-    subscriptions: () => loadSubs(''),
-    location: loadLocation,
-    devices: loadDevices,
-    revenue: loadRevenue,
-    'adv-analytics': loadAdvancedAnalytics,
-    'health-intel': loadHealthcareIntel,
-    'user-insights': loadUserInsights,
-    tagmanager: loadTagManagerAnalytics,
-    notifications: loadNotifications,
-    security: loadSecurity
-  };
-
-  if (loaders[id]) {
-    try {
-      Promise.resolve(loaders[id]()).catch(err => {
-        console.warn('Tab loader warning for ' + id + ':', err);
-      }).finally(() => {
-        endProgress(true);
-      });
-    } catch(err) {
-      console.warn('Sync loader warning for ' + id + ':', err);
-      endProgress(true);
-    }
-  } else {
-    endProgress(true);
-  }
-}
-
-function logout() {
-  TOKEN = '';
-  localStorage.removeItem('pillcare_admin_token');
-  localStorage.removeItem('pillcare_admin_user');
-  document.getElementById('appPage').style.display = 'none';
-  document.getElementById('loginPage').style.display = 'flex';
-  if (window.google) google.accounts.id.disableAutoSelect();
-}
-
 // ── SMART FALLBACK TELEMETRY FOR ZERO-DOWNTIME ADMIN UI ──
 const FALLBACK = {
   stats: {
@@ -4374,6 +4206,189 @@ const FALLBACK = {
   }
 };
 
+function getFallbackDataForPath(path) {
+  if (path.startsWith('/admin/stats')) return FALLBACK.stats;
+  if (path.startsWith('/admin/revenue')) return FALLBACK.revenue;
+  if (path.startsWith('/admin/analytics/doses')) return FALLBACK.doses;
+  if (path.startsWith('/admin/users')) return { users: FALLBACK.users, total: FALLBACK.users.length, page: 1 };
+  if (path.startsWith('/admin/subscriptions')) return { subscriptions: FALLBACK.subs, total: FALLBACK.subs.length };
+  if (path.startsWith('/admin/analytics/location')) return FALLBACK.location;
+  if (path.startsWith('/admin/analytics/devices')) return FALLBACK.devices;
+  if (path.startsWith('/admin/analytics/financials')) return { mrr_inr: 2772, arr_inr: 33264, arpu_inr: 99.0, ltv_inr: 1188, active_subscribers: 28, total_users: 32, paid_conversion_rate: 87.5 };
+  if (path.startsWith('/admin/analytics/real-time')) return FALLBACK.realtime;
+  if (path.startsWith('/admin/analytics/cohorts')) return { cohorts: FALLBACK.cohorts };
+  if (path.startsWith('/admin/analytics/filter')) return { users: FALLBACK.users.map(u => ({ email: u.email, plan: u.plan, metric_value: u.doses_taken, user_id: u.user_id })) };
+  if (path.startsWith('/admin/analytics/users/comprehensive')) return { users: FALLBACK.user_insights };
+  if (path.startsWith('/admin/analytics/healthcare-intelligence')) return FALLBACK.healthcare_intel;
+  if (path.startsWith('/admin/analytics/tag-manager')) return FALLBACK.tag_manager;
+  if (path.startsWith('/admin/blocked-ips')) return { blocked: FALLBACK.security };
+  if (path.startsWith('/admin/announcements')) return FALLBACK.announcements;
+  if (path.startsWith('/admin/push-tokens')) return {
+    total_tokens: 3,
+    tokens: [
+      { token: "ExponentPushToken[SimulatedAdminDevice01]", email: "admin@pillcare.in", plan: "premium", updated: "Just now" },
+      { token: "ExponentPushToken[SimulatedUserDevice02]", email: "user_mumbai@pillcare.in", plan: "free", updated: "2 hrs ago" }
+    ],
+    recent_broadcasts: [
+      { title: "💊 PillCare Evening Dose Reminder", body: "Don't forget your 8:00 PM Metformin dose!", target_plan: "all", sent: 2, failed: 0, total_tokens: 2, ts: new Date().toISOString() }
+    ]
+  };
+  return null;
+}
+
+function showErr(msg) { const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display='block'; e.style.color='#f87171'; setTimeout(()=>e.style.display='none',8000); }
+
+function hdrs() {
+  const secret = localStorage.getItem('pillcare_admin_secret') || 'pillcare_admin_secret_key_2026';
+  const headers = {
+    'X-Admin-Secret': secret,
+    'Content-Type': 'application/json'
+  };
+  if (TOKEN && TOKEN.length > 20) {
+    headers['Authorization'] = 'Bearer ' + TOKEN;
+  }
+  return headers;
+}
+
+function getApiBase() {
+  const stored = localStorage.getItem('pillcare_api_base');
+  if (stored) return stored;
+  if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    return 'http://localhost:8000';
+  }
+  return B;
+}
+
+async function req(path, opts={}) {
+  startProgress();
+  const primaryBase = getApiBase();
+  const isLocalHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+
+  async function doFetch(baseUrl) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    try {
+      const url = baseUrl + path;
+      const r = await fetch(url, {
+        ...opts,
+        signal: controller.signal,
+        headers: { ...hdrs(), ...(opts.headers || {}) }
+      });
+      clearTimeout(timeoutId);
+      if (r.status === 401) {
+        const secret = localStorage.getItem('pillcare_admin_secret') || 'pillcare_admin_secret_key_2026';
+        const retry = await fetch(url, {
+          ...opts,
+          headers: { 'X-Admin-Secret': secret, 'Content-Type': 'application/json' }
+        });
+        if (!retry.ok) throw new Error('API error ' + retry.status);
+        return retry.json();
+      }
+      if (!r.ok) throw new Error('API error ' + r.status);
+      return r.json();
+    } catch(err) {
+      clearTimeout(timeoutId);
+      throw err;
+    }
+  }
+
+  try {
+    const data = await doFetch(primaryBase);
+    endProgress(true);
+    return data;
+  } catch(e1) {
+    console.warn(`Primary API fetch (${primaryBase}${path}) failed:`, e1);
+    if (isLocalHost) {
+      try {
+        const fallbackBase = 'http://localhost:8000';
+        const data = await doFetch(fallbackBase);
+        endProgress(true);
+        return data;
+      } catch(e2) {
+        console.warn('Localhost failover failed:', e2);
+      }
+    }
+    
+    const fallbackData = getFallbackDataForPath(path);
+    if (fallbackData) {
+      endProgress(true);
+      return fallbackData;
+    }
+    
+    endProgress(false);
+    throw e1;
+  }
+}
+
+function go(id, el) {
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.nav').forEach(n=>n.classList.remove('on'));
+  const pg = document.getElementById('pg-'+id);
+  if (pg) pg.classList.add('on');
+  
+  if (el) {
+    el.classList.add('on');
+  } else {
+    const navBtn = Array.from(document.querySelectorAll('.nav')).find(b => b.getAttribute('onclick') && b.getAttribute('onclick').includes(`go('${id}'`));
+    if (navBtn) navBtn.classList.add('on');
+  }
+
+  startProgress('Loading ' + id + ' telemetry & metrics...');
+  const loaders = {
+    dashboard: loadAll,
+    analytics: loadAnalytics,
+    users: loadUsers,
+    subscriptions: () => loadSubs(''),
+    location: loadLocation,
+    devices: loadDevices,
+    revenue: loadRevenue,
+    'adv-analytics': loadAdvancedAnalytics,
+    'health-intel': loadHealthcareIntel,
+    'user-insights': loadUserInsights,
+    tagmanager: loadTagManagerAnalytics,
+    notifications: loadNotifications,
+    security: loadSecurity
+  };
+
+  if (loaders[id]) {
+    try {
+      Promise.resolve(loaders[id]()).catch(err => {
+        console.warn('Tab loader warning for ' + id + ':', err);
+      }).finally(() => {
+        endProgress(true);
+      });
+    } catch(err) {
+      console.warn('Sync loader warning for ' + id + ':', err);
+      endProgress(true);
+    }
+  } else {
+    endProgress(true);
+  }
+}
+
+function logout() {
+  TOKEN = '';
+  localStorage.removeItem('pillcare_admin_token');
+  localStorage.removeItem('pillcare_admin_user');
+  document.getElementById('appPage').style.display = 'none';
+  document.getElementById('loginPage').style.display = 'flex';
+  if (window.google) google.accounts.id.disableAutoSelect();
+}
+
+// ── SMART FALLBACK TELEMETRY FOR ZERO-DOWNTIME ADMIN UI ──
+const FALLBACK = {
+  stats: {
+    users: { total: 32, new_today: 4, new_week: 14, new_month: 32, active_week: 28, retention_rate: 87.5 },
+    health: { total_doses_tracked: 420, taken: 388, missed: 22, global_adherence_rate: 92.4 },
+    top_medications: [
+      { name: "Metformin HCl 500mg", users: 18 },
+      { name: "Amoxicillin 500mg", users: 14 },
+      { name: "Atorvastatin 20mg", users: 12 },
+      { name: "Omeprazole 20mg", users: 9 },
+      { name: "Losartan Potassium 50mg", users: 7 }
+    ],
+    feature_usage: [
+      { feature: "yoga_viewed", count: 48 },
 async function loadAll() {
   let stats, rev;
   try {
@@ -6806,7 +6821,6 @@ async def admin_device_analytics(_: None = Depends(require_admin)):
 @app.get("/admin/analytics/cohorts")
 async def admin_cohort_analytics(_: None = Depends(require_admin)):
     """Cohort retention analysis for admin dashboard."""
-    try:
     now = datetime.now(timezone.utc)
     cohorts_data = []
     for days_ago in [30, 21, 14, 7]:
