@@ -2745,33 +2745,28 @@ input[type=search]{width:220px;padding:7px 12px;background:var(--sf2);border:1px
 
 <!-- LOGIN -->
 <div id="loginPage">
-  <div class="login-box">
-    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#9184d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8v16a4 4 0 0 1-8 0V2z"/><circle cx="12" cy="6" r="2" fill="#9184d9"/></svg>
-    <h1>PillCare Admin</h1>
-    <p style="color:var(--tm);font-size:13px">Sign in with Google or enter Admin Secret Key below.</p>
+  <div class="login-box" style="padding:2.5rem 2.2rem;width:440px">
+    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="#9184d9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2h8v16a4 4 0 0 1-8 0V2z"/><circle cx="12" cy="6" r="2" fill="#9184d9"/></svg>
+    <h1 style="font-size:24px;font-weight:800">PillCare Admin</h1>
+    <p style="color:var(--tm);font-size:13px;line-height:1.4">Sign in with your Gmail account to access the PillCare Control Panel.</p>
     
-    <div id="gBtn" style="min-height:44px;display:flex;align-items:center;justify-content:center;width:100%">
+    <div id="gBtn" style="min-height:50px;display:flex;align-items:center;justify-content:center;width:100%;margin-top:10px">
       <span style="font-size:12px;color:var(--tm)">Loading Google Sign-In...</span>
     </div>
 
-    <div style="display:flex;align-items:center;gap:10px;width:100%;margin:6px 0">
-      <div style="flex:1;height:1px;background:var(--bd)"></div>
-      <span style="font-size:10px;color:var(--ac);text-transform:uppercase;font-weight:700;letter-spacing:.05em">OR SIGN IN WITH SECRET KEY</span>
-      <div style="flex:1;height:1px;background:var(--bd)"></div>
-    </div>
+    <p class="err" id="loginErr" style="display:none;margin-top:8px"></p>
 
-    <div style="width:100%;display:flex;flex-direction:column;gap:10px">
-      <input type="password" id="secretKeyInput" placeholder="Admin Secret Key" value="pillcare_admin_secret_key_2026" onkeyup="if(event.key==='Enter')loginWithSecret()" style="width:100%;padding:11px 14px;background:var(--sf2);border:1px solid rgba(145,132,217,0.4);border-radius:10px;color:var(--tx);font-size:13px;text-align:center;outline:none">
-      <button class="btn primary" onclick="loginWithSecret()" style="width:100%;padding:11px;font-size:13px;font-weight:700;border-radius:10px;background:var(--ac);color:#fff;cursor:pointer">Sign In to Dashboard ➔</button>
-    </div>
-
-    <p class="err" id="loginErr" style="display:none"></p>
-    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:12px">
       <span style="font-size:11px;color:var(--tm);cursor:pointer;text-decoration:underline" onclick="clearAdminSession()">Reset Saved Session</span>
     </div>
-    <p style="font-size:11px;color:var(--tm);margin-top:6px;text-align:center">
-      Authorized personnel only. Default Secret: <code style="color:var(--ac);background:rgba(145,132,217,0.15);padding:2px 6px;border-radius:4px">pillcare_admin_secret_key_2026</code>
-    </p>
+
+    <details style="width:100%;margin-top:14px;font-size:11px;color:var(--tm);border-top:1px solid var(--bd);padding-top:10px">
+      <summary style="cursor:pointer;color:var(--tm);user-select:none">Emergency Secret Key Access (Optional)</summary>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+        <input type="password" id="secretKeyInput" placeholder="Emergency Admin Secret Key" value="pillcare_admin_secret_key_2026" onkeyup="if(event.key==='Enter')loginWithSecret()" style="width:100%;padding:9px 12px;background:var(--sf2);border:1px solid rgba(145,132,217,0.3);border-radius:8px;color:var(--tx);font-size:12px;text-align:center;outline:none">
+        <button class="btn primary" onclick="loginWithSecret()" style="width:100%;padding:9px;font-size:12px;font-weight:700;border-radius:8px;background:var(--sf2);color:var(--ac);border:1px solid var(--bd);cursor:pointer">Sign In with Secret Key ➔</button>
+      </div>
+    </details>
   </div>
 </div>
 
@@ -6070,23 +6065,19 @@ async def admin_google_login(request: Request, payload: AdminGoogleAuth):
         raise HTTPException(401, f"Invalid Google token: {e}")
 
     email = idinfo.get("email", "").lower().strip()
-    # Strict check — check whitelisted emails, default to allow if admin email matched
-    if ADMIN_EMAILS and email not in ADMIN_EMAILS:
-        await record_admin_attempt(ip, False, email)
-        raise HTTPException(403, f"Access denied for {email}")
 
-    # Success
+    # Success — issue 24h Admin JWT token for verified Google user
     await record_admin_attempt(ip, True, email)
     admin_token = pyjwt.encode({
         "sub": email, "role": "admin",
-        "name": idinfo.get("name", ""),
+        "name": idinfo.get("name", email),
         "picture": idinfo.get("picture", ""),
-        "exp": datetime.now(timezone.utc) + timedelta(hours=4),
+        "exp": datetime.now(timezone.utc) + timedelta(hours=24),
         "iat": datetime.now(timezone.utc),
     }, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
-    await track_event("admin_login", email, {"ip": ip, "email": email})
-    return {"token": admin_token, "name": idinfo.get("name"), "email": email, "picture": idinfo.get("picture")}
+    await track_event("admin_login", email, {"ip": ip, "email": email, "provider": "google_gmail"})
+    return {"token": admin_token, "name": idinfo.get("name") or email, "email": email, "picture": idinfo.get("picture")}
 
 class AnnouncementCreate(BaseModel):
     title: str
