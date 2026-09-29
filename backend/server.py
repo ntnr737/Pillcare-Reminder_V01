@@ -2761,13 +2761,16 @@ input[type=search]{width:220px;padding:7px 12px;background:var(--sf2);border:1px
     </div>
 
     <div style="width:100%;display:flex;flex-direction:column;gap:10px">
-      <input type="password" id="secretKeyInput" placeholder="Admin Secret Key" value="pillcare_admin_secret_key_2026" style="width:100%;padding:11px 14px;background:var(--sf2);border:1px solid rgba(145,132,217,0.4);border-radius:10px;color:var(--tx);font-size:13px;text-align:center;outline:none">
-      <button class="btn primary" onclick="loginWithSecret()" style="width:100%;padding:11px;font-size:13px;font-weight:700;border-radius:10px;background:var(--ac);color:#fff">Sign In to Dashboard ➔</button>
+      <input type="password" id="secretKeyInput" placeholder="Admin Secret Key" value="pillcare_admin_secret_key_2026" onkeyup="if(event.key==='Enter')loginWithSecret()" style="width:100%;padding:11px 14px;background:var(--sf2);border:1px solid rgba(145,132,217,0.4);border-radius:10px;color:var(--tx);font-size:13px;text-align:center;outline:none">
+      <button class="btn primary" onclick="loginWithSecret()" style="width:100%;padding:11px;font-size:13px;font-weight:700;border-radius:10px;background:var(--ac);color:#fff;cursor:pointer">Sign In to Dashboard ➔</button>
     </div>
 
     <p class="err" id="loginErr" style="display:none"></p>
-    <p style="font-size:11px;color:var(--tm);margin-top:12px;text-align:center">
-      Authorized personnel only. Unauthorized access is prohibited.
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:8px">
+      <span style="font-size:11px;color:var(--tm);cursor:pointer;text-decoration:underline" onclick="clearAdminSession()">Reset Saved Session</span>
+    </div>
+    <p style="font-size:11px;color:var(--tm);margin-top:6px;text-align:center">
+      Authorized personnel only. Default Secret: <code style="color:var(--ac);background:rgba(145,132,217,0.15);padding:2px 6px;border-radius:4px">pillcare_admin_secret_key_2026</code>
     </p>
   </div>
 </div>
@@ -4026,27 +4029,52 @@ window.addEventListener('load', () => {
   let renderAttempts = 0;
   function tryRender() {
     renderAttempts++;
-    if (renderAttempts > 50) {
-      document.getElementById('gBtn').innerHTML = '<p style="color:#f87171;font-size:13px">Could not load Google Sign-In.<br>Check your internet connection and refresh.</p>';
+    if (renderAttempts > 30) {
+      const gBtn = document.getElementById('gBtn');
+      if (gBtn) gBtn.innerHTML = '<div style="font-size:12px;color:var(--tm);padding:6px;background:rgba(255,255,255,0.03);border-radius:8px">Google Sign-In script not loaded (or blocked by browser extension).<br>Use Admin Secret Key below to sign in.</div>';
       return;
     }
-    if (!window.google) { setTimeout(tryRender, 200); return; }
+    if (!window.google || !window.google.accounts) { setTimeout(tryRender, 150); return; }
     try {
-      google.accounts.id.initialize({ client_id: CID, callback: onGoogle, auto_select: false, use_fedcm_for_prompt: false });
+      google.accounts.id.initialize({ client_id: CID, callback: onGoogle, auto_select: false });
       const btn = document.getElementById('gBtn');
-      btn.innerHTML = '';
-      google.accounts.id.renderButton(btn, { type:'standard', theme:'filled_black', size:'large', text:'signin_with', width:280, locale:'en' });
+      if (btn) {
+        btn.innerHTML = '';
+        google.accounts.id.renderButton(btn, { type:'standard', theme:'filled_black', size:'large', text:'signin_with', width:300, locale:'en' });
+      }
     } catch(e) {
-      document.getElementById('gBtn').innerHTML = '<p style="color:#f87171;font-size:13px">Sign-In error: ' + e.message + '</p>';
+      console.warn('Google render error:', e);
+      const btn = document.getElementById('gBtn');
+      if (btn) btn.innerHTML = '<div style="font-size:12px;color:var(--tm)">Google Sign-In unavailable. Use Admin Secret Key below.</div>';
     }
   }
-  setTimeout(tryRender, 100);
+  setTimeout(tryRender, 50);
 });
 
 
-function loginWithSecret() {
+async function loginWithSecret() {
   const secret = document.getElementById('secretKeyInput').value.trim();
   if (!secret) { showErr('Please enter the Admin Secret Key.'); return; }
+  
+  showErr('Verifying Secret Key...', 'info');
+  TOKEN = '';
+  localStorage.removeItem('pillcare_admin_token');
+
+  try {
+    const apiBase = getApiBase();
+    const r = await fetch(apiBase + '/admin/stats', {
+      headers: { 'X-Admin-Secret': secret, 'Content-Type': 'application/json' }
+    });
+    if (!r.ok) {
+      if (r.status === 401 || r.status === 403) {
+        showErr('Invalid Admin Secret Key. Key rejected by server.');
+        return;
+      }
+    }
+  } catch(e) {
+    console.warn('Backend reachability warning during secret key check:', e);
+  }
+
   localStorage.setItem('pillcare_admin_secret', secret);
   localStorage.setItem('pillcare_admin_user', JSON.stringify({ name: 'Admin (Secret Key)', email: 'admin@pillcare.in' }));
   document.getElementById('loginPage').style.display = 'none';
@@ -4058,8 +4086,18 @@ function loginWithSecret() {
   loadAll();
 }
 
+function clearAdminSession() {
+  localStorage.removeItem('pillcare_admin_secret');
+  localStorage.removeItem('pillcare_admin_token');
+  localStorage.removeItem('pillcare_admin_user');
+  TOKEN = '';
+  const input = document.getElementById('secretKeyInput');
+  if (input) input.value = 'pillcare_admin_secret_key_2026';
+  showErr('Saved session cleared. Default secret restored.', 'success');
+}
+
 async function onGoogle(resp) {
-  showErr('Verifying...');
+  showErr('Verifying Google Account...', 'info');
   try {
     const r = await fetch(B+'/admin/auth/google', {
       method:'POST',
@@ -4070,7 +4108,7 @@ async function onGoogle(resp) {
     try { d = await r.json(); } catch { d = {}; }
     if (!r.ok) {
       const msg = d.detail || `Error ${r.status}: ${r.statusText}`;
-      showErr(msg);
+      showErr(msg + ' — Use Admin Secret Key below.');
       return;
     }
     TOKEN = d.token;
@@ -4236,7 +4274,16 @@ function getFallbackDataForPath(path) {
   return null;
 }
 
-function showErr(msg) { const e=document.getElementById('loginErr'); e.textContent=msg; e.style.display='block'; e.style.color='#f87171'; setTimeout(()=>e.style.display='none',8000); }
+function showErr(msg, type='error') {
+  const e = document.getElementById('loginErr');
+  if (!e) return;
+  e.textContent = msg;
+  e.style.display = 'block';
+  if (type === 'info') e.style.color = 'var(--ac)';
+  else if (type === 'success') e.style.color = 'var(--gr)';
+  else e.style.color = '#f87171';
+  setTimeout(() => e.style.display = 'none', 8000);
+}
 
 function hdrs() {
   const secret = localStorage.getItem('pillcare_admin_secret') || 'pillcare_admin_secret_key_2026';
