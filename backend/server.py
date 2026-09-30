@@ -2305,8 +2305,17 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
 
 
 @api.get("/export/csv")
-async def export_csv_report(user_id: str = Depends(get_current_user_id)):
+async def export_csv_report(request: Request, user_id: str = Depends(get_current_user_id)):
     """Exports complete user health history & medication records in CSV format."""
+    # Allow token query fallback if authorization header missing
+    if user_id == "demo_user" and request.query_params.get("token"):
+        q_token = request.query_params.get("token")
+        try:
+            payload = pyjwt.decode(q_token, JWT_SECRET, algorithms=["HS256"])
+            user_id = payload.get("sub", "demo_user")
+        except Exception:
+            pass
+
     buf = io.StringIO()
     w = csv.writer(buf)
 
@@ -2406,14 +2415,15 @@ async def export_csv_report(user_id: str = Depends(get_current_user_id)):
 
     # 6. Yoga & Wellness Logs
     w.writerow(["=== YOGA & WELLNESS LOGS ==="])
-    w.writerow(["Date", "Routine / Step Name", "Completed At"])
+    w.writerow(["Date", "Routine / Step Name", "Video URL", "Action Timestamp"])
     yoga_logs = await db.yoga_logs.find({"user_id": user_id}, PROJECTION).sort("ts", -1).to_list(1000)
     for y in yoga_logs:
         y_ts = y.get("ts")
-        y_str = y_ts.strftime("%Y-%m-%d %H:%M") if isinstance(y_ts, datetime) else str(y_ts or "")
+        y_str = y_ts.strftime("%Y-%m-%d %H:%M:%S UTC") if isinstance(y_ts, datetime) else str(y_ts or "")
         w.writerow([
             y.get("local_date", ""),
             y.get("step_name", ""),
+            y.get("video_url", ""),
             y_str
         ])
 
@@ -2425,14 +2435,18 @@ async def export_csv_report(user_id: str = Depends(get_current_user_id)):
     )
 
 @api.get("/export/excel")
-async def export_excel_report(user_id: str = Depends(get_current_user_id)):
+async def export_excel_report(request: Request, user_id: str = Depends(get_current_user_id)):
     """Exports full user health history & medication report in formatted Microsoft Excel (.xlsx) format."""
-    features = await get_user_features(user_id)
-    if not features.get("export_data"):
-        raise HTTPException(402, "ERR_PLAN: Data export requires a paid plan. Upgrade at pillcare.in/pricing.")
-    
+    if user_id == "demo_user" and request.query_params.get("token"):
+        q_token = request.query_params.get("token")
+        try:
+            payload = pyjwt.decode(q_token, JWT_SECRET, algorithms=["HS256"])
+            user_id = payload.get("sub", "demo_user")
+        except Exception:
+            pass
+
     if not EXCEL_OK:
-        return await export_csv_report(user_id)
+        return await export_csv_report(request, user_id)
 
     wb = openpyxl.Workbook()
     header_fill = PatternFill("solid", fgColor="4A55A2")
@@ -2471,7 +2485,7 @@ async def export_excel_report(user_id: str = Depends(get_current_user_id)):
         ws_sum.cell(row=r_idx, column=2, value=str(v))
 
     # Sheet 2: Medications
-    ws_meds = wb.create_sheet("Medications")
+    ws_meds = wb.create_sheet("Medications & Catalog")
     style_sheet(ws_meds, ["Medication Name", "Generic Name", "Dosage", "Unit", "Scheduled Times", "Stock Remaining", "Refill Threshold", "Status"])
     all_meds = await db.medications.find({"user_id": user_id}, PROJECTION).to_list(1000)
     for r_idx, m in enumerate(all_meds, 2):
@@ -2511,6 +2525,31 @@ async def export_excel_report(user_id: str = Depends(get_current_user_id)):
         ws_vitals.cell(row=r_idx, column=4, value=v.get("value_secondary", ""))
         ws_vitals.cell(row=r_idx, column=5, value=v.get("unit", ""))
         ws_vitals.cell(row=r_idx, column=6, value=v.get("note", ""))
+
+    # Sheet 5: Yoga & Wellness Logs
+    ws_yoga = wb.create_sheet("Yoga & Therapy Logs")
+    style_sheet(ws_yoga, ["Log Date", "Pose / Routine Step", "Video Tutorial URL", "Action Timestamp"])
+    yoga_logs = await db.yoga_logs.find({"user_id": user_id}, PROJECTION).sort("ts", -1).to_list(2000)
+    for r_idx, y in enumerate(yoga_logs, 2):
+        y_ts = y.get("ts")
+        y_str = y_ts.strftime("%Y-%m-%d %H:%M:%S UTC") if isinstance(y_ts, datetime) else str(y_ts or "")
+        ws_yoga.cell(row=r_idx, column=1, value=y.get("local_date", ""))
+        ws_yoga.cell(row=r_idx, column=2, value=y.get("step_name", ""))
+        ws_yoga.cell(row=r_idx, column=3, value=y.get("video_url", ""))
+        ws_yoga.cell(row=r_idx, column=4, value=y_str)
+
+    # Sheet 6: Doctor Appointments
+    ws_appts = wb.create_sheet("Doctor Appointments")
+    style_sheet(ws_appts, ["Doctor / Clinic Name", "Specialty", "Appointment Date", "Time", "Location", "Phone Contact", "Notes"])
+    appts = await db.appointments.find({"user_id": user_id}, PROJECTION).sort([("date", 1), ("time", 1)]).to_list(1000)
+    for r_idx, a in enumerate(appts, 2):
+        ws_appts.cell(row=r_idx, column=1, value=a.get("doctor_name", ""))
+        ws_appts.cell(row=r_idx, column=2, value=a.get("specialty", ""))
+        ws_appts.cell(row=r_idx, column=3, value=a.get("date", ""))
+        ws_appts.cell(row=r_idx, column=4, value=a.get("time", ""))
+        ws_appts.cell(row=r_idx, column=5, value=a.get("location", ""))
+        ws_appts.cell(row=r_idx, column=6, value=a.get("phone", ""))
+        ws_appts.cell(row=r_idx, column=7, value=a.get("notes", ""))
 
     # Auto-adjust column widths across all sheets
     for sheet in wb.worksheets:

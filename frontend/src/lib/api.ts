@@ -65,6 +65,7 @@ export const api = {
   caregiverAlert: (message: string, medication_name?: string) => req<any>("/caregiver/alert", { method: "POST", body: JSON.stringify({ message, medication_name }) }),
   caregiverLog: () => req<any[]>("/caregiver/log"),
   exportCsvUrl: () => `${BASE}/api/export/csv`,
+  exportExcelUrl: () => `${BASE}/api/export/excel`,
   exportCsv: async (): Promise<string> => {
     const token = await getStoredToken();
     const res = await fetch(`${BASE}/api/export/csv`, {

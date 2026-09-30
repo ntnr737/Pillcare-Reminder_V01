@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
-import { signOut, getStoredUser, isGuestUser, PillcareUser } from "@/src/lib/auth";
+import { signOut, getStoredUser, getStoredToken, isGuestUser, PillcareUser } from "@/src/lib/auth";
 import { HeaderControls } from "@/src/components/HeaderControls";
 import { api } from "@/src/lib/api";
 import { track, trackScreenView } from "@/src/lib/analytics";
@@ -77,6 +77,7 @@ export default function Support() {
   const [caregiverConnected, setCaregiverConnected] = useState(false);
   const [savingCg, setSavingCg] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const isMounted = useRef(true);
   useEffect(() => () => { isMounted.current = false; }, []);
@@ -158,6 +159,31 @@ export default function Support() {
     }
   };
 
+  const handleExportData = async (format: "excel" | "csv") => {
+    setExporting(true);
+    try {
+      const token = await getStoredToken();
+      const endpoint = format === "excel" ? api.exportExcelUrl() : api.exportCsvUrl();
+      const fullUrl = `${endpoint}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+      
+      const canOpen = await Linking.canOpenURL(fullUrl).catch(() => true);
+      if (canOpen) {
+        await Linking.openURL(fullUrl);
+        track("export_data_triggered", { format });
+        Alert.alert(
+          t("common.success", "Export Initiated"),
+          `Downloading your ${format.toUpperCase()} health report with full medication, dose logs, yoga sessions & vitals.`
+        );
+      } else {
+        Alert.alert(t("common.error", "Error"), "Unable to open export URL on this device.");
+      }
+    } catch (err: any) {
+      Alert.alert(t("common.error", "Error"), err.message || "Failed to trigger health data export.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const faqs = FAQS.filter(f => !search || f.q.toLowerCase().includes(search.toLowerCase()) || f.a.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -231,6 +257,54 @@ export default function Support() {
             </View>
             <Text style={[styles.qLbl, { color: theme.textPrimary }]}>{t("support.myProfile", "My Profile")}</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Export Health Data Section */}
+        <Text style={[styles.secL, { color: theme.textSecondary }]}>{t("support.exportSection", "EXPORT HEALTH DATA")}</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View style={[styles.cIco, { backgroundColor: "rgba(16,185,129,0.14)" }]}>
+              <Ionicons name="document-text-outline" size={18} color="#10B981" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cT, { color: theme.textPrimary }]}>{t("support.exportTitle", "Export Complete Health Report")}</Text>
+              <Text style={[styles.cD, { color: theme.textSecondary }]}>
+                {t("support.exportDesc", "Download an optimized compact Excel (.xlsx) or CSV report containing your medications, doses, yoga sessions, vitals & timestamps.")}
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+            <TouchableOpacity
+              onPress={() => handleExportData("excel")}
+              disabled={exporting}
+              style={[styles.exportBtn, { backgroundColor: "#10B981" }]}
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="download-outline" size={15} color="#FFF" />
+                  <Text style={styles.exportBtnText}>Excel (.xlsx)</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => handleExportData("csv")}
+              disabled={exporting}
+              style={[styles.exportBtn, { backgroundColor: theme.accent }]}
+            >
+              {exporting ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="document-text-outline" size={15} color="#FFF" />
+                  <Text style={styles.exportBtnText}>CSV Report</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Caregiver & WhatsApp Alerts */}
@@ -388,6 +462,21 @@ const styles = StyleSheet.create({
   cD: { fontSize: 12, marginTop: 2 },
   input: { height: 40, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 13 },
   saveBtn: { paddingHorizontal: 16, height: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  exportBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+  },
+  exportBtnText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
   faqCard: { padding: 14, borderRadius: 14, borderWidth: 1, marginBottom: 8 },
   faqQ: { fontSize: 13, fontWeight: "700", flex: 1, paddingRight: 8 },
   faqA: { fontSize: 12, marginTop: 8, lineHeight: 18 },
