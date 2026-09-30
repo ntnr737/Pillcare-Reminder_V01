@@ -17,9 +17,10 @@ import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 type Appt = {
   id?: string; doctor_name: string; specialty?: string; phone?: string;
   date: string; time: string; location?: string; notes?: string; reminder?: string;
+  calendar_synced?: boolean;
 };
 
-const BLANK: Appt = { doctor_name: "", specialty: "", phone: "", date: "", time: "", location: "", notes: "", reminder: "1_day" };
+const BLANK: Appt = { doctor_name: "", specialty: "", phone: "", date: "", time: "", location: "", notes: "", reminder: "1_day", calendar_synced: true };
 
 export default function Appointments() {
   const router = useRouter();
@@ -69,6 +70,45 @@ export default function Appointments() {
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
+  const addToCalendar = async (appt: Appt, silent = false) => {
+    try {
+      const [year, month, day] = appt.date.split("-").map(Number);
+      const [hour, min] = appt.time.split(":").map(Number);
+      const start = new Date(year, month - 1, day, hour, min);
+      const end = new Date(start.getTime() + 60 * 60 * 1000); // 1-hour time block
+      const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+      const title = encodeURIComponent(`Dr. ${appt.doctor_name} (${appt.specialty || "Appointment"}) — PillCare`);
+      const details = encodeURIComponent([
+        `PillCare Doctor Appointment`,
+        `Doctor: Dr. ${appt.doctor_name}`,
+        appt.specialty ? `Specialty: ${appt.specialty}` : "",
+        appt.phone ? `Phone: ${appt.phone}` : "",
+        appt.location ? `Clinic Location: ${appt.location}` : "",
+        appt.notes ? `Notes: ${appt.notes}` : "",
+      ].filter(Boolean).join("\n"));
+      const location = encodeURIComponent(appt.location || "");
+      const url = `https://calendar.google.com/calendar/r/eventedit?text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`;
+
+      // Mark as calendar synced in state & persistent storage
+      const updatedAppt: Appt = { ...appt, calendar_synced: true };
+      const existing = (await get<Appt[]>("appointments")) || appts;
+      const updated = existing.map(a => (a.id === appt.id ? updatedAppt : a));
+      setAppts(updated);
+      await set("appointments", updated);
+
+      if (appt.id) {
+        api.updateAppointment(appt.id, { calendar_synced: true }).catch(() => {});
+      }
+
+      await Linking.openURL(url);
+      if (!silent) {
+        Alert.alert(t("appointments.calendarSynced", "Google Calendar Synced"), `Opening Google Calendar to block time slot for Dr. ${appt.doctor_name} on ${appt.date} at ${appt.time}.`);
+      }
+    } catch {
+      Alert.alert(t("appointments.calendarErr", "Could not open calendar"), t("appointments.calendarErrDesc", "Please add this appointment manually to your calendar."));
+    }
+  };
+
   const save = async () => {
     if (!editing.doctor_name.trim()) {
       Alert.alert(t("common.error", "Error"), t("appointments.doctorNameRequired", "Doctor name is required.")); return;
@@ -78,7 +118,7 @@ export default function Appointments() {
     }
     setSaving(true);
     const targetId = editing.id || `local_appt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    const newAppt: Appt = { ...editing, id: targetId };
+    const newAppt: Appt = { ...editing, id: targetId, calendar_synced: editing.calendar_synced !== false };
 
     // 1. Instant local UI update & storage persistence
     const existing = (await get<Appt[]>("appointments")) || appts;
@@ -109,7 +149,8 @@ export default function Appointments() {
               title: t("appointments.reminderTitle", "Appointment reminder"),
               body: `Dr. ${newAppt.doctor_name}${newAppt.specialty ? " — " + newAppt.specialty : ""} at ${newAppt.time}`,
               data: { appointmentId: targetId },
-              sound: "pillcare_reminder",
+              sound: "default",
+              categoryIdentifier: "medication-reminder-category",
             },
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -125,16 +166,23 @@ export default function Appointments() {
     setModal(false);
     setEditing(BLANK);
 
-    // 3. Network push + offline queue
+    // 3. Auto-trigger Google Calendar sync if requested
+    if (newAppt.calendar_synced) {
+      setTimeout(() => {
+        addToCalendar(newAppt, true).catch(() => {});
+      }, 300);
+    }
+
+    // 4. Network push + offline queue
     try {
       if (editing.id) {
-        await api.updateAppointment(editing.id, editing);
+        await api.updateAppointment(editing.id, newAppt);
       } else {
         await api.createAppointment(newAppt);
       }
     } catch {
       if (editing.id) {
-        await enqueueWrite("appointment_update", { id: editing.id, data: editing });
+        await enqueueWrite("appointment_update", { id: editing.id, data: newAppt });
       } else {
         await enqueueWrite("appointment", newAppt);
       }
@@ -169,23 +217,6 @@ export default function Appointments() {
     ]);
   };
 
-  const addToCalendar = async (appt: Appt) => {
-    try {
-      const [year, month, day] = appt.date.split("-").map(Number);
-      const [hour, min] = appt.time.split(":").map(Number);
-      const start = new Date(year, month - 1, day, hour, min);
-      const end = new Date(start.getTime() + 60 * 60 * 1000);
-      const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
-      const title = encodeURIComponent(`Dr. ${appt.doctor_name} — PillCare`);
-      const details = encodeURIComponent([appt.specialty, appt.notes].filter(Boolean).join("\n"));
-      const location = encodeURIComponent(appt.location || "");
-      const url = `https://calendar.google.com/calendar/r/eventedit?text=${title}&dates=${fmt(start)}/${fmt(end)}&details=${details}&location=${location}`;
-      await Linking.openURL(url);
-    } catch {
-      Alert.alert(t("appointments.calendarErr", "Could not open calendar"), t("appointments.calendarErrDesc", "Please add this appointment manually to your calendar."));
-    }
-  };
-
   const upcoming = appts.filter(a => a.date >= new Date().toISOString().slice(0, 10));
   const past = appts.filter(a => a.date < new Date().toISOString().slice(0, 10));
 
@@ -212,6 +243,12 @@ export default function Appointments() {
           {appt.specialty ? <Text style={[s.cS, { color: theme.accent }]}>{appt.specialty}</Text> : null}
           <Text style={[s.cS, { color: theme.textSecondary }]}>{formatDate(appt.date)} at {appt.time}</Text>
           {appt.location ? <Text style={[s.cS, { color: theme.textSecondary }]}>{appt.location}</Text> : null}
+          {appt.calendar_synced ? (
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: "rgba(16,185,129,0.12)", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6, alignSelf: "flex-start", marginTop: 5 }}>
+              <Ionicons name="checkmark-circle" size={11} color="#10B981" />
+              <Text style={{ fontSize: 10, color: "#10B981", fontWeight: "700" }}>Google Calendar Synced</Text>
+            </View>
+          ) : null}
         </View>
       </View>
       <View style={[s.cardActions, { borderTopColor: theme.surfaceBorder }]}>
@@ -221,9 +258,17 @@ export default function Appointments() {
             <Text style={[s.actionTx, { color: "#4ade80" }]}>{t("common.call", "Call")}</Text>
           </TouchableOpacity>
         ) : null}
-        <TouchableOpacity style={[s.actionBtn, { borderColor: theme.surfaceBorder }]} onPress={() => addToCalendar(appt)}>
-          <Ionicons name="calendar" size={13} color={theme.accent} />
-          <Text style={[s.actionTx, { color: theme.accent }]}>Calendar</Text>
+        <TouchableOpacity
+          style={[
+            s.actionBtn,
+            { borderColor: appt.calendar_synced ? "rgba(16,185,129,0.4)" : theme.surfaceBorder },
+            appt.calendar_synced ? { backgroundColor: "rgba(16,185,129,0.08)" } : null
+          ]}
+          onPress={() => addToCalendar(appt)}>
+          <Ionicons name="calendar" size={13} color={appt.calendar_synced ? "#10B981" : theme.accent} />
+          <Text style={[s.actionTx, { color: appt.calendar_synced ? "#10B981" : theme.accent }]}>
+            {appt.calendar_synced ? "Synced to Calendar" : "Sync Calendar"}
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity style={[s.actionBtn, { borderColor: theme.surfaceBorder }]} onPress={() => { setEditing(appt); setModal(true); }}>
           <Ionicons name="pencil" size={13} color={theme.textSecondary} />
@@ -371,6 +416,15 @@ export default function Appointments() {
                   </TouchableOpacity>
                 ))}
               </View>
+
+              <TouchableOpacity
+                style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6, paddingVertical: 4 }}
+                onPress={() => setEditing(e => ({ ...e, calendar_synced: !e.calendar_synced }))}>
+                <Ionicons name={editing.calendar_synced !== false ? "checkbox" : "square-outline"} size={20} color={theme.accent} />
+                <Text style={{ fontSize: 13, color: theme.textPrimary, fontWeight: "600" }}>
+                  Sync & block time in Google Calendar
+                </Text>
+              </TouchableOpacity>
 
               <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent }]} onPress={save} disabled={saving}>
                 <Text style={s.subT}>{saving ? t("appointments.submitting", "Saving…") : editing.id ? t("appointments.updateBtn", "Update") : t("appointments.submitBtn", "Book Appointment")}</Text>
