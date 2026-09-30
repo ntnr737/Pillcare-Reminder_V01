@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import { signOut, getStoredUser, getStoredToken, isGuestUser, PillcareUser } from "@/src/lib/auth";
+import { CountryCodePicker, COUNTRY_CODES, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { HeaderControls } from "@/src/components/HeaderControls";
 import { api } from "@/src/lib/api";
 import { track, trackScreenView } from "@/src/lib/analytics";
@@ -73,6 +74,7 @@ export default function Support() {
   const [emPlace, setEmPlace] = useState("");
   const [emNumber, setEmNumber] = useState("");
   const [emLabel, setEmLabel] = useState("");
+  const [selectedDialCode, setSelectedDialCode] = useState("+91");
   const [caregiverPhone, setCaregiverPhone] = useState("");
   const [caregiverConnected, setCaregiverConnected] = useState(false);
   const [savingCg, setSavingCg] = useState(false);
@@ -106,7 +108,14 @@ export default function Support() {
     api.getProfile().then(p => {
       if (p?.caregiver_phone) {
         setCaregiverConnected(true);
-        setCaregiverPhone(p.caregiver_phone);
+        const raw = p.caregiver_phone.trim();
+        const match = COUNTRY_CODES.find(c => raw.startsWith(c.dialCode));
+        if (match) {
+          setSelectedDialCode(match.dialCode);
+          setCaregiverPhone(raw.slice(match.dialCode.length).trim());
+        } else {
+          setCaregiverPhone(raw);
+        }
       }
     }).catch(() => {});
   }, []);
@@ -128,13 +137,15 @@ export default function Support() {
   };
 
   const saveCaregiverPhone = async () => {
-    if (!caregiverPhone.trim()) return;
+    const raw = caregiverPhone.trim();
+    if (!raw) return;
+    const fullPhone = formatFullWhatsAppPhone(selectedDialCode, raw);
     setSavingCg(true);
     try {
-      await api.updateCaregiver(caregiverPhone.trim());
-      track("caregiver_connected");
+      await api.updateCaregiver(fullPhone);
+      track("caregiver_connected", { dialCode: selectedDialCode });
       setCaregiverConnected(true);
-      Alert.alert(t("common.save", "Saved"), "Caregiver phone connected successfully!");
+      Alert.alert(t("common.save", "Saved"), `Caregiver phone (${fullPhone}) connected successfully!`);
     } catch {
       Alert.alert(t("common.error", "Error"), "Could not save caregiver number. Please try again.");
     } finally { setSavingCg(false); }
@@ -320,11 +331,16 @@ export default function Support() {
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12, alignItems: "center" }}>
+            <CountryCodePicker
+              selectedDialCode={selectedDialCode}
+              onSelectCountry={(c) => setSelectedDialCode(c.dialCode)}
+              style={{ height: 40 }}
+            />
             <TextInput
               value={caregiverPhone}
               onChangeText={setCaregiverPhone}
-              placeholder="+919876543210"
+              placeholder="9876543210"
               placeholderTextColor={theme.textDisabled}
               keyboardType="phone-pad"
               style={[
