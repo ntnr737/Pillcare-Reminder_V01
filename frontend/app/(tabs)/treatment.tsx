@@ -7,7 +7,7 @@ import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { RefillModal } from "@/src/components/RefillModal";
 import { api } from "@/src/lib/api";
 import { track, trackScreenView } from "@/src/lib/analytics";
-import { resyncReminders, YOGA_CATEGORY } from "@/src/lib/notifications";
+import { resyncReminders, YOGA_CATEGORY, scheduleYogaReminderFromStore } from "@/src/lib/notifications";
 import { get, set, K, logCourseCompleted } from "@/src/lib/store";
 import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
@@ -327,38 +327,15 @@ export default function Treatment() {
 
   const scheduleYogaReminder = async (time: Date) => {
     try {
-      const { status } = await Notifications.getPermissionsAsync();
-      if (status !== "granted") await Notifications.requestPermissionsAsync();
-      // Cancel existing yoga reminders
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      for (const n of scheduled) {
-        if (n.content.data?.isYogaReminder) await Notifications.cancelScheduledNotificationAsync(n.identifier);
-      }
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "Time for your Yoga Routine",
-          body: yoga?.title ? `Today: ${yoga.title}` : "Open PillCare to start your daily yoga practice",
-          data: { isYogaReminder: true },
-          categoryIdentifier: YOGA_CATEGORY,
-          sound: "pillcare_wellness",
-        },
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: time.getHours(),
-          minute: time.getMinutes(),
-          channelId: "yoga-reminders",
-        },
-      });
+      await scheduleYogaReminderFromStore(time);
       const h = String(time.getHours()).padStart(2, "0");
       const m = String(time.getMinutes()).padStart(2, "0");
-      // Persist yoga time so Today screen can show it
       const timeStr = `${h}:${m}`;
-      await set("yoga_reminder_time", timeStr);
       setSavedReminderTime(timeStr);
       setYogaTime(time);
       setYogaTimePicker(false);
       setYogaOpen(false);
-      Alert.alert("Yoga Reminder Set", `Daily reminder set for ${h}:${m}`);
+      Alert.alert("Yoga Reminder Set", `Daily reminder scheduled at ${h}:${m}`);
     } catch {
       Alert.alert("Error", "Could not set yoga reminder. Please try again.");
     }

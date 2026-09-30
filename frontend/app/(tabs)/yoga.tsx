@@ -413,7 +413,6 @@ export default function YogaTabScreen() {
   const scheduleYogaReminder = async (selectedDate: Date) => {
     const h = selectedDate.getHours();
     const m = selectedDate.getMinutes();
-    const time24 = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 
     const { status } = await Notifications.requestPermissionsAsync();
     if (status !== "granted") {
@@ -421,12 +420,8 @@ export default function YogaTabScreen() {
       return;
     }
 
-    // Persist standard 24h time in storage for offline & cold-boot resync
-    await set("yoga_reminder_time", time24);
-    await set(K.yogaReminderTime, time24);
-
-    // Schedule store-persisted daily reminder with Android channel & category
-    await scheduleYogaReminderFromStore();
+    // Schedule store-persisted daily reminder with Android channel & category & dual triggers
+    await scheduleYogaReminderFromStore(selectedDate);
 
     const ampm = h >= 12 ? "PM" : "AM";
     const h12 = h % 12 || 12;

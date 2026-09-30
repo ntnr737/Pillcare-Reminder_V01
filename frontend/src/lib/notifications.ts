@@ -166,10 +166,10 @@ export async function ensureChannels(): Promise<void> {
     await Notifications.setNotificationChannelAsync("yoga-reminders", {
       name: "Yoga & Wellness",
       description: "Daily wellness & yoga flow reminders",
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.MAX,
       sound: "default",
       enableVibrate: true,
-      vibrationPattern: [0, 300, 150, 300],
+      vibrationPattern: [0, 400, 200, 400],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       showBadge: true,
     });
@@ -345,29 +345,14 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
         const body = label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`;
         const data = { medicationId: med.id, scheduledTime: t };
 
-        // 1. If dose time is TODAY and upcoming (e.g. 2-3 mins after current time), schedule an EXACT DATE trigger
-        const targetToday = new Date();
-        targetToday.setHours(parsed.hour, parsed.minute, 0, 0);
-
-        if (targetToday.getTime() > now.getTime()) {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title,
-              body,
-              data,
-              categoryIdentifier: MEDICATION_CATEGORY,
-              sound: "default",
-              channelId: "medication-reminders",
-              priority: Notifications.AndroidNotificationPriority.MAX,
-            } as any,
-            trigger: {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: targetToday,
-            },
-          });
+        // 1. Calculate next upcoming occurrence (today if upcoming, or tomorrow if target time passed today)
+        const nextOccurrence = new Date();
+        nextOccurrence.setHours(parsed.hour, parsed.minute, 0, 0);
+        if (nextOccurrence.getTime() <= now.getTime()) {
+          nextOccurrence.setDate(nextOccurrence.getDate() + 1);
         }
 
-        // 2. Schedule DAILY recurring trigger for long-term daily reminders
+        // Schedule exact DATE trigger for next upcoming dose
         await Notifications.scheduleNotificationAsync({
           content: {
             title,
@@ -379,11 +364,36 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             priority: Notifications.AndroidNotificationPriority.MAX,
           } as any,
           trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DAILY,
-            hour: parsed.hour,
-            minute: parsed.minute,
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: nextOccurrence,
+          },
+        });
+
+        // 2. Schedule DAILY recurring trigger for long-term daily reminders
+        const dailyTrigger: any = Platform.OS === "android"
+          ? {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour: parsed.hour,
+              minute: parsed.minute,
+              channelId: "medication-reminders",
+            }
+          : {
+              hour: parsed.hour,
+              minute: parsed.minute,
+              repeats: true,
+            };
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            body,
+            data,
+            categoryIdentifier: MEDICATION_CATEGORY,
+            sound: "default",
             channelId: "medication-reminders",
+            priority: Notifications.AndroidNotificationPriority.MAX,
           } as any,
+          trigger: dailyTrigger,
         });
         scheduled++;
       }
@@ -396,13 +406,31 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
   }
 }
 
-export async function scheduleYogaReminderFromStore(): Promise<void> {
+export async function scheduleYogaReminderFromStore(overrideTime?: Date | string): Promise<void> {
   try {
     await ensureChannels();
-    const timeStr = (await get<string>("yoga_reminder_time")) || (await get<string>(K.yogaReminderTime));
+    const granted = await requestNotificationPermission();
+    if (!granted) return;
+
+    let timeStr: string | null = null;
+    if (overrideTime instanceof Date) {
+      const h = String(overrideTime.getHours()).padStart(2, "0");
+      const m = String(overrideTime.getMinutes()).padStart(2, "0");
+      timeStr = `${h}:${m}`;
+    } else if (typeof overrideTime === "string") {
+      timeStr = overrideTime;
+    } else {
+      timeStr = (await get<string>("yoga_reminder_time")) || (await get<string>(K.yogaReminderTime));
+    }
+
     if (!timeStr) return;
     const parsed = parseTime(timeStr);
     if (!parsed) return;
+
+    const time24 = `${String(parsed.hour).padStart(2, "0")}:${String(parsed.minute).padStart(2, "0")}`;
+    await set("yoga_reminder_time", time24);
+    await set(K.yogaReminderTime, time24);
+
     const yogaTip = await get<any>(K.yogaTip);
     const title = yogaTip?.title || "Daily Medication Yoga Therapy Flow";
 
@@ -414,6 +442,13 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
       }
     }
 
+    // 1. Schedule exact DATE trigger for next upcoming yoga session
+    const nextOccurrence = new Date();
+    nextOccurrence.setHours(parsed.hour, parsed.minute, 0, 0);
+    if (nextOccurrence.getTime() <= Date.now()) {
+      nextOccurrence.setDate(nextOccurrence.getDate() + 1);
+    }
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "🧘 Time for Your AI Yoga Therapy",
@@ -422,16 +457,42 @@ export async function scheduleYogaReminderFromStore(): Promise<void> {
         categoryIdentifier: YOGA_CATEGORY,
         sound: "default",
         channelId: "yoga-reminders",
-        priority: Notifications.AndroidNotificationPriority.HIGH,
+        priority: Notifications.AndroidNotificationPriority.MAX,
       } as any,
       trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: parsed.hour,
-        minute: parsed.minute,
-        channelId: "yoga-reminders",
-      } as any,
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: nextOccurrence,
+      },
     });
-    console.log(`Scheduled daily yoga reminder at ${parsed.hour}:${String(parsed.minute).padStart(2, "0")}`);
+
+    // 2. Schedule DAILY recurring trigger for long-term daily reminders
+    const dailyTrigger: any = Platform.OS === "android"
+      ? {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: parsed.hour,
+          minute: parsed.minute,
+          channelId: "yoga-reminders",
+        }
+      : {
+          hour: parsed.hour,
+          minute: parsed.minute,
+          repeats: true,
+        };
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "🧘 Time for Your AI Yoga Therapy",
+        body: `${title} — Tap to view poses & video guide.`,
+        data: { isYogaReminder: true },
+        categoryIdentifier: YOGA_CATEGORY,
+        sound: "default",
+        channelId: "yoga-reminders",
+        priority: Notifications.AndroidNotificationPriority.MAX,
+      } as any,
+      trigger: dailyTrigger,
+    });
+
+    console.log(`Scheduled daily yoga reminder at ${time24} (next occurrence: ${nextOccurrence.toISOString()})`);
   } catch (e) {
     console.warn("Yoga reminder schedule failed:", e);
   }
@@ -451,6 +512,12 @@ export async function scheduleWaterReminders(): Promise<void> {
       { hour: 21, minute: 30 },
     ];
     for (const wt of waterTimes) {
+      const nextOccurrence = new Date();
+      nextOccurrence.setHours(wt.hour, wt.minute, 0, 0);
+      if (nextOccurrence.getTime() <= Date.now()) {
+        nextOccurrence.setDate(nextOccurrence.getDate() + 1);
+      }
+
       await Notifications.scheduleNotificationAsync({
         content: {
           title: "Stay Hydrated! — PillCare Water Reminder",
@@ -461,11 +528,34 @@ export async function scheduleWaterReminders(): Promise<void> {
           priority: Notifications.AndroidNotificationPriority.HIGH,
         } as any,
         trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DAILY,
-          hour: wt.hour,
-          minute: wt.minute,
-          channelId: "medication-reminders",
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: nextOccurrence,
         },
+      });
+
+      const dailyTrigger: any = Platform.OS === "android"
+        ? {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: wt.hour,
+            minute: wt.minute,
+            channelId: "medication-reminders",
+          }
+        : {
+            hour: wt.hour,
+            minute: wt.minute,
+            repeats: true,
+          };
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "Stay Hydrated! — PillCare Water Reminder",
+          body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
+          data: { type: "water_reminder" },
+          sound: "default",
+          channelId: "medication-reminders",
+          priority: Notifications.AndroidNotificationPriority.HIGH,
+        } as any,
+        trigger: dailyTrigger,
       });
     }
     console.log("Scheduled 6 daily hydration reminders");
