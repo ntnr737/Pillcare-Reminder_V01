@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Platform,
   RefreshControl,
   Alert,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -248,6 +249,9 @@ const CATEGORIES = ["All", "Thyroid & Metabolism", "Morning Energy", "Digestive 
 export default function YogaTabScreen() {
   const { theme, isDark } = useTheme();
   const { t } = useTranslation();
+  const { width: windowWidth } = useWindowDimensions();
+  const bannerRef = useRef<ScrollView>(null);
+  const bannerCardWidth = Math.min(windowWidth - 32, 440);
 
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [activeRoutineIndex, setActiveRoutineIndex] = useState(0);
@@ -264,6 +268,22 @@ export default function YogaTabScreen() {
     d.setHours(8, 0, 0, 0);
     return d;
   });
+
+  const scrollBannerToIndex = (idx: number) => {
+    setActiveRoutineIndex(idx);
+    bannerRef.current?.scrollTo({
+      x: idx * (bannerCardWidth + 12),
+      animated: true,
+    });
+  };
+
+  const handleBannerScroll = (event: any) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(contentOffsetX / (bannerCardWidth + 12));
+    if (index >= 0 && index < filteredRoutines.length && index !== activeRoutineIndex) {
+      setActiveRoutineIndex(index);
+    }
+  };
 
   const getYogaDoneKey = (routineId: string) => {
     const d = new Date();
@@ -479,43 +499,75 @@ export default function YogaTabScreen() {
           })}
         </ScrollView>
 
-        {/* Featured Routine Header Banner */}
-        <View style={[s.routineBanner, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-            <View style={s.tagRow}>
-              <View style={[s.levelTag, { backgroundColor: theme.accentBg }]}>
-                <Ionicons name="speedometer-outline" size={11} color={theme.accent} />
-                <Text style={[s.levelTagText, { color: theme.accent }]}>
-                  {t(`yoga.level${currentRoutine.level}`, currentRoutine.level)}
-                </Text>
-              </View>
-              <View style={[s.levelTag, { backgroundColor: theme.accentBg }]}>
-                <Ionicons name="time-outline" size={11} color={theme.accent} />
-                <Text style={[s.levelTagText, { color: theme.accent }]}>
-                  {currentRoutine.duration.replace("min", t("yoga.min", "min"))}
-                </Text>
-              </View>
-            </View>
-            <Text style={s.progressCounter}>
-              {safeCompletedSteps.length}/{currentRoutine.steps.length} {t("yoga.posesDone", "Poses Done")}
-            </Text>
-          </View>
+        {/* Featured Routine Header Banner Carousel */}
+        <View style={{ marginBottom: 14 }}>
+          <ScrollView
+            ref={bannerRef}
+            horizontal
+            snapToInterval={bannerCardWidth + 12}
+            snapToAlignment="center"
+            decelerationRate="fast"
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleBannerScroll}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ paddingHorizontal: 0, gap: 12 }}
+          >
+            {filteredRoutines.map((routine, idx) => {
+              const isSelected = activeRoutineIndex === idx;
+              return (
+                <TouchableOpacity
+                  key={routine.id}
+                  activeOpacity={0.9}
+                  onPress={() => scrollBannerToIndex(idx)}
+                  style={[
+                    s.routineBanner,
+                    {
+                      width: bannerCardWidth,
+                      backgroundColor: theme.surface,
+                      borderColor: isSelected ? theme.accent : theme.surfaceBorder,
+                      borderWidth: isSelected ? 1.5 : 1,
+                    },
+                  ]}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                    <View style={s.tagRow}>
+                      <View style={[s.levelTag, { backgroundColor: theme.accentBg }]}>
+                        <Ionicons name="speedometer-outline" size={11} color={theme.accent} />
+                        <Text style={[s.levelTagText, { color: theme.accent }]}>
+                          {t(`yoga.level${routine.level}`, routine.level)}
+                        </Text>
+                      </View>
+                      <View style={[s.levelTag, { backgroundColor: theme.accentBg }]}>
+                        <Ionicons name="time-outline" size={11} color={theme.accent} />
+                        <Text style={[s.levelTagText, { color: theme.accent }]}>
+                          {routine.duration.replace("min", t("yoga.min", "min"))}
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={s.progressCounter}>
+                      {safeCompletedSteps.length}/{routine.steps.length} {t("yoga.posesDone", "Poses Done")}
+                    </Text>
+                  </View>
 
-          <Text style={[s.routineTitle, { color: theme.textPrimary }]}>
-            {t(`yoga.routine.${currentRoutine.id}.title`, currentRoutine.title)}
-          </Text>
-          <Text style={[s.routineDesc, { color: theme.textSecondary }]}>
-            {t(`yoga.routine.${currentRoutine.id}.desc`, currentRoutine.description)}
-          </Text>
+                  <Text style={[s.routineTitle, { color: theme.textPrimary }]}>
+                    {t(`yoga.routine.${routine.id}.title`, routine.title)}
+                  </Text>
+                  <Text style={[s.routineDesc, { color: theme.textSecondary }]}>
+                    {t(`yoga.routine.${routine.id}.desc`, routine.description)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
 
-          {/* Routine Switcher if multiple in category */}
+          {/* Routine Switcher Indicator Dots */}
           {filteredRoutines.length > 1 && (
             <View style={s.routineSwitchRow}>
               {filteredRoutines.map((r, idx) => (
                 <TouchableOpacity
                   key={r.id}
-                  onPress={() => setActiveRoutineIndex(idx)}
-                  style={[s.routineDot, activeRoutineIndex === idx && { width: 20, backgroundColor: theme.accent }]}
+                  onPress={() => scrollBannerToIndex(idx)}
+                  style={[s.routineDot, activeRoutineIndex === idx && { width: 22, backgroundColor: theme.accent }]}
                 />
               ))}
             </View>
