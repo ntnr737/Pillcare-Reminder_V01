@@ -41,14 +41,16 @@ export interface VideoPlayerModalProps {
 }
 
 export function extractYouTubeId(url?: string): string {
-  if (!url) return "QPjwawKxuLw";
+  if (!url) return "OBds5NZ4PRs";
+  if (url.includes("1W_Q4m0sD78")) return "OBds5NZ4PRs";
+  if (url.includes("L3F4z7t8_2w")) return "jBbhE-p9jso";
   const watchMatch = url.match(/[?&]v=([^&]+)/);
-  if (watchMatch && watchMatch[1]) return watchMatch[1];
+  if (watchMatch && watchMatch[1] && watchMatch[1].length === 11) return watchMatch[1];
   const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
-  if (shortMatch && shortMatch[1]) return shortMatch[1];
+  if (shortMatch && shortMatch[1] && shortMatch[1].length === 11) return shortMatch[1];
   const embedMatch = url.match(/embed\/([^?&]+)/);
-  if (embedMatch && embedMatch[1]) return embedMatch[1];
-  return "QPjwawKxuLw";
+  if (embedMatch && embedMatch[1] && embedMatch[1].length === 11) return embedMatch[1];
+  return "OBds5NZ4PRs";
 }
 
 const FEELING_OPTIONS = [

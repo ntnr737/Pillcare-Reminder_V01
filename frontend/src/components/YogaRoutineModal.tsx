@@ -42,11 +42,11 @@ export const DEFAULT_YOGA_ROUTINE = {
   level: "Beginner",
   description: "This sequence gently stimulates the thyroid gland, improves metabolism, and supports overall vitality while complementing the patient's medication regimen. The routine is short, beginner-friendly, and aligns with guidelines from AYUSH, Patanjali, and Isha.",
   steps: [
-    { num: 1, name: "Surya Namaskar (Sun Salutation)", duration: "3 min", benefit: "Activates metabolism and improves circulation, supporting thyroid function.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78" },
-    { num: 2, name: "Sarvangasana (Shoulder Stand)", duration: "3 min", benefit: "Increases blood flow to the neck area, stimulating the thyroid gland.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w" },
+    { num: 1, name: "Surya Namaskar (Sun Salutation)", duration: "3 min", benefit: "Activates metabolism and improves circulation, supporting thyroid function.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=OBds5NZ4PRs" },
+    { num: 2, name: "Sarvangasana (Shoulder Stand)", duration: "3 min", benefit: "Increases blood flow to the neck area, stimulating the thyroid gland.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=jBbhE-p9jso" },
     { num: 3, name: "Matsyasana (Fish Pose)", duration: "3 min", benefit: "Stretches the neck and throat region, relieving neck tension.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
-    { num: 4, name: "Bhujangasana (Cobra Pose)", duration: "3 min", benefit: "Opens the chest and throat, boosting energy and flexibility.", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
-    { num: 5, name: "Ustrasana (Camel Pose)", duration: "3 min", benefit: "Enhances respiratory and endocrine health through gentle back extension.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78" }
+    { num: 4, name: "Bhujangasana (Cobra Pose)", duration: "3 min", benefit: "Opens the chest and throat, boosting energy and flexibility.", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=xX_QXjHP7Lo" },
+    { num: 5, name: "Ustrasana (Camel Pose)", duration: "3 min", benefit: "Enhances respiratory and endocrine health through gentle back extension.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" }
   ],
   channels: [
     { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },

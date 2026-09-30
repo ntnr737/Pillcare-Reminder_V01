@@ -63,7 +63,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Activates metabolism and improves overall blood circulation.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78",
+        youtube_video: "https://www.youtube.com/watch?v=OBds5NZ4PRs",
       },
       {
         num: 2,
@@ -71,7 +71,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Increases blood supply to neck region, stimulating thyroid gland.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w",
+        youtube_video: "https://www.youtube.com/watch?v=jBbhE-p9jso",
       },
       {
         num: 3,
@@ -87,7 +87,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Opens chest and abdominal muscles, supporting digestive motility.",
         channel: "Sadhguru",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=xX_QXjHP7Lo",
       },
       {
         num: 5,
@@ -95,7 +95,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Enhances respiratory capacity and endocrine system balance.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78",
+        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
       },
     ],
     channels: [
@@ -120,7 +120,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Detoxifies abdominal organs and enhances mental clarity.",
         channel: "Swami Ramdev",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=lrkW_6vGqvE",
       },
       {
         num: 2,
@@ -128,7 +128,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "4 min",
         benefit: "Harmonizes left and right brain hemispheres and reduces stress.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78",
+        youtube_video: "https://www.youtube.com/watch?v=MqeeqXMdZ54",
       },
       {
         num: 3,
@@ -136,7 +136,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "2 min",
         benefit: "Corrects posture and aligns spinal column.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w",
+        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
       },
       {
         num: 4,
@@ -168,7 +168,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "4 min",
         benefit: "Releases trapped intestinal gas and massages abdominal viscera.",
         channel: "Swami Ramdev",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=TVHlCr49LNY",
       },
       {
         num: 2,
@@ -176,7 +176,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Redirects blood flow to digestive region when practiced after meals.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78",
+        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
       },
       {
         num: 3,
@@ -184,7 +184,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "4 min",
         benefit: "Twists spine and stimulates liver & kidney detoxification.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w",
+        youtube_video: "https://www.youtube.com/watch?v=_rlPsepTnzo",
       },
       {
         num: 4,
@@ -192,7 +192,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Compresses pancreas and supports healthy insulin secretion.",
         channel: "Swami Ramdev",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=aqjnv0dZhNc",
       },
     ],
     channels: [
@@ -216,7 +216,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "5 min",
         benefit: "Promotes venous blood return from legs and calms central nervous system.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w",
+        youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q",
       },
       {
         num: 2,
@@ -224,7 +224,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Gently stretches lower back and releases cranial tension.",
         channel: "Sadhguru",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=hJbRpHZr_d0",
       },
       {
         num: 3,
@@ -232,7 +232,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "7 min",
         benefit: "Triggers parasympathetic nervous system for restorative sleep.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78",
+        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
       },
     ],
     channels: [

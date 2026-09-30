@@ -13,6 +13,8 @@ export interface AnalyticsEventParams {
   [key: string]: any;
 }
 
+export type EventName = string;
+
 /**
  * Universal event tracker: Dispatches events to Firebase GA4, GTM DataLayer, and PillCare Telemetry Backend.
  */
@@ -97,3 +99,5 @@ export function trackSubscriptionFunnel(step: "modal_view" | "plan_selected" | "
     plan_name: planName || "pro_dharma",
   });
 }
+
+export const track = trackEvent;

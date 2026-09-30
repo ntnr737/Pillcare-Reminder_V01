@@ -1547,6 +1547,19 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         import json as _json
         clean = resp.strip().replace("```json", "").replace("```", "").strip()
         data = _json.loads(clean)
+        # Always enforce verified pose video URLs
+        for step in data.get("steps", []):
+            s_name = str(step.get("name", ""))
+            matched_url = None
+            for p_key, p_val in POSE_VIDEOS.items():
+                p_base = p_key.split("(")[0].strip().lower()
+                if p_base in s_name.lower() or s_name.lower() in p_base:
+                    matched_url = p_val["url"]
+                    break
+            if not matched_url:
+                matched_url = "https://www.youtube.com/watch?v=OBds5NZ4PRs" if "surya" in s_name.lower() else FALLBACK_VIDEO
+            step["youtube_video"] = matched_url
+
         # Always enforce verified channels
         data["channels"] = [
             {"name": "Ministry of AYUSH, Govt. of India", "url": "https://www.youtube.com/@ministryofayushofficial", "verified": True},

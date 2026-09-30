@@ -62,8 +62,8 @@ const DEFAULT_YOGA = {
   level: "Beginner",
   description: "Gentle daily asanas to enhance digestive circulation, improve medication absorption, and reduce stress.",
   steps: [
-    { num: 1, name: "Anulom Vilom Pranayama", duration: "4 mins", benefit: "Calms nervous system & balances blood pressure", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=1W_Q4m0sD78" },
-    { num: 2, name: "Pawanmuktasana (Wind-relieving Pose)", duration: "4 mins", benefit: "Stimulates abdominal organs & assists medication digestion", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=L3F4z7t8_2w" },
+    { num: 1, name: "Anulom Vilom Pranayama", duration: "4 mins", benefit: "Calms nervous system & balances blood pressure", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=MqeeqXMdZ54" },
+    { num: 2, name: "Pawanmuktasana (Wind-relieving Pose)", duration: "4 mins", benefit: "Stimulates abdominal organs & assists medication digestion", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=TVHlCr49LNY" },
     { num: 3, name: "Shavasana (Deep Relaxation)", duration: "4 mins", benefit: "Reduces stress hormones & stabilizes heart rate", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
   ],
   channels: [
