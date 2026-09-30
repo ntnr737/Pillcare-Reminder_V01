@@ -484,6 +484,7 @@ export default function YogaTabScreen() {
                 onPress={() => {
                   setSelectedCategory(cat);
                   setActiveRoutineIndex(0);
+                  bannerRef.current?.scrollTo({ x: 0, animated: true });
                 }}
                 style={[
                   s.chip,
@@ -504,11 +505,13 @@ export default function YogaTabScreen() {
           <ScrollView
             ref={bannerRef}
             horizontal
+            nestedScrollEnabled={true}
             snapToInterval={bannerCardWidth + 12}
-            snapToAlignment="center"
+            snapToAlignment="start"
             decelerationRate="fast"
             showsHorizontalScrollIndicator={false}
             onScroll={handleBannerScroll}
+            onMomentumScrollEnd={handleBannerScroll}
             scrollEventThrottle={16}
             contentContainerStyle={{ paddingHorizontal: 0, gap: 12 }}
           >
