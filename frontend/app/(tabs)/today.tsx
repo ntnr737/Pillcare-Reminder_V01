@@ -104,6 +104,7 @@ export default function Today() {
   const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
   const [foodGuideOpen, setFoodGuideOpen] = useState(false);
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
+  const [modalTab, setModalTab] = useState<"leaderboard" | "calendar">("leaderboard");
 
   const actionOptions = [
     {
@@ -313,13 +314,13 @@ export default function Today() {
       <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
         <Text style={[s.appNm, { color: theme.textPrimary }]}>PillCare</Text>
         <View style={s.hdrR}>
-          <TouchableOpacity style={[s.iBtn, { borderColor: theme.surfaceBorder, backgroundColor: theme.surface }]} onPress={() => setCalOpen(true)}>
+          <TouchableOpacity style={[s.iBtn, { borderColor: theme.surfaceBorder, backgroundColor: theme.surface }]} onPress={() => { setModalTab("calendar"); setCalOpen(true); }}>
             <Ionicons name="calendar-outline" size={15} color={theme.textPrimary} />
           </TouchableOpacity>
-          <View style={[s.sTag, { backgroundColor: theme.accentBg, borderColor: theme.surfaceBorder }]}>
+          <TouchableOpacity style={[s.sTag, { backgroundColor: theme.accentBg, borderColor: theme.surfaceBorder }]} onPress={() => { setModalTab("leaderboard"); setCalOpen(true); }}>
             <Ionicons name="flame" size={13} color={theme.accent} />
             <Text style={[s.sTx, { color: theme.accent }]}>{streak}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -587,6 +588,8 @@ export default function Today() {
         visible={calOpen}
         selectedDate={date}
         onClose={() => setCalOpen(false)}
+        initialTab={modalTab}
+        streakDays={streak}
         onSelectDate={(newDate) => {
           setDate(newDate);
         }}

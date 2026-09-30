@@ -102,4 +102,5 @@ export const api = {
   verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
   exportExcel: () => req<any>("/export/excel"),
   getActiveAnnouncements: (plan?: string) => req<any[]>(`/announcements/active?plan=${plan || "free"}`),
+  getLeaderboard: () => req<any>("/leaderboard"),
 };
