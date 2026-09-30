@@ -474,6 +474,33 @@ export async function scheduleWaterReminders(): Promise<void> {
   }
 }
 
+export async function scheduleHydrationPacingReminder(minutesFromNow: number = 15): Promise<void> {
+  try {
+    await ensureChannels();
+    const granted = await requestNotificationPermission();
+    if (!granted) return;
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "💧 Hydration Pacing Reminder",
+        body: `15 minutes have passed since your last glass! Time to drink your next 250mL for optimal WHO cellular absorption.`,
+        data: { type: "water_pacing_reminder" },
+        sound: "default",
+        channelId: "medication-reminders",
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      } as any,
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: minutesFromNow * 60,
+        repeats: false,
+        channelId: "medication-reminders",
+      },
+    });
+    console.log(`Scheduled hydration pacing reminder in ${minutesFromNow} minutes`);
+  } catch (e) {
+    console.warn("Hydration pacing reminder failed:", e);
+  }
+}
+
 export function addForegroundNotificationReceivedListener(
   onNotification: (notif: { title: string; body: string; data?: any; type?: string }) => void
 ) {

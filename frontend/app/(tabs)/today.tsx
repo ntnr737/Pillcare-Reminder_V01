@@ -19,7 +19,7 @@ import { useTranslation } from "@/src/context/LanguageContext";
 import { getFeatures } from "@/src/lib/features";
 import { track, trackScreenView, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
-import { resyncReminders } from "@/src/lib/notifications";
+import { resyncReminders, scheduleHydrationPacingReminder } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
 
@@ -94,6 +94,9 @@ export default function Today() {
   const [yogaTipMeta, setYogaTipMeta] = useState("");
   const [waterLogged, setWaterLogged] = useState(0);
   const [waterGoal] = useState(2500);
+  const [waterLogs, setWaterLogs] = useState<Array<{ amount: number; ts: number }>>([]);
+  const [pacingModalOpen, setPacingModalOpen] = useState(false);
+  const [attemptedAmount, setAttemptedAmount] = useState<number>(250);
   const [yogaModalOpen, setYogaModalOpen] = useState(false);
   const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string } | null>(null);
   const [yogaReminderTime, setYogaReminderTime] = useState<string>("08:00");
@@ -197,20 +200,71 @@ export default function Today() {
     });
 
     const wKey = `water_${date}`;
+    const wLogsKey = `water_logs_${date}`;
     get<number>(wKey).then((logged) => {
       if (typeof logged === "number") setWaterLogged(logged);
     });
+    get<any[]>(wLogsKey).then((logs) => {
+      if (Array.isArray(logs)) setWaterLogs(logs);
+      else setWaterLogs([]);
+    });
   }, [date]);
 
-  const addWater = (amount: number) => {
+  const performWaterLog = (amount: number, timestamp: number) => {
     const next = waterLogged + amount;
+    const newLog = { amount, ts: timestamp };
+    const updatedLogs = [...waterLogs, newLog];
+
     setWaterLogged(next);
+    setWaterLogs(updatedLogs);
+
     set(`water_${date}`, next);
+    set(`water_logged_${date}`, next);
+    set(`water_logs_${date}`, updatedLogs);
+
+    scheduleHydrationPacingReminder(15);
+  };
+
+  const addWater = (amount: number, forceOverride: boolean = false) => {
+    const now = Date.now();
+    const fifteenMinsMs = 15 * 60 * 1000;
+
+    const recentLogs = waterLogs.filter((l) => now - l.ts < fifteenMinsMs);
+    const recentTotal = recentLogs.reduce((sum, l) => sum + l.amount, 0);
+
+    if (!forceOverride && recentTotal + amount > 500) {
+      setAttemptedAmount(amount);
+      setPacingModalOpen(true);
+      return;
+    }
+
+    performWaterLog(amount, now);
+  };
+
+  const handleRetroactiveLog = () => {
+    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    performWaterLog(attemptedAmount, oneHourAgo);
+    setPacingModalOpen(false);
+    Alert.alert("Logged as Past Intake", `Recorded ${attemptedAmount}mL for an earlier glass today.`);
+  };
+
+  const handleScheduleReminderOnly = () => {
+    scheduleHydrationPacingReminder(15);
+    setPacingModalOpen(false);
+    Alert.alert("Hydration Reminder Set", "We will remind you in 15 minutes to drink your next glass of water!");
+  };
+
+  const handleOverrideLog = () => {
+    performWaterLog(attemptedAmount, Date.now());
+    setPacingModalOpen(false);
   };
 
   const resetWater = () => {
     setWaterLogged(0);
+    setWaterLogs([]);
     set(`water_${date}`, 0);
+    set(`water_logged_${date}`, 0);
+    set(`water_logs_${date}`, []);
   };
 
   const mark = async (doseId: string, currentStatus: string, newStatus: string) => {
@@ -249,6 +303,10 @@ export default function Today() {
   doses.forEach(d => { const s = gs(d.scheduled_time || "08:00"); secs[s]?.push(d); });
   const pending = doses.filter(d => d.status === "pending" || !d.status);
   const next = pending.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""))[0];
+
+  const lastWaterLog = waterLogs.length > 0 ? waterLogs[waterLogs.length - 1] : null;
+  const minsSinceLastWater = lastWaterLog ? Math.floor((Date.now() - lastWaterLog.ts) / 60000) : null;
+  const isPacingOptimal = minsSinceLastWater === null || minsSinceLastWater >= 15;
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
@@ -329,20 +387,33 @@ export default function Today() {
               <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary }}>
                 {waterLogged} <Text style={{ fontSize: 12, fontWeight: "500", color: theme.textSecondary }}>/ {waterGoal} mL</Text>
               </Text>
+
+              {/* WHO Pacing Badge */}
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+                <Ionicons name={isPacingOptimal ? "checkmark-circle" : "time-outline"} size={11} color={isPacingOptimal ? "#10B981" : "#F59E0B"} />
+                <Text style={{ fontSize: 11, fontWeight: "700", color: isPacingOptimal ? "#10B981" : "#F59E0B" }}>
+                  {minsSinceLastWater === null
+                    ? "Ready for first 250mL glass"
+                    : isPacingOptimal
+                    ? `Optimal Pacing (Last glass ${minsSinceLastWater}m ago)`
+                    : `Next glass recommended in ${15 - minsSinceLastWater}m (WHO Pacing)`}
+                </Text>
+              </View>
+
               {waterLogged >= 5000 ? (
-                <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700" }}>
+                <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700", marginTop: 2 }}>
                   🛑 Max Limit Reached (5,000 mL). WHO standard: 2,500 mL/day.
                 </Text>
               ) : waterLogged >= 3500 ? (
-                <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "700" }}>
+                <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "700", marginTop: 2 }}>
                   ⚠️ High Hydration ({waterLogged} mL). Avoid fluid overload (&gt;4L).
                 </Text>
               ) : waterLogged >= waterGoal ? (
-                <Text style={{ fontSize: 11, color: "#4ade80", fontWeight: "700" }}>
+                <Text style={{ fontSize: 11, color: "#4ade80", fontWeight: "700", marginTop: 2 }}>
                   🎉 Daily Goal Met! ({Math.round(waterLogged / 250)} glasses logged)
                 </Text>
               ) : (
-                <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "600" }}>
+                <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "600", marginTop: 2 }}>
                   {Math.round(waterLogged / 250)} of {Math.round(waterGoal / 250)} {t("today.glassesConsumed", "glasses consumed today")}
                 </Text>
               )}
@@ -353,9 +424,14 @@ export default function Today() {
           </View>
 
           {/* Progress bar */}
-          <View style={{ height: 6, borderRadius: 3, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", overflow: "hidden", marginBottom: 10 }}>
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", overflow: "hidden", marginBottom: 8 }}>
             <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
           </View>
+
+          {/* WHO Guideline Advice */}
+          <Text style={{ fontSize: 10, color: theme.textSecondary, fontStyle: "italic", marginBottom: 10 }}>
+            💡 WHO Advice: Space 250 mL intake by 15–30 min for optimal cellular absorption & renal health.
+          </Text>
 
           {/* Action buttons */}
           <View style={{ flexDirection: "row", gap: 8 }}>
@@ -515,6 +591,56 @@ export default function Today() {
           setDate(newDate);
         }}
       />
+
+      {/* WHO Smart Hydration Pacing Modal */}
+      <Modal visible={pacingModalOpen} transparent animationType="fade" onRequestClose={() => setPacingModalOpen(false)}>
+        <View style={s.modalOverlay}>
+          <View style={[s.modalContent, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(245,158,11,0.15)", alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 12 }}>
+              <Ionicons name="medical-outline" size={26} color="#F59E0B" />
+            </View>
+
+            <Text style={[s.mTitle, { color: theme.textPrimary, textAlign: "center" }]}>WHO Smart Hydration Pacing</Text>
+            <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: "center", marginTop: 6, lineHeight: 19 }}>
+              You recently logged a glass of water. WHO & clinical guidelines recommend spacing 250 mL intake by at least <Text style={{ fontWeight: "700", color: theme.textPrimary }}>15–30 minutes</Text> to allow proper cellular absorption.
+            </Text>
+
+            <View style={{ backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", borderRadius: 12, padding: 12, marginVertical: 14, gap: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>🩺 Clinical Note:</Text>
+              <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 16 }}>
+                Drinking large fluid volumes (&gt;500 mL) in 2–3 minutes exceeds maximum gastric emptying rate. Spacing intake improves medicine digestion.
+              </Text>
+            </View>
+
+            <View style={{ gap: 8 }}>
+              <TouchableOpacity
+                onPress={handleScheduleReminderOnly}
+                style={[s.mBtn, { backgroundColor: "#0284C7" }]}
+              >
+                <Ionicons name="alarm-outline" size={16} color="#FFF" />
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#FFF" }}>Remind Me in 15 Minutes</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleRetroactiveLog}
+                style={[s.mBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }]}
+              >
+                <Ionicons name="time-outline" size={16} color={theme.textPrimary} />
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Log as Earlier Past Glass</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleOverrideLog}
+                style={{ paddingVertical: 8, alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 12, color: theme.textDisabled, textDecorationLine: "underline" }}>
+                  Override & Log {attemptedAmount} mL Now
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -559,4 +685,8 @@ const s = StyleSheet.create({
   emT: { fontSize: 15, fontWeight: "700" },
   emS: { fontSize: 12, textAlign: "center" },
   fab: { position: "absolute", right: 18, bottom: 24, width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", elevation: 6, zIndex: 99 },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", padding: 20 },
+  modalContent: { width: "100%", padding: 20, borderRadius: 20, borderWidth: 1 },
+  mTitle: { fontSize: 18, fontWeight: "800" },
+  mBtn: { height: 44, borderRadius: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
 });
