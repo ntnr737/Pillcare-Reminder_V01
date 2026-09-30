@@ -501,19 +501,30 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
         daily.append({"date": d_str, "total": total, "taken": taken, "pct": pct})
 
     yoga_dates = set(await db.yoga_log.distinct("date", {"user_id": user_id, "date": {"$gte": start_str, "$lte": end_str}}))
+    activity_dates = set(await db.activities.distinct("date", {"user_id": user_id, "date": {"$gte": start_str, "$lte": end_str}}))
+    dose_taken_dates = set(await db.doses.distinct("date", {"user_id": user_id, "date": {"$gte": start_str, "$lte": end_str}, "status": "taken"}))
+
+    today_str = datetime.now(timezone.utc).date().isoformat()
     streak = 0
     streak_ongoing = True
+
     for entry in reversed(daily):
-        if entry["total"] > 0 and entry["pct"] >= 80:
+        e_date = entry["date"]
+        # Universal PillCare Active Day: Taken Dose OR Completed Yoga/Meditation OR Logged Health Activity
+        is_active = (entry["taken"] > 0 and entry["pct"] >= 40) or (e_date in dose_taken_dates) or (e_date in yoga_dates) or (e_date in activity_dates)
+
+        if is_active:
             if streak_ongoing:
                 streak += 1
-        elif entry["total"] == 0:
+        elif e_date == today_str:
+            # Grace period for today: keep streak active if user hasn't completed today's tasks yet
             pass
-        elif entry["date"] in yoga_dates:
-            if streak_ongoing:
-                streak += 1
+        elif entry["total"] == 0 and e_date not in yoga_dates and e_date not in activity_dates:
+            # Days without any scheduled medications or health activities don't break streak
+            pass
         else:
             streak_ongoing = False
+
     avg = round(sum(d["pct"] for d in daily) / len(daily)) if daily else 0
     return {"daily": daily, "streak": streak, "average": avg}
 
@@ -760,6 +771,14 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
         user = await db.users.find_one({"id": user_id}, PROJECTION) or {}
         doc["email"] = user.get("email", "")
         doc["id"] = user_id
+
+    # Enrich profile with Universal PillCare Health Streak
+    try:
+        adh = await _get_adherence_data(user_id, 30)
+        doc["streak_days"] = adh.get("streak", 0)
+    except Exception:
+        doc["streak_days"] = doc.get("streak_days", 0)
+
     return doc
 
 

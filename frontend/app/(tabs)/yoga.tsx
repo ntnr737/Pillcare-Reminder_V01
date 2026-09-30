@@ -278,24 +278,32 @@ export default function YogaTabScreen() {
     else if (doneData === true) setCompletedSteps(currentRoutine.steps.map((s) => s.num));
     else setCompletedSteps([]);
 
-    // Calculate streak & mindful minutes from history
+    // Sync Universal PillCare Health Streak across app
     try {
+      const adh = await api.adherence(30).catch(() => null);
+      if (adh && typeof adh.streak === "number" && adh.streak > 0) {
+        setStreakDays(adh.streak);
+      } else {
+        const profile = await api.getProfile().catch(() => null);
+        if (profile && typeof profile.streak_days === "number" && profile.streak_days > 0) {
+          setStreakDays(profile.streak_days);
+        } else {
+          const storedStreak = await get<number>(K.streak).catch(() => null);
+          if (typeof storedStreak === "number" && storedStreak > 0) {
+            setStreakDays(storedStreak);
+          }
+        }
+      }
+
       const historyCache = (await get<any[]>(K.history)) || [];
       let totalLogs = 0;
       historyCache.forEach((day: any) => {
         const yogaEntries = (day.entries || []).filter((e: any) => e.status === "yoga_completed" || e.name?.startsWith("Yoga:"));
         totalLogs += yogaEntries.length;
       });
-      if (totalLogs > 0) {
-        setStreakDays(Math.max(1, totalLogs));
-        setMindfulMins(totalLogs * 15);
-      } else {
-        setStreakDays(7);
-        setMindfulMins(105);
-      }
+      setMindfulMins(Math.max(15, totalLogs * 15));
     } catch {
-      setStreakDays(7);
-      setMindfulMins(105);
+      // Keep state
     }
 
     // Load reminder setting
