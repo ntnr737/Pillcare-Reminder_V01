@@ -1,0 +1,64 @@
+name: Build iOS App
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-ios:
+    name: Standalone iOS App Build
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Node Dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Expo Prebuild (Generate Native iOS Project)
+        run: npx expo prebuild --platform ios --clean
+        working-directory: frontend
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install
+        working-directory: frontend
+
+      - name: Build iOS Release App Bundle (Simulator / Archive)
+        run: |
+          cd ios
+          xcodebuild -workspace "PillCareReminder.xcworkspace" \
+                     -scheme "PillCareReminder" \
+                     -configuration Release \
+                     -sdk iphonesimulator \
+                     -derivedDataPath build \
+                     CODE_SIGNING_ALLOWED=NO \
+                     CODE_SIGNING_REQUIRED=NO
+        working-directory: frontend
+
+      - name: Package iOS Release Artifact
+        run: |
+          cd frontend/ios/build/Build/Products/Release-iphonesimulator
+          zip -r PillCare-v1.0.46-iOS-Release.zip "PillCare Reminder.app" || zip -r PillCare-v1.0.46-iOS-Release.zip "PillCareReminder.app" || zip -r PillCare-v1.0.46-iOS-Release.zip *.app
+
+      - name: Upload iOS App Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-app-release
+          path: frontend/ios/build/Build/Products/Release-iphonesimulator/PillCare-v1.0.46-iOS-Release.zip
