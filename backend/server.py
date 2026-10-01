@@ -5573,7 +5573,7 @@ window.sendDashPushNotification = async function() {
       resBox.style.color = 'var(--gr)';
       resBox.style.background = 'rgba(74,222,128,0.1)';
       resBox.style.borderColor = 'rgba(74,222,128,0.3)';
-      resBox.textContent = `Push Notification Dispatched! Delivered: ${res.sent ?? 0} registered device(s) | Failed: ${res.failed ?? 0} | Total Tokens: ${res.total ?? 0}`;
+      resBox.textContent = res.message || `Push Notification Dispatched! Delivered: ${res.sent ?? 0} registered device(s) | Failed: ${res.failed ?? 0} | Total Tokens: ${res.total ?? 0}`;
     }
   } catch(e) {
     endProgress(true);
@@ -6670,9 +6670,12 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     }
     await db.push_broadcast_logs.insert_one(log_doc)
     
-    msg = f"Broadcast dispatched! Delivered to {sent} device(s) via Expo Push API ({len(tokens)} token(s) targeted) & published in-app!"
-    if len(tokens) == 0:
-        msg = f"In-App Announcement published! (Note: 0 physical push tokens registered in target cohort '{target_plan}')."
+    if sent > 0:
+        msg = f"✅ Push Notification Dispatched! Delivered to {sent} active device(s) via Expo Push API ({len(tokens)} token(s) targeted) & published in-app!"
+    elif len(tokens) > 0:
+        msg = f"📢 In-App Flash Banner Published! (Note: {failed} Expo push token(s) in database are simulated/unregistered test tokens)."
+    else:
+        msg = f"📢 In-App Flash Banner Published! (0 physical push tokens registered in target cohort '{target_plan}')."
         
     return {
         "ok": True,
