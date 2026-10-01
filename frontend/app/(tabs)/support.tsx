@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
-import { signOut, getStoredUser, getStoredToken, isGuestUser, PillcareUser } from "@/src/lib/auth";
+import { signOut, getStoredUser, getStoredToken, isGuestUser, signInWithGoogle, PillcareUser } from "@/src/lib/auth";
 import { CountryCodePicker, COUNTRY_CODES, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { HeaderControls } from "@/src/components/HeaderControls";
 import { api } from "@/src/lib/api";
@@ -69,6 +69,7 @@ export default function Support() {
   const [search, setSearch] = useState("");
   const [user, setUser] = useState<PillcareUser | null>(null);
   const [isGuest, setIsGuest] = useState(true);
+  const [signingInSupport, setSigningInSupport] = useState(false);
   const [emergencyOpen, setEmergencyOpen] = useState(false);
   const [emStatus, setEmStatus] = useState<EmStatus>("idle");
   const [emPlace, setEmPlace] = useState("");
@@ -94,6 +95,38 @@ export default function Support() {
     } catch {
       if (isMounted.current) setIsGuest(true);
     }
+  };
+
+  const handleGoogleSignInFromSupport = async () => {
+    setSigningInSupport(true);
+    try {
+      const u = await signInWithGoogle();
+      if (u) {
+        setUser(u);
+        setIsGuest(isGuestUser(u));
+        Alert.alert("Signed In Successfully! 🎉", `Welcome, ${u.name}! Your account is now synced.`);
+      }
+    } catch (err: any) {
+      Alert.alert("Sign In Notice", err?.message || "Could not complete Google Sign In.");
+    } finally {
+      setSigningInSupport(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          await signOut();
+          setUser(null);
+          setIsGuest(true);
+          router.replace("/sign-in");
+        },
+      },
+    ]);
   };
 
   useFocusEffect(
@@ -227,6 +260,39 @@ export default function Support() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        {/* Top Guest Mode Banner in Support */}
+        {isGuest && (
+          <View style={[styles.guestCard, { backgroundColor: isDark ? "rgba(145,132,217,0.12)" : "rgba(145,132,217,0.08)", borderColor: theme.accent }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={[styles.guestIco, { backgroundColor: theme.accent }]}>
+                <Ionicons name="person-circle-outline" size={20} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.guestT, { color: theme.textPrimary }]}>Guest Patient Session 👤</Text>
+                <Text style={[styles.guestD, { color: theme.textSecondary }]}>
+                  Sign in with Google to sync support tickets, caregiver WhatsApp alerts, cloud backups, and health reports.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.guestActionBtn, { backgroundColor: theme.accent }]}
+              onPress={handleGoogleSignInFromSupport}
+              disabled={signingInSupport}
+              activeOpacity={0.8}
+            >
+              {signingInSupport ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={15} color="#FFFFFF" />
+                  <Text style={styles.guestActionBtnText}>Sign In / Connect Google Account</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Quick Actions Grid */}
         <View style={styles.grid}>
           <TouchableOpacity
@@ -397,6 +463,57 @@ export default function Support() {
             <Text style={[styles.pB, { color: theme.textSecondary }]}>{p.body}</Text>
           </View>
         ))}
+
+        {/* Account & Login Section */}
+        <Text style={[styles.secL, { color: theme.textSecondary }]}>ACCOUNT & CLOUD SYNC</Text>
+        {isGuest ? (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.accent, gap: 10 }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={[styles.cIco, { backgroundColor: theme.accentBg }]}>
+                <Ionicons name="cloud-upload-outline" size={18} color={theme.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cT, { color: theme.textPrimary }]}>Guest Mode (Unsynced)</Text>
+                <Text style={[styles.cD, { color: theme.textSecondary }]}>
+                  Connect your Google Account to preserve your treatment logs, caregiver alerts, and exported reports permanently.
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[styles.guestActionBtn, { backgroundColor: theme.accent, marginTop: 4 }]}
+              onPress={handleGoogleSignInFromSupport}
+              disabled={signingInSupport}
+              activeOpacity={0.8}
+            >
+              {signingInSupport ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={15} color="#FFFFFF" />
+                  <Text style={styles.guestActionBtnText}>Sign In with Google Account</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <Ionicons name="checkmark-circle" size={22} color={theme.success} />
+                <View>
+                  <Text style={[styles.cT, { color: theme.textPrimary }]}>{user?.name || "Patient"}</Text>
+                  <Text style={[styles.cD, { color: theme.textSecondary }]}>{user?.email}</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={handleSignOut}
+                style={{ paddingHorizontal: 12, height: 34, borderRadius: 10, backgroundColor: "rgba(239,68,68,0.12)", justifyContent: "center", alignItems: "center" }}
+              >
+                <Text style={{ fontSize: 12, fontWeight: "700", color: theme.alert }}>Sign Out</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       {/* Emergency Modal */}
@@ -504,4 +621,41 @@ const styles = StyleSheet.create({
   mTitle: { fontSize: 18, fontWeight: "800", textAlign: "center", marginTop: 8 },
   mDesc: { fontSize: 12, textAlign: "center", marginTop: 2 },
   mBtn: { height: 44, borderRadius: 12, justifyContent: "center", alignItems: "center" },
+  guestCard: {
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    gap: 12,
+    marginBottom: 14,
+  },
+  guestIco: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestT: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  guestD: {
+    fontSize: 11.5,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  guestActionBtn: {
+    height: 42,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  guestActionBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
 });

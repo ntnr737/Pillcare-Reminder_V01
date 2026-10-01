@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -11,6 +11,7 @@ import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation, SUPPORTED_LANGUAGES, SupportedLocale } from "@/src/context/LanguageContext";
 import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
 import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
+import { signInWithGoogle, getStoredUser, isGuestUser, signOut, PillcareUser } from "@/src/lib/auth";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -25,7 +26,19 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [changed, setChanged] = useState(false);
 
+  const [authUser, setAuthUser] = useState<PillcareUser | null>(null);
+  const [isGuest, setIsGuest] = useState(true);
+  const [signingIn, setSigningIn] = useState(false);
+
   const load = useCallback(async () => {
+    try {
+      const u = await getStoredUser();
+      setAuthUser(u);
+      setIsGuest(isGuestUser(u));
+    } catch {
+      setIsGuest(true);
+    }
+
     const cached = await get<any>(K.profile);
     if (cached) setProfile(cached);
     try {
@@ -35,6 +48,42 @@ export default function Profile() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const handleGoogleSignIn = async () => {
+    setSigningIn(true);
+    try {
+      const u = await signInWithGoogle();
+      if (u) {
+        setAuthUser(u);
+        setIsGuest(isGuestUser(u));
+        setProfile((prev: any) => ({
+          ...prev,
+          nickname: u.name || prev.nickname,
+          email: u.email,
+        }));
+        await set(K.profile, { nickname: u.name, email: u.email }).catch(() => {});
+        Alert.alert("Signed In Successfully! 🎉", `Welcome, ${u.name}! Your health data is now linked to Google.`);
+      }
+    } catch (err: any) {
+      Alert.alert("Sign In Notice", err?.message || "Could not complete Google Sign In.");
+    } finally {
+      setSigningIn(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Sign Out",
+        style: "destructive",
+        onPress: async () => {
+          await signOut();
+          router.replace("/sign-in");
+        },
+      },
+    ]);
+  };
 
   const update = (key: string, val: any) => {
     setProfile((p: any) => ({ ...p, [key]: val }));
@@ -73,6 +122,39 @@ export default function Profile() {
       </View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+
+        {/* Guest Mode Sign-In Banner */}
+        {isGuest && (
+          <View style={[s.guestBannerCard, { backgroundColor: isDark ? "rgba(145,132,217,0.12)" : "rgba(145,132,217,0.08)", borderColor: theme.accent }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View style={[s.guestIconCircle, { backgroundColor: theme.accent }]}>
+                <Ionicons name="person-outline" size={18} color="#FFFFFF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.guestBannerTitle, { color: theme.textPrimary }]}>Guest Patient Session 👤</Text>
+                <Text style={[s.guestBannerSubtitle, { color: theme.textSecondary }]}>
+                  You are exploring PillCare in Guest Mode. Connect your Google Account to back up treatment logs & sync across devices.
+                </Text>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[s.googleSignInBtn, { backgroundColor: theme.accent }]}
+              onPress={handleGoogleSignIn}
+              disabled={signingIn}
+              activeOpacity={0.8}
+            >
+              {signingIn ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={16} color="#FFFFFF" />
+                  <Text style={s.googleSignInBtnText}>Sign In with Google Account</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Appearance & Language */}
         <Text style={[s.secL, { color: theme.accent }]}>APPEARANCE & LANGUAGE</Text>
@@ -139,9 +221,21 @@ export default function Profile() {
           </View>
           <View style={s.field}>
             <Text style={[s.label, { color: theme.textSecondary }]}>Email Account</Text>
-            <Text style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textSecondary, borderColor: theme.surfaceBorder }]}>
-              {profile.email || "Registered Google Account"}
+            <Text style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: isGuest ? theme.accent : theme.textSecondary, borderColor: theme.surfaceBorder }]}>
+              {isGuest ? "Guest Mode (Not Synced to Cloud)" : (profile.email || authUser?.email || "Registered Google Account")}
             </Text>
+            {isGuest && (
+              <TouchableOpacity
+                onPress={handleGoogleSignIn}
+                disabled={signingIn}
+                style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}
+              >
+                <Ionicons name="logo-google" size={13} color={theme.accent} />
+                <Text style={{ fontSize: 12, fontWeight: "700", color: theme.accent }}>
+                  {signingIn ? "Signing In..." : "Tap to Sign In & Sync Account"}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
           <View style={s.field}>
             <Text style={[s.label, { color: theme.textSecondary }]}>Gender</Text>
@@ -312,5 +406,42 @@ const s = StyleSheet.create({
   routineBtnOn: {},
   saveBtn: { borderRadius: 12, padding: 14, alignItems: "center" },
   saveTx: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  guestBannerCard: {
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
+    gap: 12,
+    marginBottom: 4,
+  },
+  guestIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  guestBannerTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+  },
+  guestBannerSubtitle: {
+    fontSize: 11.5,
+    marginTop: 2,
+    lineHeight: 16,
+  },
+  googleSignInBtn: {
+    height: 42,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  googleSignInBtnText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "700",
+  },
 });
 
