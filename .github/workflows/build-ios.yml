@@ -34,6 +34,17 @@ jobs:
         run: npx expo prebuild --platform ios --clean
         working-directory: frontend
 
+      - name: Configure Modular Headers in Podfile
+        run: |
+          python3 -c "
+          with open('ios/Podfile', 'r') as f:
+              content = f.read()
+          if 'use_modular_headers!' not in content:
+              with open('ios/Podfile', 'w') as f:
+                  f.write('use_modular_headers!\n' + content)
+          "
+        working-directory: frontend
+
       - name: Install CocoaPods
         run: |
           cd ios
@@ -55,7 +66,7 @@ jobs:
       - name: Package iOS Release Artifact
         run: |
           cd frontend/ios/build/Build/Products/Release-iphonesimulator
-          zip -r PillCare-v1.0.46-iOS-Release.zip "PillCare Reminder.app" || zip -r PillCare-v1.0.46-iOS-Release.zip "PillCareReminder.app" || zip -r PillCare-v1.0.46-iOS-Release.zip *.app
+          zip -r PillCare-v1.0.46-iOS-Release.zip "PillCareReminder.app"
 
       - name: Upload iOS App Artifact
         uses: actions/upload-artifact@v4
