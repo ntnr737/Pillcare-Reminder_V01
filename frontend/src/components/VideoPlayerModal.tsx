@@ -284,6 +284,7 @@ export function VideoPlayerModal({
                     />
                   ) : WebView ? (
                     <WebView
+                      key={useMobileWeb ? "mobile-web" : "embed-html"}
                       source={
                         useMobileWeb
                           ? { uri: mobileWatchUri }
@@ -304,22 +305,22 @@ export function VideoPlayerModal({
                           const data = JSON.parse(event.nativeEvent.data);
                           if (data && data.type === "YT_ERROR") {
                             console.warn("YouTube IFrame API returned error code:", data.code);
-                            setHasError(true);
+                            if (!useMobileWeb) {
+                              setUseMobileWeb(true);
+                            }
                           }
                         } catch {}
                       }}
-                      onError={() => {
+                      onError={(syntheticEvent: any) => {
+                        console.warn("WebView error: ", syntheticEvent?.nativeEvent);
                         if (!useMobileWeb) {
                           setUseMobileWeb(true);
-                        } else {
-                          setHasError(true);
                         }
                       }}
-                      onHttpError={() => {
-                        if (!useMobileWeb) {
+                      onHttpError={(syntheticEvent: any) => {
+                        console.warn("WebView HTTP error status: ", syntheticEvent?.nativeEvent?.statusCode);
+                        if (!useMobileWeb && syntheticEvent?.nativeEvent?.statusCode >= 400) {
                           setUseMobileWeb(true);
-                        } else {
-                          setHasError(true);
                         }
                       }}
                       renderLoading={() => (
