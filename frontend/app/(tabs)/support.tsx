@@ -5,7 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import * as WebBrowser from "expo-web-browser";
-import { get, K } from "@/src/lib/store";
+import { get, set, K } from "@/src/lib/store";
+import { enqueueWrite } from "@/src/lib/sync";
 import { signOut, getStoredUser, getStoredToken, isGuestUser, signInWithGoogle, PillcareUser } from "@/src/lib/auth";
 import { CountryCodePicker, COUNTRY_CODES, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { HeaderControls } from "@/src/components/HeaderControls";
@@ -177,12 +178,23 @@ export default function Support() {
     const fullPhone = formatFullWhatsAppPhone(selectedDialCode, raw);
     setSavingCg(true);
     try {
-      await api.updateCaregiver(fullPhone);
-      track("caregiver_connected", { dialCode: selectedDialCode });
+      // 1. Instant local persistence
+      const currentProfile = (await get<any>(K.profile)) || {};
+      const updatedProfile = { ...currentProfile, caregiver_phone: fullPhone };
+      await set(K.profile, updatedProfile);
+
       setCaregiverConnected(true);
+      track("caregiver_connected", { dialCode: selectedDialCode });
       Alert.alert(t("common.save", "Saved"), `Caregiver phone (${fullPhone}) connected successfully!`);
-    } catch {
-      Alert.alert(t("common.error", "Error"), "Could not save caregiver number. Please try again.");
+
+      // 2. Background server push + offline queue
+      try {
+        await api.updateCaregiver(fullPhone);
+      } catch {
+        await enqueueWrite("profile", updatedProfile);
+      }
+    } catch (err: any) {
+      Alert.alert(t("common.error", "Error"), err?.message || "Could not save caregiver number. Please try again.");
     } finally { setSavingCg(false); }
   };
 
