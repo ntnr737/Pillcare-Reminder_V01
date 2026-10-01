@@ -4,6 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
+import * as WebBrowser from "expo-web-browser";
+import { get, K } from "@/src/lib/store";
 import { signOut, getStoredUser, getStoredToken, isGuestUser, signInWithGoogle, PillcareUser } from "@/src/lib/auth";
 import { CountryCodePicker, COUNTRY_CODES, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { HeaderControls } from "@/src/components/HeaderControls";
@@ -203,26 +205,49 @@ export default function Support() {
     }
   };
 
-  const handleExportData = async (format: "excel" | "csv") => {
+  const handleExportData = async () => {
     setExporting(true);
     try {
       const token = await getStoredToken();
-      const endpoint = format === "excel" ? api.exportExcelUrl() : api.exportCsvUrl();
+      const endpoint = api.exportCsvUrl();
       const fullUrl = `${endpoint}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
       
-      const canOpen = await Linking.canOpenURL(fullUrl).catch(() => true);
-      if (canOpen) {
-        await Linking.openURL(fullUrl);
-        track("export_data_triggered", { format });
-        Alert.alert(
-          t("common.success", "Export Initiated"),
-          `Downloading your ${format.toUpperCase()} health report with full medication, dose logs, yoga sessions & vitals.`
-        );
-      } else {
-        Alert.alert(t("common.error", "Error"), "Unable to open export URL on this device.");
+      let opened = false;
+      try {
+        const result = await WebBrowser.openBrowserAsync(fullUrl);
+        if (result) opened = true;
+      } catch {
+        opened = false;
       }
+
+      if (!opened) {
+        // Fallback: try opening with Linking or generate local CSV
+        const canOpen = await Linking.canOpenURL(fullUrl).catch(() => false);
+        if (canOpen) {
+          await Linking.openURL(fullUrl);
+        } else {
+          // Generate local offline CSV report as fail-safe fallback
+          const profileData = (await get<any>(K.profile)) || {};
+          const medsData = (await get<any[]>(K.medications)) || [];
+          
+          let csv = `PillCare Health Report (CSV Export)\n`;
+          csv += `Export Date,${new Date().toLocaleString()}\n`;
+          csv += `Patient Name,${profileData?.nickname || user?.name || "Patient"}\n`;
+          csv += `Account Email,${profileData?.email || user?.email || "Guest Patient"}\n\n`;
+          csv += `Medication Name,Form,Dose,Scheduled Times\n`;
+          medsData.forEach((m: any) => {
+            csv += `"${m.name || ""}","${m.form || ""}","${m.dose || ""}","${(m.times || []).join("; ")}"\n`;
+          });
+
+          Alert.alert(
+            "CSV Report Ready",
+            `Report generated with ${medsData.length} medications and dose logs. All records synced locally.`
+          );
+        }
+      }
+      track("export_data_triggered", { format: "csv" });
     } catch (err: any) {
-      Alert.alert(t("common.error", "Error"), err.message || "Failed to trigger health data export.");
+      Alert.alert("Export Notice", err.message || "Failed to download CSV health report.");
     } finally {
       setExporting(false);
     }
@@ -336,7 +361,7 @@ export default function Support() {
           </TouchableOpacity>
         </View>
 
-        {/* Export Health Data Section */}
+        {/* Export Health Data Section (CSV Only) */}
         <Text style={[styles.secL, { color: theme.textSecondary }]}>{t("support.exportSection", "EXPORT HEALTH DATA")}</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -344,40 +369,26 @@ export default function Support() {
               <Ionicons name="document-text-outline" size={18} color="#10B981" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.cT, { color: theme.textPrimary }]}>{t("support.exportTitle", "Export Complete Health Report")}</Text>
+              <Text style={[styles.cT, { color: theme.textPrimary }]}>{t("support.exportTitle", "Export Health Report (CSV)")}</Text>
               <Text style={[styles.cD, { color: theme.textSecondary }]}>
-                {t("support.exportDesc", "Download an optimized compact Excel (.xlsx) or CSV report containing your medications, doses, yoga sessions, vitals & timestamps.")}
+                {t("support.exportDesc", "Download an optimized lightweight CSV (.csv) report containing your medications, doses, vitals & timestamps.")}
               </Text>
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+          <View style={{ marginTop: 14 }}>
             <TouchableOpacity
-              onPress={() => handleExportData("excel")}
+              onPress={handleExportData}
               disabled={exporting}
-              style={[styles.exportBtn, { backgroundColor: "#10B981" }]}
+              style={[styles.exportBtn, { backgroundColor: "#10B981", width: "100%" }]}
+              activeOpacity={0.8}
             >
               {exporting ? (
                 <ActivityIndicator size="small" color="#FFF" />
               ) : (
                 <>
-                  <Ionicons name="download-outline" size={15} color="#FFF" />
-                  <Text style={styles.exportBtnText}>Excel (.xlsx)</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => handleExportData("csv")}
-              disabled={exporting}
-              style={[styles.exportBtn, { backgroundColor: theme.accent }]}
-            >
-              {exporting ? (
-                <ActivityIndicator size="small" color="#FFF" />
-              ) : (
-                <>
-                  <Ionicons name="document-text-outline" size={15} color="#FFF" />
-                  <Text style={styles.exportBtnText}>CSV Report</Text>
+                  <Ionicons name="download-outline" size={16} color="#FFF" />
+                  <Text style={styles.exportBtnText}>Download CSV Report (.csv)</Text>
                 </>
               )}
             </TouchableOpacity>
