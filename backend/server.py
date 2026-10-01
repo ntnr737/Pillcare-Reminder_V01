@@ -4675,20 +4675,7 @@ function logout() {
   if (window.google) google.accounts.id.disableAutoSelect();
 }
 
-// ── SMART FALLBACK TELEMETRY FOR ZERO-DOWNTIME ADMIN UI ──
-const FALLBACK = {
-  stats: {
-    users: { total: 32, new_today: 4, new_week: 14, new_month: 32, active_week: 28, retention_rate: 87.5 },
-    health: { total_doses_tracked: 420, taken: 388, missed: 22, global_adherence_rate: 92.4 },
-    top_medications: [
-      { name: "Metformin HCl 500mg", users: 18 },
-      { name: "Amoxicillin 500mg", users: 14 },
-      { name: "Atorvastatin 20mg", users: 12 },
-      { name: "Omeprazole 20mg", users: 9 },
-      { name: "Losartan Potassium 50mg", users: 7 }
-    ],
-    feature_usage: [
-      { feature: "yoga_viewed", count: 48 },
+
 async function loadAll() {
   let stats, rev;
   try {
