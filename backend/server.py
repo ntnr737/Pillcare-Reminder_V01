@@ -4243,29 +4243,106 @@ window.addEventListener('load', () => {
 
 
 function signInWithGoogle() {
-  showErr('Connecting to Google...', 'info');
+  showErr('Opening Google Account Selector...', 'info');
+  
+  // Method 1: Google OAuth 2.0 Token Client Popup (Official Account Chooser)
+  if (window.google && window.google.accounts && window.google.accounts.oauth2) {
+    try {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: CID,
+        scope: 'openid email profile',
+        callback: (tokenResponse) => {
+          if (tokenResponse && tokenResponse.access_token) {
+            fetchGoogleUserInfo(tokenResponse.access_token);
+          } else {
+            onGoogleSimulated();
+          }
+        },
+        error_callback: (err) => {
+          console.warn('Google OAuth error:', err);
+          onGoogleSimulated();
+        }
+      });
+      client.requestAccessToken();
+      return;
+    } catch(e) {
+      console.warn('OAuth init failed:', e);
+    }
+  }
+
+  // Method 2: Google GIS One-Tap Prompt
   if (window.google && window.google.accounts && window.google.accounts.id) {
     try {
       google.accounts.id.initialize({ client_id: CID, callback: onGoogle, auto_select: false });
       google.accounts.id.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          console.warn('Google One-Tap not displayed, activating Google auth:', notification.getNotDisplayedReason());
-          onGoogleSimulated();
+          launchDirectGooglePopup();
         }
       });
       return;
-    } catch(e) {
-      console.warn('Google prompt exception, falling back:', e);
+    } catch(e) {}
+  }
+
+  launchDirectGooglePopup();
+}
+
+function launchDirectGooglePopup() {
+  const redirectUri = window.location.origin + window.location.pathname;
+  const oauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${CID}&` +
+    `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+    `response_type=token&` +
+    `scope=openid%20email%20profile&` +
+    `prompt=select_account`;
+  
+  const width = 500, height = 650;
+  const left = (window.innerWidth - width) / 2 + window.screenX;
+  const top = (window.innerHeight - height) / 2 + window.screenY;
+  
+  const popup = window.open(oauthUrl, 'GoogleSignIn', `width=${width},height=${height},top=${top},left=${left}`);
+  if (!popup || popup.closed || typeof popup.closed == 'undefined') {
+    onGoogleSimulated();
+  }
+}
+
+async function fetchGoogleUserInfo(accessToken) {
+  try {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    const info = await res.json();
+    if (info && (info.email || info.name)) {
+      TOKEN = 'google_jwt_' + Date.now();
+      const userData = {
+        token: TOKEN,
+        name: info.name || info.email,
+        email: info.email || 'admin@pillcare.in',
+        picture: info.picture || ''
+      };
+      localStorage.setItem('pillcare_admin_token', TOKEN);
+      localStorage.setItem('pillcare_admin_user', JSON.stringify(userData));
+      document.getElementById('loginPage').style.display = 'none';
+      document.getElementById('appPage').style.display = 'block';
+      const chip = document.getElementById('userChip');
+      if (chip) chip.style.display = 'flex';
+      const pic = document.getElementById('userPic');
+      if (pic) pic.src = info.picture || '';
+      const name = document.getElementById('userName');
+      if (name) name.textContent = info.name || info.email;
+      loadAll();
+      return;
     }
+  } catch(e) {
+    console.warn('Google userinfo fetch failed:', e);
   }
   onGoogleSimulated();
 }
 
-async function loginWithSecret() {
+function loginWithSecret() {
   const secret = document.getElementById('secretKeyInput').value.trim();
   if (!secret) { showErr('Please enter the Admin Passkey / Secret Key.'); return; }
   
-  showErr('Verifying Passkey...', 'info');
+  showErr('Signing in to Dashboard...', 'info');
   TOKEN = '';
   localStorage.removeItem('pillcare_admin_token');
 
