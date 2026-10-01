@@ -110,7 +110,7 @@ export function VideoPlayerModal({
   };
 
   const videoId = extractYouTubeId(videoUrl);
-  const directEmbedUri = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1`;
+  const directEmbedUri = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&origin=https://www.youtube.com&widget_referrer=https://www.youtube.com&rel=0&modestbranding=1`;
   const mobileWatchUri = `https://m.youtube.com/watch?v=${videoId}`;
   const [useMobileWeb, setUseMobileWeb] = useState(false);
 
@@ -123,18 +123,53 @@ export function VideoPlayerModal({
         * { margin: 0; padding: 0; box-sizing: border-box; background-color: #0B0D14; }
         html, body { width: 100%; height: 100%; overflow: hidden; background: #0B0D14; display: flex; align-items: center; justify-content: center; }
         .player-wrapper { position: relative; width: 100%; height: 100%; }
-        iframe { width: 100%; height: 100%; border: none; border-radius: 12px; }
+        #player { width: 100%; height: 100%; border: none; border-radius: 12px; }
       </style>
     </head>
     <body>
       <div class="player-wrapper">
-        <iframe 
-          src="https://www.youtube.com/embed/${vidId}?autoplay=1&playsinline=1&enablejsapi=1&rel=0&modestbranding=1&controls=1" 
-          frameborder="0" 
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
-          allowfullscreen>
-        </iframe>
+        <div id="player"></div>
       </div>
+      <script>
+        var tag = document.createElement('script');
+        tag.src = "https://www.youtube.com/iframe_api";
+        var firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+        var player;
+        function onYouTubeIframeAPIReady() {
+          player = new YT.Player('player', {
+            height: '100%',
+            width: '100%',
+            videoId: '${vidId}',
+            host: 'https://www.youtube-nocookie.com',
+            playerVars: {
+              'autoplay': 1,
+              'playsinline': 1,
+              'enablejsapi': 1,
+              'origin': 'https://www.youtube.com',
+              'widget_referrer': 'https://www.youtube.com',
+              'rel': 0,
+              'modestbranding': 1,
+              'controls': 1
+            },
+            events: {
+              'onReady': onPlayerReady,
+              'onError': onPlayerError
+            }
+          });
+        }
+
+        function onPlayerReady(event) {
+          try { event.target.playVideo(); } catch(e){}
+        }
+
+        function onPlayerError(event) {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'YT_ERROR', code: event.data }));
+          }
+        }
+      </script>
     </body>
     </html>
   `;
@@ -223,14 +258,18 @@ export function VideoPlayerModal({
                 <View style={s.playerWrapper}>
                   {hasError ? (
                     <View style={s.fallbackContainer}>
-                      <Ionicons name="logo-youtube" size={40} color="#FF0000" />
+                      <Ionicons name="logo-youtube" size={44} color="#FF0000" />
                       <Text style={s.fallbackText}>Playback Restricted on Iframe</Text>
-                      <View style={{ flexDirection: "row", gap: 8, marginTop: 4 }}>
+                      <Text style={{ fontSize: 11, color: TM, textAlign: "center", marginBottom: 8, paddingHorizontal: 12 }}>
+                        YouTube enforces playback restrictions for this video (Error 152/150). Watch seamlessly via:
+                      </Text>
+                      <View style={{ flexDirection: "row", gap: 8 }}>
                         <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
                           <Ionicons name="globe-outline" size={14} color="#FFF" style={{ marginRight: 4 }} />
                           <Text style={s.playBtnText}>In-App Browser 🌐</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={handleExternalOpen} style={s.playBtn}>
+                          <Ionicons name="logo-youtube" size={14} color="#FFF" style={{ marginRight: 4 }} />
                           <Text style={s.playBtnText}>YouTube App</Text>
                         </TouchableOpacity>
                       </View>
@@ -260,18 +299,27 @@ export function VideoPlayerModal({
                       mixedContentMode="always"
                       userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
                       startInLoadingState={true}
+                      onMessage={(event: any) => {
+                        try {
+                          const data = JSON.parse(event.nativeEvent.data);
+                          if (data && data.type === "YT_ERROR") {
+                            console.warn("YouTube IFrame API returned error code:", data.code);
+                            setHasError(true);
+                          }
+                        } catch {}
+                      }}
                       onError={() => {
                         if (!useMobileWeb) {
                           setUseMobileWeb(true);
                         } else {
-                          handleInAppBrowser();
+                          setHasError(true);
                         }
                       }}
                       onHttpError={() => {
                         if (!useMobileWeb) {
                           setUseMobileWeb(true);
                         } else {
-                          handleInAppBrowser();
+                          setHasError(true);
                         }
                       }}
                       renderLoading={() => (
