@@ -694,24 +694,58 @@ async def logout(authorization: str = Header(default="")):
             _revoked_tokens.clear()
     return {"message": "Signed out successfully"}
 
+@app.post("/profile/push-token")
+@app.post("/api/profile/push-token")
+@app.post("/api/push-token")
+@app.post("/push-token")
+@app.post("/api/register-push-token")
+@app.post("/register-push-token")
 @api.post("/profile/push-token")
-async def save_push_token(payload: dict, user_id: str = Depends(get_current_user_id)):
-    """Save Expo push token so admin can send notifications to all users."""
-    token = (payload.get("token") or payload.get("push_token") or "").strip()
+async def save_push_token_flexible(request: Request, payload: dict = Body(...)):
+    """Flexible push token registration supporting Expo, FCM, and APNs across all mobile app routes."""
+    token = (
+        payload.get("token") or
+        payload.get("push_token") or
+        payload.get("expo_token") or
+        payload.get("fcm_token") or
+        payload.get("device_token") or
+        ""
+    ).strip()
+    
+    user_id = payload.get("user_id") or payload.get("email") or "anonymous_device"
+    
+    auth_header = request.headers.get("Authorization") or ""
+    if auth_header.startswith("Bearer "):
+        try:
+            token_str = auth_header.split(" ")[1]
+            payload_data = jwt.decode(token_str, SECRET_KEY, algorithms=[ALGORITHM])
+            user_id = payload_data.get("sub") or user_id
+        except Exception:
+            pass
+
     if not token or len(token) < 5:
         raise HTTPException(400, "ERR_4002: Invalid or empty push token")
+        
     now = datetime.now(timezone.utc)
-    await db.users.update_one(
-        {"$or": [{"id": user_id}, {"_id": user_id}]},
-        {"$set": {"push_token": token, "push_token_updated": now}},
+    update_doc = {
+        "push_token": token,
+        "expo_push_token": token if token.startswith("ExponentPushToken") else token,
+        "fcm_token": token if not token.startswith("ExponentPushToken") else token,
+        "device_token": token,
+        "push_token_updated": now
+    }
+    
+    await db.users.update_many(
+        {"$or": [{"id": user_id}, {"_id": user_id}, {"email": user_id}, {"push_token": token}]},
+        {"$set": update_doc},
         upsert=True
     )
-    await db.profile.update_one(
-        {"$or": [{"id": user_id}, {"user_id": user_id}]},
-        {"$set": {"push_token": token, "push_token_updated": now}},
-        upsert=False
+    await db.profile.update_many(
+        {"$or": [{"id": user_id}, {"user_id": user_id}, {"email": user_id}, {"push_token": token}]},
+        {"$set": update_doc},
+        upsert=True
     )
-    return {"ok": True}
+    return {"ok": True, "token": token, "user_id": user_id}
 
 @api.post("/profile/caregiver")
 async def update_caregiver(
@@ -3696,7 +3730,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                 "body": body,
                 "sound": "default",
                 "priority": "high",
-                "channelId": "broadcasts",
+                "channelId": "default",
                 "badge": 1,
                 "ttl": 86400,
                 "_displayInForeground": True,
