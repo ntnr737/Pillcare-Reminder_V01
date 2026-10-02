@@ -1,0 +1,109 @@
+{
+  "exportFormatVersion": 2,
+  "exportTime": "2026-10-03 02:56:00",
+  "containerVersion": {
+    "path": "accounts/6380276894/containers/265943536/versions/0",
+    "accountId": "6380276894",
+    "containerId": "265943536",
+    "containerVersionId": "0",
+    "container": {
+      "path": "accounts/6380276894/containers/265943536",
+      "accountId": "6380276894",
+      "containerId": "265943536",
+      "name": "PillCare Android",
+      "publicId": "GTM-W8T9DWZL",
+      "usageContext": ["android"]
+    },
+    "tag": [
+      {
+        "accountId": "6380276894",
+        "containerId": "265943536",
+        "tagId": "101",
+        "name": "GA4 Event - PillCare Adherence & Conversions",
+        "type": "ga4_event",
+        "parameter": [
+          {
+            "type": "TEMPLATE",
+            "key": "eventName",
+            "value": "{{Event}}"
+          }
+        ],
+        "firingTriggerId": ["1", "2", "3"]
+      }
+    ],
+    "trigger": [
+      {
+        "accountId": "6380276894",
+        "containerId": "265943536",
+        "triggerId": "1",
+        "name": "Trig_Medication_Added",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "medication_added"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "accountId": "6380276894",
+        "containerId": "265943536",
+        "triggerId": "2",
+        "name": "Trig_Reminder_Completed",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "reminder_completed"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "accountId": "6380276894",
+        "containerId": "265943536",
+        "triggerId": "3",
+        "name": "Trig_Subscription_Started",
+        "type": "CUSTOM_EVENT",
+        "customEventFilter": [
+          {
+            "type": "EQUALS",
+            "parameter": [
+              {
+                "type": "TEMPLATE",
+                "key": "arg0",
+                "value": "{{_event}}"
+              },
+              {
+                "type": "TEMPLATE",
+                "key": "arg1",
+                "value": "subscription_started"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PillCare Sub-50ms API Compression & Async Architecture"
+  },
+  "components": [
+    {
+      "id": "client_app",
+      "type": "frontend",
+      "label": "React Native App (Optimistic UI)",
+      "pos": [40, 100],
+      "size": [240, 90]
+    },
+    {
+      "id": "api_gateway",
+      "type": "backend",
+      "label": "FastAPI Server (GZip Middleware)",
+      "pos": [440, 100],
+      "size": [240, 90]
+    },
+    {
+      "id": "mongo_db",
+      "type": "database",
+      "label": "MongoDB Cluster (AsyncIO)",
+      "pos": [840, 40],
+      "size": [240, 90]
+    },
+    {
+      "id": "bg_ai_worker",
+      "type": "cloud",
+      "label": "Async AI Resolver (Groq LLM)",
+      "pos": [840, 220],
+      "size": [240, 90]
+    }
+  ],
+  "connections": [
+    {
+      "from": "client_app",
+      "to": "api_gateway",
+      "label": "POST /api/medications (GZip, <10ms)",
+      "labelAt": [360, 70]
+    },
+    {
+      "from": "api_gateway",
+      "to": "mongo_db",
+      "label": "Parallel asyncio.gather queries",
+      "labelAt": [740, 75]
+    },
+    {
+      "from": "api_gateway",
+      "to": "bg_ai_worker",
+      "label": "asyncio.create_task(_bg_resolve_generic)",
+      "labelAt": [740, 204]
+    },
+    {
+      "from": "bg_ai_worker",
+      "to": "mongo_db",
+      "label": "$set generic_name async update",
+      "labelAt": [980, 160]
+    }
+  ]
+}

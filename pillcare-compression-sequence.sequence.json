@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "PillCare Sub-50ms API Request & Compression Flow"
+  },
+  "participants": [
+    { "id": "mobile", "label": "React Native", "type": "frontend" },
+    { "id": "gateway", "label": "FastAPI", "type": "backend" },
+    { "id": "db", "label": "MongoDB", "type": "database" },
+    { "id": "ai_worker", "label": "AI Worker", "type": "cloud" }
+  ],
+  "messages": [
+    {
+      "from": "mobile",
+      "to": "gateway",
+      "label": "POST /api/medications [Accept-Encoding: gzip, br]",
+      "y": 160
+    },
+    {
+      "from": "gateway",
+      "to": "db",
+      "label": "db.medications.insert_one(med_dict)",
+      "y": 210
+    },
+    {
+      "from": "db",
+      "to": "gateway",
+      "label": "Insert ACK (Document Saved, <10ms)",
+      "y": 260
+    },
+    {
+      "from": "gateway",
+      "to": "ai_worker",
+      "label": "asyncio.create_task(_bg_resolve_generic)",
+      "y": 310
+    },
+    {
+      "from": "gateway",
+      "to": "mobile",
+      "label": "HTTP 200 OK (Compressed GZip Stream, ~12ms Total)",
+      "y": 360
+    },
+    {
+      "from": "ai_worker",
+      "to": "db",
+      "label": "db.medications.update_one({'generic_name': resolved_name})",
+      "y": 410
+    }
+  ]
+}

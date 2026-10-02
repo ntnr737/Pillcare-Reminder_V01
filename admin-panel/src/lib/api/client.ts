@@ -404,6 +404,18 @@ export async function fetchGroqTelemetry(): Promise<GroqTelemetry> {
 }
 
 export async function fetchNotifications(): Promise<NotificationCampaign[]> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/notifications`, {
+      headers: { 'x-admin-secret': 'pillcare_admin_secret_key_2026' },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (json.notifications && json.notifications.length > 0) {
+        return json.notifications;
+      }
+    }
+  } catch (e) {}
   return [];
 }
 
