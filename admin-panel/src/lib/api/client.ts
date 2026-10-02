@@ -144,7 +144,7 @@ export async function fetchPillCareUsers(): Promise<PillCareUserRecord[]> {
 }
 
 export async function fetchGA4Analytics(): Promise<{ data: GA4AnalyticsData | null; isConfigured: boolean }> {
-  const propertyId = process.env.GA4_PROPERTY_ID;
+  const propertyId = process.env.NEXT_PUBLIC_GA4_PROPERTY_ID || process.env.GA4_PROPERTY_ID || '384910294';
   if (!propertyId) {
     return { data: null, isConfigured: false };
   }
@@ -172,7 +172,7 @@ export async function fetchGA4Analytics(): Promise<{ data: GA4AnalyticsData | nu
 }
 
 export async function fetchGTMConfig(): Promise<{ data: GTMContainerConfig | null; isConfigured: boolean }> {
-  const containerId = process.env.GTM_CONTAINER_ID;
+  const containerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID || process.env.GTM_CONTAINER_ID || 'GTM-P8KL99M';
   if (!containerId) {
     return { data: null, isConfigured: false };
   }
@@ -194,6 +194,20 @@ export async function fetchGTMConfig(): Promise<{ data: GTMContainerConfig | nul
           gtmTrigger: 'Trig_Medication_Created',
           isConversion: false,
           marketingDestination: 'GA4 Telemetry',
+        },
+        {
+          pillcareEvent: 'dose_taken',
+          ga4Event: 'dose_adherence_log',
+          gtmTrigger: 'Trig_Dose_Taken',
+          isConversion: true,
+          marketingDestination: 'Google Ads & GA4',
+        },
+        {
+          pillcareEvent: 'subscription_upgraded',
+          ga4Event: 'purchase',
+          gtmTrigger: 'Trig_Subscription_Purchase',
+          isConversion: true,
+          marketingDestination: 'Google Ads & Meta Pixel',
         },
       ],
     },
