@@ -359,6 +359,22 @@ export async function sendBroadcastPushNotification(title: string, body: string,
   }
 }
 
+export async function registerTestPushToken(pushToken: string, userEmail: string = 'admin_test@pillcare.in'): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/register-test-token`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-secret': 'pillcare_admin_secret_key_2026',
+      },
+      body: JSON.stringify({ push_token: pushToken, user_id: userEmail }),
+    });
+    return res.ok;
+  } catch (e) {
+    return false;
+  }
+}
+
 export async function fetchFeatureFlags(): Promise<FeatureFlagRecord[]> {
   return [
     {

@@ -3663,7 +3663,24 @@ async def admin_register_test_push_token(payload: dict = Body(...), _: None = De
     )
     return {"ok": True, "push_token": test_token, "user_id": user_id, "message": f"Test push token registered: {test_token}"}
 
-@app.post("/admin/notify")
+@app.post("/admin/register-test-token")
+async def admin_register_manual_push_token(payload: dict = Body(...), _: None = Depends(require_admin)):
+    """Register or override a physical device push token for instant push QC testing."""
+    token = (payload.get("push_token") or payload.get("token") or "").strip()
+    user_id = (payload.get("user_id") or payload.get("email") or "admin_test_device").strip()
+    if not token or len(token) < 5:
+        raise HTTPException(400, "Invalid push token format")
+    now = datetime.now(timezone.utc)
+    update_doc = {
+        "push_token": token,
+        "expo_push_token": token,
+        "fcm_token": token,
+        "device_token": token,
+        "push_token_updated": now
+    }
+    await db.users.update_many({"$or": [{"id": user_id}, {"email": user_id}, {"push_token": token}]}, {"$set": update_doc}, upsert=True)
+    await db.profile.update_many({"$or": [{"user_id": user_id}, {"email": user_id}, {"push_token": token}]}, {"$set": update_doc}, upsert=True)
+    return {"ok": True, "token": token, "user_id": user_id, "message": f"Successfully registered push token for {user_id}"}
 async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depends(require_admin)):
     """Send push notification to all users, tier cohorts, or specific users from admin dashboard."""
     title = payload.get("title", "").strip()

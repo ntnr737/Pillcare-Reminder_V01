@@ -149,6 +149,45 @@ export default function NotificationsPage() {
         </div>
       </div>
 
+      {/* Device Push Token QC Debugger Card */}
+      <div className="p-6 rounded-3xl glass-card border border-indigo-500/30 bg-indigo-950/20 space-y-3 text-xs">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm">
+            <Sparkles className="w-4 h-4" /> Device Push Token QC & Diagnostic Debugger
+          </div>
+          <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono text-[10px]">
+            Expo & FCM Gateway Active
+          </span>
+        </div>
+        <p className="text-slate-300">
+          Build v1.50 sends push tokens to <code className="text-sky-400 font-mono">/push-token</code> when opened. You can also paste your phone's push token below to send a live push payload directly to your device.
+        </p>
+        <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
+          <input
+            type="text"
+            placeholder="Paste your device Push Token (e.g. ExponentPushToken[...])"
+            id="manualPushTokenInput"
+            className="flex-1 w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 focus:border-indigo-500 text-slate-100 font-mono"
+          />
+          <button
+            onClick={async () => {
+              const el = document.getElementById('manualPushTokenInput') as HTMLInputElement;
+              const val = el?.value?.trim() || '';
+              if (val) {
+                const { registerTestPushToken } = await import('@/lib/api/client');
+                const ok = await registerTestPushToken(val);
+                setToastMsg(ok ? '✅ Push Token registered successfully! Click Send Broadcast above to test your device.' : 'Failed to register token');
+              } else {
+                setToastMsg('Please paste a valid push token string first.');
+              }
+            }}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shadow-lg shrink-0"
+          >
+            Register Device Token
+          </button>
+        </div>
+      </div>
+
       {/* Sent Campaign History */}
       <div className="p-6 rounded-3xl glass-card border border-slate-800 space-y-4">
         <h2 className="text-base font-bold text-white">Broadcast Delivery History</h2>
