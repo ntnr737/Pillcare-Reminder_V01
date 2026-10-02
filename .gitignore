@@ -80,9 +80,12 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/
+*.apk
+*.aab
 .env
 .env.*
 *.env
 credentials.json
 *.key
 .credentials
+

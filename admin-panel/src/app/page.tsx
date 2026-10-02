@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation';
+'use client';
+
+import ExecutiveDashboard from '@/app/dashboard/page';
 
 export default function Home() {
-  redirect('/dashboard');
+  return <ExecutiveDashboard />;
 }
