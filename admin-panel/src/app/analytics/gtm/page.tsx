@@ -54,7 +54,7 @@ export default function GTMPage() {
           </div>
           <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono text-slate-400 text-left space-y-1">
             <span className="text-slate-300 font-bold block">Production Environment Requirement:</span>
-            <p>GTM_CONTAINER_ID=GTM-P8KL99M</p>
+            <p>GTM_CONTAINER_ID=GTM-W8T9DWZL</p>
           </div>
         </div>
       ) : (

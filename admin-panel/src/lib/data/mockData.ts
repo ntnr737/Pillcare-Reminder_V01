@@ -97,7 +97,7 @@ export const INITIAL_GA4_DATA: GA4AnalyticsData = {
 };
 
 export const INITIAL_GTM_CONFIG: GTMContainerConfig = {
-  containerId: 'GTM-P8KL99M',
+  containerId: 'GTM-W8T9DWZL',
   status: 'Published',
   publishedVersion: 14,
   draftVersion: 15,

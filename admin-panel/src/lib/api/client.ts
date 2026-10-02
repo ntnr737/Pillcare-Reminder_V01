@@ -172,7 +172,7 @@ export async function fetchGA4Analytics(): Promise<{ data: GA4AnalyticsData | nu
 }
 
 export async function fetchGTMConfig(): Promise<{ data: GTMContainerConfig | null; isConfigured: boolean }> {
-  const containerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID || process.env.GTM_CONTAINER_ID || 'GTM-P8KL99M';
+  const containerId = process.env.NEXT_PUBLIC_GTM_CONTAINER_ID || process.env.GTM_CONTAINER_ID || 'GTM-W8T9DWZL';
   if (!containerId) {
     return { data: null, isConfigured: false };
   }
