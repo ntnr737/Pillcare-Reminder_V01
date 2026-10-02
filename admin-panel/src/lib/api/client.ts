@@ -345,7 +345,13 @@ export async function sendBroadcastPushNotification(title: string, body: string,
         'Content-Type': 'application/json',
         'x-admin-secret': 'pillcare_admin_secret_key_2026',
       },
-      body: JSON.stringify({ title, body, plan: targetPlan }),
+      body: JSON.stringify({
+        title,
+        body,
+        target_plan: targetPlan || 'all',
+        target: targetPlan || 'all',
+        plan: targetPlan || 'all',
+      }),
     });
     return res.ok;
   } catch (e) {

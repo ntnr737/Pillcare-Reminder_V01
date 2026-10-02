@@ -3649,31 +3649,22 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     if len(title) > 100 or len(body) > 300:
         raise HTTPException(400, "Title max 100 chars, body max 300 chars")
     
-    query = {"push_token": {"$exists": True, "$ne": None}}
-    if target_ids:
-        query["$or"] = [
-            {"id": {"$in": target_ids}},
-            {"user_id": {"$in": target_ids}},
-            {"email": {"$in": target_ids}}
-        ]
-    elif target_plan == "premium":
-        query["$or"] = [
-            {"plan": {"$in": ["premium", "pro", "annual", "monthly", "elite_moksha", "pro_dharma"]}},
-            {"is_premium": True}
-        ]
-    elif target_plan == "free":
-        query["$or"] = [
-            {"plan": {"$in": ["free", "basic", None]}},
-            {"is_premium": {"$ne": True}}
-        ]
+    token_fields = ["push_token", "expo_push_token", "fcm_token", "device_token", "pushToken"]
+    projection = {field: 1 for field in token_fields}
+    projection["id"] = 1
+    projection["user_id"] = 1
+
+    users = await db.users.find({}, projection).to_list(10000)
+    profiles = await db.profile.find({}, projection).to_list(10000)
     
-    users = await db.users.find(query, {"push_token": 1, "id": 1}).to_list(10000)
-    profiles = await db.profile.find(query, {"push_token": 1, "user_id": 1, "id": 1}).to_list(10000)
-    
-    tokens = list(set(
-        [u["push_token"] for u in users if u.get("push_token")] +
-        [p["push_token"] for p in profiles if p.get("push_token")]
-    ))
+    raw_tokens = []
+    for doc in (users or []) + (profiles or []):
+        for f in token_fields:
+            t = doc.get(f)
+            if t and isinstance(t, str) and len(t) > 5 and not t.startswith("sim_"):
+                raw_tokens.append(t.strip())
+                
+    tokens = list(set(raw_tokens))
     
     # ALSO auto-publish as an in-app system broadcast so users see it in-app regardless of push token permissions
     announcement_doc = {
