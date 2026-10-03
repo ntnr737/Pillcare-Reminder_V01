@@ -494,69 +494,7 @@ export default function Today() {
           <Ring pct={pct} textPrimary={theme.textPrimary} accent={theme.accent} isDark={isDark} />
         </View>
 
-        {/* Today's Streak Progress Card */}
-        {(() => {
-          const streakStatus = evaluateTodayStreakStatus(waterLogged, waterGoal, doses);
-          return (
-            <TouchableOpacity
-              style={[
-                s.ov,
-                {
-                  backgroundColor: streakStatus.isStreakSecuredToday
-                    ? (isDark ? "rgba(5,150,105,0.12)" : "rgba(5,150,105,0.08)")
-                    : (isDark ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.08)"),
-                  borderColor: streakStatus.isStreakSecuredToday ? "#059669" : "#f59e0b",
-                  padding: 14,
-                  gap: 10,
-                },
-              ]}
-              onPress={() => { setModalTab("leaderboard"); setCalOpen(true); }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="flame" size={18} color={streakStatus.isStreakSecuredToday ? "#059669" : "#f59e0b"} />
-                  <Text style={{ fontSize: 13, fontWeight: "800", color: theme.textPrimary }}>
-                    {streakStatus.isStreakSecuredToday ? `Today's Streak Secured (${streak}d)!` : `Streak Pending (${streak}d Active)`}
-                  </Text>
-                </View>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 2 }}>
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: theme.accent }}>Rules & Ranks</Text>
-                  <Ionicons name="chevron-forward" size={14} color={theme.accent} />
-                </View>
-              </View>
 
-              <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15 }}>
-                {streakStatus.streakStatusMessage}
-              </Text>
-
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginTop: 2 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Ionicons
-                    name={streakStatus.isWaterQualified ? "checkmark-circle" : "ellipse-outline"}
-                    size={14}
-                    color={streakStatus.isWaterQualified ? "#059669" : theme.textSecondary}
-                  />
-                  <Text style={{ fontSize: 11, color: streakStatus.isWaterQualified ? "#059669" : theme.textSecondary, fontWeight: "600" }}>
-                    Water ({waterLogged}/{streakStatus.waterTargetMl}mL)
-                  </Text>
-                </View>
-
-                {doses.length > 0 && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <Ionicons
-                      name={streakStatus.isMedsQualified ? "checkmark-circle" : "ellipse-outline"}
-                      size={14}
-                      color={streakStatus.isMedsQualified ? "#059669" : theme.textSecondary}
-                    />
-                    <Text style={{ fontSize: 11, color: streakStatus.isMedsQualified ? "#059669" : theme.textSecondary, fontWeight: "600" }}>
-                      Meds ({streakStatus.takenDosesCount}/{streakStatus.totalDosesCount})
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })()}
 
         {/* Week strip */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.strip}>

@@ -1263,14 +1263,20 @@ async def get_leaderboard(request: Request, user_id: str = Depends(get_current_u
     user_email = user.get("email", "")
     user_name = user.get("name", "") or ("Nitin K." if "nitin" in user_email.lower() else "PillCare User")
 
-    # Community champions list
+    user_avatar = user.get("avatar_url") or "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80"
+
+    # Community champions list (Top 10)
     raw_champions = [
-        {"nickname": f"{user_name} (You)", "streak": current_streak, "points": current_streak * 100 + 250, "adherence": avg_adherence, "badge": "Active", "is_user": True},
-        {"nickname": "Priya S.", "streak": 21, "points": 2180, "adherence": 96.2, "badge": "Legend", "is_user": False},
-        {"nickname": "Dr. Rajesh M.", "streak": 18, "points": 1920, "adherence": 95.0, "badge": "Master", "is_user": False},
-        {"nickname": "Anita V.", "streak": 14, "points": 1650, "adherence": 93.8, "badge": "Warrior", "is_user": False},
-        {"nickname": "Amit P.", "streak": 12, "points": 1420, "adherence": 91.5, "badge": "Warrior", "is_user": False},
-        {"nickname": "Sunita R.", "streak": 9, "points": 1150, "adherence": 89.0, "badge": "Guardian", "is_user": False},
+        {"nickname": f"{user_name} (You)", "streak": current_streak, "points": current_streak * 100 + 250, "adherence": avg_adherence, "badge": "Active", "avatar": user_avatar, "is_user": True},
+        {"nickname": "Dr. Priya Sharma", "streak": 28, "points": 3050, "adherence": 99.2, "badge": "Grand Master", "avatar": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Rajesh Kumar", "streak": 24, "points": 2680, "adherence": 97.5, "badge": "Legend", "avatar": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Anita Verma", "streak": 21, "points": 2340, "adherence": 96.0, "badge": "Legend", "avatar": "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Amit Patel", "streak": 18, "points": 2010, "adherence": 94.8, "badge": "Master", "avatar": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Sunita Rao", "streak": 15, "points": 1720, "adherence": 93.1, "badge": "Warrior", "avatar": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Vikram Singh", "streak": 12, "points": 1450, "adherence": 91.5, "badge": "Warrior", "avatar": "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Meera Joshi", "streak": 10, "points": 1240, "adherence": 89.8, "badge": "Guardian", "avatar": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Karan Malhotra", "streak": 8, "points": 1020, "adherence": 88.0, "badge": "Guardian", "avatar": "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80", "is_user": False},
+        {"nickname": "Sanjay Gupta", "streak": 6, "points": 850, "adherence": 86.5, "badge": "Starter", "avatar": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80", "is_user": False},
     ]
 
     # LEADERBOARD ORDERING RULE: Ranked strictly by active streak days (descending)

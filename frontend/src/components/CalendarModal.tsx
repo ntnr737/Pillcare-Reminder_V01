@@ -9,6 +9,7 @@ import {
   TouchableWithoutFeedback,
   Alert,
   Linking,
+  Image,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/context/ThemeContext";
@@ -167,11 +168,16 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   };
 
   const champions = (leaderboardData?.champions || [
-    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), adherence: 98.5, badge: "Champion", is_user: true },
-    { rank: 2, nickname: "Priya S.", streak: 21, adherence: 96.2, badge: "Legend", is_user: false },
-    { rank: 3, nickname: "Dr. Rajesh M.", streak: 18, adherence: 95.0, badge: "Master", is_user: false },
-    { rank: 4, nickname: "Anita V.", streak: 14, adherence: 93.8, badge: "Warrior", is_user: false },
-    { rank: 5, nickname: "Amit P.", streak: 12, adherence: 91.5, badge: "Warrior", is_user: false },
+    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), adherence: 98.5, badge: "Active", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", is_user: true },
+    { rank: 2, nickname: "Dr. Priya Sharma", streak: 28, adherence: 99.2, badge: "Grand Master", avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 3, nickname: "Rajesh Kumar", streak: 24, adherence: 97.5, badge: "Legend", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 4, nickname: "Anita Verma", streak: 21, adherence: 96.0, badge: "Legend", avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 5, nickname: "Amit Patel", streak: 18, adherence: 94.8, badge: "Master", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 6, nickname: "Sunita Rao", streak: 15, adherence: 93.1, badge: "Warrior", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 7, nickname: "Vikram Singh", streak: 12, adherence: 91.5, badge: "Warrior", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 8, nickname: "Meera Joshi", streak: 10, adherence: 89.8, badge: "Guardian", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 9, nickname: "Karan Malhotra", streak: 8, adherence: 88.0, badge: "Guardian", avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { rank: 10, nickname: "Sanjay Gupta", streak: 6, adherence: 86.5, badge: "Starter", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80", is_user: false },
   ]).sort((a: any, b: any) => b.streak - a.streak);
 
   const badges = leaderboardData?.badges || [
@@ -294,42 +300,60 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                   {/* Community Champions Leaderboard */}
                   <View style={{ gap: 8 }}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <Text style={[s.secTitle, { color: theme.textSecondary }]}>COMMUNITY TOP CHAMPIONS</Text>
+                      <Text style={[s.secTitle, { color: theme.textSecondary }]}>COMMUNITY TOP 10 CHAMPIONS</Text>
                       <TouchableOpacity onPress={handleShareStreak}>
                         <Text style={{ fontSize: 12, color: theme.accent, fontWeight: "700" }}>Challenge Friends →</Text>
                       </TouchableOpacity>
                     </View>
 
-                    {champions.map((c: any) => (
-                      <View
-                        key={c.rank}
-                        style={[
-                          s.championRow,
-                          { backgroundColor: theme.surface, borderColor: c.is_user ? "#F59E0B" : theme.surfaceBorder },
-                          c.is_user && { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.06)", borderWidth: 1.5 }
-                        ]}>
-                        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                          <Text style={[s.championRank, { color: c.rank === 1 ? "#F59E0B" : c.rank === 2 ? "#94A3B8" : c.rank === 3 ? "#D97706" : theme.textSecondary }]}>
-                            #{c.rank}
-                          </Text>
-                          <View>
-                            <Text style={[s.championName, { color: theme.textPrimary }, c.is_user && { fontWeight: "800", color: "#F59E0B" }]}>
-                              {c.nickname}
+                    {champions.map((c: any) => {
+                      const avatarUri = c.avatar || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80";
+                      const initials = (c.nickname || "U")
+                        .replace(/^(Dr\.|Mr\.|Mrs\.)\s*/, "")
+                        .split(" ")
+                        .map((n: string) => n[0])
+                        .join("")
+                        .substring(0, 2)
+                        .toUpperCase();
+
+                      return (
+                        <View
+                          key={c.rank}
+                          style={[
+                            s.championRow,
+                            { backgroundColor: theme.surface, borderColor: c.is_user ? "#F59E0B" : theme.surfaceBorder },
+                            c.is_user && { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.06)", borderWidth: 1.5 }
+                          ]}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                            <Text style={[s.championRank, { color: c.rank === 1 ? "#F59E0B" : c.rank === 2 ? "#94A3B8" : c.rank === 3 ? "#D97706" : theme.textSecondary }]}>
+                              #{c.rank}
                             </Text>
-                            <Text style={{ fontSize: 10, color: theme.textSecondary }}>
-                              {c.adherence}% adherence • {c.streak} day streak
-                            </Text>
+                            <View style={{ width: 34, height: 34, borderRadius: 17, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#e2e8f0", overflow: "hidden", alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: c.is_user ? "#F59E0B" : theme.surfaceBorder }}>
+                              <Image
+                                source={{ uri: avatarUri }}
+                                style={{ width: 34, height: 34, borderRadius: 17 }}
+                                resizeMode="cover"
+                              />
+                            </View>
+                            <View>
+                              <Text style={[s.championName, { color: theme.textPrimary }, c.is_user && { fontWeight: "800", color: "#F59E0B" }]}>
+                                {c.nickname}
+                              </Text>
+                              <Text style={{ fontSize: 10, color: theme.textSecondary }}>
+                                {c.adherence}% adherence • {c.streak} day streak
+                              </Text>
+                            </View>
+                          </View>
+                          <View style={{ alignItems: "flex-end" }}>
+                            <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                              <Ionicons name="flame" size={14} color="#F59E0B" />
+                              <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} Days</Text>
+                            </View>
+                            <Text style={{ fontSize: 10, color: theme.textSecondary }}>{c.badge}</Text>
                           </View>
                         </View>
-                        <View style={{ alignItems: "flex-end" }}>
-                          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
-                            <Ionicons name="flame" size={14} color="#F59E0B" />
-                            <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} Days</Text>
-                          </View>
-                          <Text style={{ fontSize: 10, color: theme.textSecondary }}>{c.badge}</Text>
-                        </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
 
                   {/* Health Badges & Trophies */}
