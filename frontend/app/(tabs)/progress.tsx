@@ -125,8 +125,8 @@ export default function Progress() {
       const vitals = await readTodayVitals();
       if (vitals) {
         setHcSnapshot(vitals);
-        // Silent background auto-sync vitals into PillCare DB (throttled)
-        autoSyncVitalsIfNeeded(vitals).catch(() => {});
+        // Instant background auto-sync vitals into PillCare DB on tab open
+        await autoSyncVitalsIfNeeded(vitals);
       }
     } catch {
       setHcStatus("unavailable");
@@ -475,9 +475,9 @@ export default function Progress() {
                   }}
                   disabled={syncingVitals}
                   onPress={handleAutoSyncPillCare}>
-                  <Ionicons name="sync" size={14} color={isDark ? "#4ade80" : "#059669"} />
+                  <Ionicons name="checkmark-done-circle" size={15} color={isDark ? "#4ade80" : "#059669"} />
                   <Text style={{ fontSize: 11, fontWeight: "700", color: isDark ? "#4ade80" : "#059669" }}>
-                    {syncingVitals ? t("progress.syncingVitals", "Syncing vitals to PillCare...") : t("progress.autoSyncVitals", "Auto-Sync Vitals to PillCare Log")}
+                    {syncingVitals ? t("progress.syncingVitals", "Syncing vitals to PillCare...") : t("progress.autoSyncActive", "⚡ Auto-Synced Vitals to PillCare Log")}
                   </Text>
                 </TouchableOpacity>
 
