@@ -36,24 +36,7 @@ export default function SignIn() {
         setLoading(false);
         return;
       }
-      try {
-        await signInAsGuest("PillCare Patient");
-        router.replace("/");
-      } catch (err) {
-        Alert.alert("Sign-In", "Could not complete sign in. Please try again.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleGuestSignIn = async () => {
-    setLoading(true);
-    try {
-      await signInAsGuest();
-      router.replace("/");
-    } catch (e: any) {
-      Alert.alert("Guest Login Failed", e?.message || "Could not start guest session.");
+      Alert.alert("Google Sign-In", e?.message || "Could not complete Google Sign-In. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -130,11 +113,7 @@ export default function SignIn() {
       <View style={{ gap: 8 }}>
         <TouchableOpacity style={[s.gBtn, loading && { opacity: 0.7 }]} onPress={handleSignIn} disabled={loading}>
           <Ionicons name="logo-google" size={16} color="#fff" />
-          <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Continue with Google"}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[s.guestBtn, loading && { opacity: 0.7 }]} onPress={handleGuestSignIn} disabled={loading}>
-          <Ionicons name="person-outline" size={15} color={A3} />
-          <Text style={s.guestBtnTx}>Continue as Guest Patient</Text>
+          <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Sign In with Google Account"}</Text>
         </TouchableOpacity>
       </View>
 
