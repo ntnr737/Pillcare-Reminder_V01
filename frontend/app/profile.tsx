@@ -115,7 +115,16 @@ export default function Profile() {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+          style={s.backBtn}
+        >
           <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={[s.title, { color: theme.textPrimary }]}>{t("nav.support", "Profile & Settings")}</Text>

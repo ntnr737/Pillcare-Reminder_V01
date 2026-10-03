@@ -34,7 +34,16 @@ export default function BrandGeneric() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} testID="back-from-bg">
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+          testID="back-from-bg"
+        >
           <Ionicons name="chevron-back" size={28} color={theme.colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Brand → Generic</Text>

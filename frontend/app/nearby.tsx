@@ -415,7 +415,16 @@ function getDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: numbe
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <View style={{ backgroundColor: theme.bg, zIndex: 10, borderBottomWidth: 1, borderBottomColor: theme.surfaceBorder }}>
         <View style={s.hdr}>
-          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+          <TouchableOpacity
+            onPress={() => {
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace("/(tabs)/today");
+              }
+            }}
+            style={s.backBtn}
+          >
             <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
           </TouchableOpacity>
           <Text style={[s.title, { color: theme.textPrimary }]}>{t("nearby.title", "Nearby Medical Stores")}</Text>

@@ -62,7 +62,16 @@ export default function PrivacyPolicy() {
   return (
     <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
       <View style={s.hdr}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+          style={s.backBtn}
+        >
           <Ionicons name="arrow-back" size={20} color={TX} />
         </TouchableOpacity>
         <Text style={s.title}>Privacy Policy</Text>

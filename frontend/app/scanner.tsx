@@ -60,7 +60,16 @@ export default function Scanner() {
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.header}>
-        <TouchableOpacity testID="back-from-scanner" onPress={() => router.back()}>
+        <TouchableOpacity
+          testID="back-from-scanner"
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+        >
           <Ionicons name="chevron-back" size={28} color={theme.colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>AI Medication Scanner</Text>

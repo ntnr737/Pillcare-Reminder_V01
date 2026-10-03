@@ -68,7 +68,16 @@ export default function Caregiver() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} testID="back-caregiver">
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+          testID="back-caregiver"
+        >
           <Ionicons name="chevron-back" size={28} color={theme.colors.textPrimary} />
         </TouchableOpacity>
         <Text style={styles.title}>Caregiver</Text>

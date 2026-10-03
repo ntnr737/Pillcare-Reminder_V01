@@ -286,7 +286,16 @@ export default function Appointments() {
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
       <View style={[s.hdr, { borderBottomColor: theme.surfaceBorder }]}>
-        <TouchableOpacity onPress={() => router.back()} style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+          style={{ width: 36, height: 36, alignItems: "center", justifyContent: "center" }}
+        >
           <Ionicons name="arrow-back" size={20} color={theme.textPrimary} />
         </TouchableOpacity>
         <Text style={[s.title, { color: theme.textPrimary }]}>{t("appointments.title", "Doctor Appointments")}</Text>

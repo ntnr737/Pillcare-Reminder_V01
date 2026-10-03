@@ -71,7 +71,15 @@ export default function History() {
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
       <View style={s.hdr}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity
+          onPress={() => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace("/(tabs)/today");
+            }
+          }}
+        >
           <Ionicons name="arrow-back" size={20} color={TX} />
         </TouchableOpacity>
         <Text style={s.title}>Activity & Dose Log</Text>
