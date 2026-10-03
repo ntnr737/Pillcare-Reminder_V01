@@ -21,7 +21,7 @@ export const FREE_DEFAULTS: Features = {
   max_medications: 3,
   history_days: 7,
   ai_insights: "weekly",
-  caregiver_alerts: 0,
+  caregiver_alerts: 5,
   nearby_results: 5,
   yoga_full: false,
   export_data: false,

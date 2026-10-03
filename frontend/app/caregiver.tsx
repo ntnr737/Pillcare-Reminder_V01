@@ -19,7 +19,7 @@ export default function Caregiver() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const limit = getFeatures().caregiver_alerts;
+  const limit = Math.max(5, getFeatures().caregiver_alerts || 5);
 
   useEffect(() => {
     api.getProfile().then((p) => {

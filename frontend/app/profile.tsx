@@ -326,7 +326,15 @@ export default function Profile() {
             </View>
           </View>
           <View style={s.field}>
-            <Text style={[s.label, { color: theme.textSecondary }]}>Caregiver WhatsApp</Text>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+              <Text style={[s.label, { color: theme.textSecondary }]}>Primary Caregiver WhatsApp</Text>
+              <TouchableOpacity onPress={() => router.push("/caregiver")} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Ionicons name="people-outline" size={13} color={theme.accent} />
+                <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "700" }}>
+                  Manage ({profile.caregivers?.length || (profile.caregiver_phone ? 1 : 0)}/5)
+                </Text>
+              </TouchableOpacity>
+            </View>
             <View style={{ flexDirection: "row", gap: 8, alignItems: "center" }}>
               <CountryCodePicker
                 selectedDialCode={dialCode}
@@ -342,11 +350,7 @@ export default function Profile() {
                 keyboardType="phone-pad"
               />
             </View>
-            <Text style={[s.label, { color: theme.textSecondary, marginTop: 4, fontStyle: "italic" }]}>Receives missed-dose alerts via WhatsApp</Text>
-            <TouchableOpacity onPress={() => router.push("/caregiver")} style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 }}>
-              <Ionicons name="people-outline" size={13} color={theme.accent} />
-              <Text style={{ fontSize: 11, color: theme.accent, fontWeight: "700" }}>Manage all caregivers & alert history</Text>
-            </TouchableOpacity>
+            <Text style={[s.label, { color: theme.textSecondary, marginTop: 4, fontStyle: "italic" }]}>Receives real-time missed-dose alerts via WhatsApp (Add up to 5 caregivers)</Text>
           </View>
         </View>
 
