@@ -510,11 +510,15 @@ export default function Today() {
 
         {/* Dose sections */}
         {total === 0 ? (
-          <View style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={() => setAddMed(true)}
+            style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+          >
             <View style={[s.emI, { backgroundColor: theme.accentBg }]}><Ionicons name="medical-outline" size={26} color={theme.accent} /></View>
             <Text style={[s.emT, { color: theme.textPrimary }]}>{t("today.noDosesToday", "No pending medication doses for today!")}</Text>
             <Text style={[s.emS, { color: theme.textSecondary }]}>{t("treatment.noMedsDesc", "Tap + to add one")}</Text>
-          </View>
+          </TouchableOpacity>
         ) : ["morning", "afternoon", "evening", "night"].map(sec => {
           const items = secs[sec]; if (!items?.length) return null;
           return (
