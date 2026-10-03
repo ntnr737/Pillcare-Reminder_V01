@@ -225,6 +225,7 @@ class Profile(BaseModel):
 
 
 class ProfileUpsert(BaseModel):
+    user_number: Optional[str] = Field(None, max_length=20)
     nickname: Optional[str] = Field(None, max_length=100)
     gender: Optional[str] = Field(None, max_length=50)
     year_of_birth: Optional[int] = Field(None, ge=1900, le=2025)
@@ -818,6 +819,15 @@ async def update_caregivers(
     )
     return {"caregivers": cleaned_list, "message": "Caregivers saved"}
 
+def _get_7digit_user_number(user_id: str) -> str:
+    """Computes a deterministic 7-digit user number string between 1000000 and 9999999."""
+    if not user_id:
+        return "1000001"
+    h = hashlib.sha256(user_id.encode("utf-8")).hexdigest()
+    num = (int(h[:8], 16) % 9000000) + 1000000
+    return str(num)
+
+
 @api.get("/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
     doc = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
@@ -826,6 +836,13 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
         user = await db.users.find_one({"id": user_id}, PROJECTION) or {}
         doc["email"] = user.get("email", "")
         doc["id"] = user_id
+
+    if not doc.get("user_number"):
+        doc["user_number"] = _get_7digit_user_number(user_id)
+        try:
+            await db.profile.update_one({"id": user_id}, {"$set": {"user_number": doc["user_number"]}}, upsert=True)
+        except Exception:
+            pass
 
     # Enrich profile with Universal PillCare Health Streak
     try:
@@ -840,6 +857,11 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
 @api.post("/profile")
 async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str = Depends(get_current_user_id)):
     data = payload.model_dump()
+    existing = await db.profile.find_one({"id": user_id}, PROJECTION)
+    if not data.get("user_number"):
+        existing_num = existing.get("user_number") if existing else None
+        data["user_number"] = existing_num or _get_7digit_user_number(user_id)
+
     if not data.get("location_city"):
         try:
             fwd = request.headers.get("x-forwarded-for", "")
@@ -855,7 +877,6 @@ async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str 
                             logger.info(f"IP location for user {user_id}: {data['location_city']}, {data['location_state']}")
         except Exception as e:
             logger.warning(f"IP geolocation failed: {e}")
-    existing = await db.profile.find_one({"id": user_id}, PROJECTION)
     if existing:
         await db.profile.update_one({"id": user_id}, {"$set": data})
         return {**existing, **data}

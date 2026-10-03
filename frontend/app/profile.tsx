@@ -12,6 +12,7 @@ import { useTranslation, SUPPORTED_LANGUAGES, SupportedLocale } from "@/src/cont
 import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
 import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { signInWithGoogle, getStoredUser, isGuestUser, signOut, PillcareUser } from "@/src/lib/auth";
+import { get7DigitUserNumber } from "@/src/lib/userNumber";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -218,6 +219,31 @@ export default function Profile() {
         {/* Identity */}
         <Text style={[s.secL, { color: theme.accent }]}>IDENTITY</Text>
         <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          {/* 7-Digit User Number Field */}
+          {(() => {
+            const userNum = get7DigitUserNumber(profile, authUser);
+            return (
+              <View style={[s.field, { backgroundColor: isDark ? "rgba(145,132,217,0.1)" : "rgba(145,132,217,0.06)", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.accent, marginBottom: 8 }]}>
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ gap: 2 }}>
+                    <Text style={[s.label, { color: theme.accent, fontWeight: "700" }]}>USER NUMBER (ID)</Text>
+                    <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary, letterSpacing: 1 }}>
+                      #{userNum}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => {
+                      Alert.alert("User Number 📋", `User Number #${userNum} is your unique 7-digit PillCare identification.`);
+                    }}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 4, backgroundColor: theme.accent, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}>
+                    <Ionicons name="copy-outline" size={14} color="#FFFFFF" />
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: "#FFFFFF" }}>Copy</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            );
+          })()}
+
           <View style={s.field}>
             <Text style={[s.label, { color: theme.textSecondary }]}>Display Name</Text>
             <TextInput
