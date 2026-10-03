@@ -14,7 +14,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 import { api } from "@/src/lib/api";
-import { get, set } from "@/src/lib/store";
+import { get, set, K } from "@/src/lib/store";
+import { getStoredUser } from "@/src/lib/auth";
 
 interface CalendarModalProps {
   visible: boolean;
@@ -65,11 +66,23 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   const [claimedBonus, setClaimedBonus] = useState(false);
   const [bonusXP, setBonusXP] = useState(0);
   const [leaderboardData, setLeaderboardData] = useState<any>(null);
+  const [userName, setUserName] = useState<string>("You");
   const todayIso = getTodayIso();
 
   useEffect(() => {
     if (visible) {
       setActiveTab(initialTab);
+      Promise.all([
+        getStoredUser().catch(() => null),
+        get<any>(K.profile).catch(() => null),
+      ]).then(([u, p]) => {
+        const raw = (p?.nickname && p.nickname.toUpperCase() !== "YOU" ? p.nickname : "") || p?.name || u?.name;
+        if (raw && raw.trim().length > 0) {
+          const parts = raw.trim().split(/\s+/);
+          setUserName(parts[0]);
+        }
+      });
+
       // Fetch dynamic community leaderboard data from backend
       api.getLeaderboard().then(data => {
         if (data) setLeaderboardData(data);
@@ -154,7 +167,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   };
 
   const champions = leaderboardData?.champions || [
-    { rank: 1, nickname: "Nitin K. (You)", streak: Math.max(14, streakDays), points: 2450 + bonusXP, adherence: 98.5, badge: "👑 Champion", is_user: true },
+    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), points: 2450 + bonusXP, adherence: 98.5, badge: "👑 Champion", is_user: true },
     { rank: 2, nickname: "Priya S.", streak: 21, points: 2180, adherence: 96.2, badge: "🌟 Legend", is_user: false },
     { rank: 3, nickname: "Dr. Rajesh M.", streak: 18, points: 1920, adherence: 95.0, badge: "🔥 Master", is_user: false },
     { rank: 4, nickname: "Anita V.", streak: 14, points: 1650, adherence: 93.8, badge: "⚡ Warrior", is_user: false },

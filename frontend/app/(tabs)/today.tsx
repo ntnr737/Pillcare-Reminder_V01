@@ -21,6 +21,7 @@ import { track, trackScreenView, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
 import { resyncReminders, scheduleHydrationPacingReminder } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
+import { getStoredUser } from "@/src/lib/auth";
 import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -77,6 +78,20 @@ function Ring({ pct, textPrimary, accent, isDark }: { pct: number; textPrimary: 
   );
 }
 
+function getBadgeFirstName(profile?: any, authUser?: any): string {
+  const raw = (profile?.nickname && profile.nickname.toUpperCase() !== "YOU" ? profile.nickname : "")
+    || profile?.name
+    || profile?.full_name
+    || authUser?.name
+    || "";
+  if (!raw || !raw.trim()) return "YOU";
+  const parts = raw.trim().split(/\s+/);
+  if (parts.length > 1 && ["DR.", "MR.", "MRS.", "MS.", "DR"].includes(parts[0].toUpperCase())) {
+    return `${parts[0]} ${parts[1]}`.toUpperCase();
+  }
+  return parts[0].toUpperCase();
+}
+
 export default function Today() {
   const router = useRouter();
   const { theme, isDark } = useTheme();
@@ -85,6 +100,7 @@ export default function Today() {
   const [date, setDate] = useState(ds());
   const [doses, setDoses] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [authUser, setAuthUser] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
   const [addMed, setAddMed] = useState(false);
@@ -142,15 +158,23 @@ export default function Today() {
   const fetchServer = async () => {
     try {
       await flushQueue().catch(() => {});
-      const [dos, prof] = await Promise.all([
+      const [dos, prof, user, cachedProf] = await Promise.all([
         api.listDoses(date),
         api.getProfile().catch(() => null),
+        getStoredUser().catch(() => null),
+        get<any>(K.profile).catch(() => null),
       ]);
       if (dos && Array.isArray(dos)) {
         setDoses(dos);
         await set(K.doses(date), dos);
       }
-      if (prof) setProfile(prof);
+      if (user) setAuthUser(user);
+      if (prof) {
+        setProfile(prof);
+        await set(K.profile, prof).catch(() => {});
+      } else if (cachedProf) {
+        setProfile(cachedProf);
+      }
 
       api.adherence(30).then((data: any) => {
         if (data && typeof data === "object") setAdherenceMap(data);
@@ -330,12 +354,12 @@ export default function Today() {
         {/* Overview card */}
         <View style={[s.ov, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
           <View style={{ flex: 1, gap: 5 }}>
-            <View style={[s.ovTag, { backgroundColor: theme.accentBg }]}><Text style={[s.ovTagTx, { color: theme.accent }]}>{profile?.nickname?.toUpperCase() || "YOU"}</Text></View>
+            <View style={[s.ovTag, { backgroundColor: theme.accentBg }]}><Text style={[s.ovTagTx, { color: theme.accent }]}>{getBadgeFirstName(profile, authUser)}</Text></View>
             <Text style={[s.ovTitle, { color: theme.textPrimary }]}>{t("today.consistencyTitle", "Your consistency\nis your strength.")}</Text>
             <Text style={[s.ovSub, { color: theme.textSecondary }]}>{total === 0 ? t("today.firstMed", "Add your first medication.") : taken === total ? t("today.allDone", "All done for today!") : `${total - taken} ${t("today.medsLeft", "medication(s) left.")}`}</Text>
             <View style={{ gap: 4, marginTop: 4 }}>
-              {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Next: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{next.medication?.name}</Text> at {next.scheduled_time}</Text></View>}
-              <View style={s.mRow}><Ionicons name="flame" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Streak: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{streak} {t("today.streakDays", "Days")}</Text></Text></View>
+              {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Next: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{next.medication?.name}</Text>{` at ${next.scheduled_time}`}</Text></View>}
+              <View style={s.mRow}><Ionicons name="flame" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Streak: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{`${streak} ${t("today.streakDays", "Days")}`}</Text></Text></View>
             </View>
           </View>
           <Ring pct={pct} textPrimary={theme.textPrimary} accent={theme.accent} isDark={isDark} />
