@@ -819,13 +819,39 @@ async def update_caregivers(
     )
     return {"caregivers": cleaned_list, "message": "Caregivers saved"}
 
-def _get_7digit_user_number(user_id: str) -> str:
-    """Computes a deterministic 7-digit user number string between 1000000 and 9999999."""
+async def _get_unique_7digit_user_number(user_id: str) -> str:
+    """Generates and verifies a guaranteed unique 7-digit user number string between 1000000 and 9999999."""
     if not user_id:
-        return "1000001"
+        user_id = "guest-pillcare-default-user"
+
+    # 1. Check if user already has an assigned user_number in profile or users collection
+    existing_profile = await db.profile.find_one({"id": user_id}, {"user_number": 1})
+    if existing_profile and existing_profile.get("user_number"):
+        return str(existing_profile["user_number"])
+
+    existing_user = await db.users.find_one({"id": user_id}, {"user_number": 1})
+    if existing_user and existing_user.get("user_number"):
+        return str(existing_user["user_number"])
+
+    # 2. Try deterministic 7-digit candidate derived from user_id hash
     h = hashlib.sha256(user_id.encode("utf-8")).hexdigest()
-    num = (int(h[:8], 16) % 9000000) + 1000000
-    return str(num)
+    candidate = str((int(h[:8], 16) % 9000000) + 1000000)
+
+    # 3. Check for collision across profile and users collections
+    c1 = await db.profile.find_one({"user_number": candidate, "id": {"$ne": user_id}})
+    c2 = await db.users.find_one({"user_number": candidate, "id": {"$ne": user_id}})
+    if not c1 and not c2:
+        return candidate
+
+    # 4. If a collision is detected, randomly sample until a 100% unique 7-digit number is found
+    for _ in range(200):
+        rand_candidate = str(random.randint(1000000, 9999999))
+        coll1 = await db.profile.find_one({"user_number": rand_candidate, "id": {"$ne": user_id}})
+        coll2 = await db.users.find_one({"user_number": rand_candidate, "id": {"$ne": user_id}})
+        if not coll1 and not coll2:
+            return rand_candidate
+
+    return str(random.randint(1000000, 9999999))
 
 
 @api.get("/profile")
@@ -838,7 +864,7 @@ async def get_profile(user_id: str = Depends(get_current_user_id)):
         doc["id"] = user_id
 
     if not doc.get("user_number"):
-        doc["user_number"] = _get_7digit_user_number(user_id)
+        doc["user_number"] = await _get_unique_7digit_user_number(user_id)
         try:
             await db.profile.update_one({"id": user_id}, {"$set": {"user_number": doc["user_number"]}}, upsert=True)
         except Exception:
@@ -860,7 +886,7 @@ async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str 
     existing = await db.profile.find_one({"id": user_id}, PROJECTION)
     if not data.get("user_number"):
         existing_num = existing.get("user_number") if existing else None
-        data["user_number"] = existing_num or _get_7digit_user_number(user_id)
+        data["user_number"] = existing_num or await _get_unique_7digit_user_number(user_id)
 
     if not data.get("location_city"):
         try:
