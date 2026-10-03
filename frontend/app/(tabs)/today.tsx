@@ -162,6 +162,15 @@ export default function Today() {
   const [waterLogs, setWaterLogs] = useState<Array<{ amount: number; ts: number }>>([]);
   const [pacingModalOpen, setPacingModalOpen] = useState(false);
   const [attemptedAmount, setAttemptedAmount] = useState<number>(250);
+  const [pacingLockReason, setPacingLockReason] = useState<"SPACING_COOLDOWN" | "HOURLY_LIMIT">("SPACING_COOLDOWN");
+  const [nowTs, setNowTs] = useState<number>(Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTs(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
   const [yogaModalOpen, setYogaModalOpen] = useState(false);
   const [activeVideo, setActiveVideo] = useState<{ url: string; title: string; channel?: string; benefit?: string } | null>(null);
   const [yogaReminderTime, setYogaReminderTime] = useState<string>("08:00");
@@ -309,20 +318,38 @@ export default function Today() {
     scheduleHydrationPacingReminder(15);
   };
 
-  const addWater = (amount: number, forceOverride: boolean = false) => {
-    const now = Date.now();
-    const fifteenMinsMs = 15 * 60 * 1000;
+  const addWater = (amount: number) => {
+    const curNow = Date.now();
+    const lastLog = waterLogs.length > 0 ? waterLogs[waterLogs.length - 1] : null;
+    const reqCooldown = lastLog ? (lastLog.amount >= 500 ? 30 * 60 * 1000 : 15 * 60 * 1000) : 0;
+    const timeSinceLast = lastLog ? (curNow - lastLog.ts) : Infinity;
 
-    const recentLogs = waterLogs.filter((l) => now - l.ts < fifteenMinsMs);
-    const recentTotal = recentLogs.reduce((sum, l) => sum + l.amount, 0);
+    const hourLogs = waterLogs.filter((l) => curNow - l.ts < 60 * 60 * 1000);
+    const hourTotal = hourLogs.reduce((sum, l) => sum + l.amount, 0);
 
-    if (!forceOverride && recentTotal + amount > 500) {
+    // Hard WHO Rule 1: Hourly limit exceeded (Max 1000 mL/hr renal clearance)
+    if (hourTotal + amount > 1000) {
       setAttemptedAmount(amount);
+      setPacingLockReason("HOURLY_LIMIT");
       setPacingModalOpen(true);
       return;
     }
 
-    performWaterLog(amount, now);
+    // Hard WHO Rule 2: Spacing cooldown active (15m for 250mL, 30m for 500mL)
+    if (lastLog && timeSinceLast < reqCooldown) {
+      setAttemptedAmount(amount);
+      setPacingLockReason("SPACING_COOLDOWN");
+      setPacingModalOpen(true);
+      return;
+    }
+
+    // Absolute Safety Limit: Max 4000 mL per day
+    if (waterLogged + amount > 4000) {
+      Alert.alert("⚠️ Daily Hydration Safety Ceiling", "WHO guidelines recommend an optimal daily limit of 2,500 mL – 3,500 mL. Fluid intake exceeding 4,000 mL per day is restricted to prevent electrolyte dilution.");
+      return;
+    }
+
+    performWaterLog(amount, curNow);
   };
 
   const handleRetroactiveLog = () => {
@@ -336,11 +363,6 @@ export default function Today() {
     scheduleHydrationPacingReminder(15);
     setPacingModalOpen(false);
     Alert.alert("Hydration Reminder Set", "We will remind you in 15 minutes to drink your next glass of water!");
-  };
-
-  const handleOverrideLog = () => {
-    performWaterLog(attemptedAmount, Date.now());
-    setPacingModalOpen(false);
   };
 
   const resetWater = () => {
@@ -394,8 +416,26 @@ export default function Today() {
   const next = pending.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""))[0];
 
   const lastWaterLog = waterLogs.length > 0 ? waterLogs[waterLogs.length - 1] : null;
-  const minsSinceLastWater = lastWaterLog ? Math.floor((Date.now() - lastWaterLog.ts) / 60000) : null;
+  const minsSinceLastWater = lastWaterLog ? Math.floor((nowTs - lastWaterLog.ts) / 60000) : null;
   const isPacingOptimal = minsSinceLastWater === null || minsSinceLastWater >= 15;
+
+  const cooldownMs = lastWaterLog ? (lastWaterLog.amount >= 500 ? 30 * 60 * 1000 : 15 * 60 * 1000) : 0;
+  const elapsedMs = lastWaterLog ? (nowTs - lastWaterLog.ts) : Infinity;
+  const isCooldownActive = lastWaterLog ? elapsedMs < cooldownMs : false;
+  const cooldownRemainingSecs = isCooldownActive ? Math.max(0, Math.ceil((cooldownMs - elapsedMs) / 1000)) : 0;
+
+  const oneHourMs = 60 * 60 * 1000;
+  const logsPastHour = waterLogs.filter((l) => nowTs - l.ts < oneHourMs);
+  const hourlyIntake = logsPastHour.reduce((sum, l) => sum + l.amount, 0);
+  const isHourlyLimitReached = hourlyIntake >= 1000;
+
+  const isWaterLocked = isCooldownActive || isHourlyLimitReached;
+
+  const formatCountdown = (secs: number) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${m}m ${String(s).padStart(2, "0")}s`;
+  };
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: theme.bg }]} edges={["top"]}>
@@ -479,23 +519,29 @@ export default function Today() {
 
               {/* WHO Pacing Badge */}
               <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
-                <Ionicons name={isPacingOptimal ? "checkmark-circle" : "time-outline"} size={11} color={isPacingOptimal ? "#10B981" : "#F59E0B"} />
-                <Text style={{ fontSize: 11, fontWeight: "700", color: isPacingOptimal ? "#10B981" : "#F59E0B" }}>
-                  {minsSinceLastWater === null
+                <Ionicons
+                  name={isWaterLocked ? "timer-outline" : "checkmark-circle"}
+                  size={11}
+                  color={isWaterLocked ? "#EF4444" : "#10B981"}
+                />
+                <Text style={{ fontSize: 11, fontWeight: "700", color: isWaterLocked ? "#EF4444" : "#10B981" }}>
+                  {isHourlyLimitReached
+                    ? `⚠️ WHO Hourly Limit (1,000 mL/hr reached)`
+                    : isCooldownActive
+                    ? `⏱️ WHO Lockout (Unlocks in ${formatCountdown(cooldownRemainingSecs)})`
+                    : minsSinceLastWater === null
                     ? "Ready for first 250mL glass"
-                    : isPacingOptimal
-                    ? `Optimal Pacing (Last glass ${minsSinceLastWater}m ago)`
-                    : `Next glass recommended in ${15 - minsSinceLastWater}m (WHO Pacing)`}
+                    : `Optimal Pacing (Last intake ${minsSinceLastWater}m ago)`}
                 </Text>
               </View>
 
-              {waterLogged >= 5000 ? (
+              {waterLogged >= 4000 ? (
                 <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700", marginTop: 2 }}>
-                  🛑 Max Limit Reached (5,000 mL). WHO standard: 2,500 mL/day.
+                  🛑 Daily Ceiling Reached (4,000 mL). WHO daily max: 3,500 mL.
                 </Text>
-              ) : waterLogged >= 3500 ? (
+              ) : waterLogged >= 3000 ? (
                 <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "700", marginTop: 2 }}>
-                  ⚠️ High Hydration ({waterLogged} mL). Avoid fluid overload (&gt;4L).
+                  ⚠️ High Daily Hydration ({waterLogged} mL). Space intake carefully.
                 </Text>
               ) : waterLogged >= waterGoal ? (
                 <Text style={{ fontSize: 11, color: "#4ade80", fontWeight: "700", marginTop: 2 }}>
@@ -507,34 +553,74 @@ export default function Today() {
                 </Text>
               )}
             </View>
-            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: waterLogged >= 5000 ? "rgba(248,113,113,0.15)" : waterLogged >= waterGoal ? "rgba(74,222,128,0.15)" : "rgba(56,189,248,0.15)", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="water" size={22} color={waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8"} />
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: waterLogged >= 4000 ? "rgba(248,113,113,0.15)" : waterLogged >= waterGoal ? "rgba(74,222,128,0.15)" : "rgba(56,189,248,0.15)", alignItems: "center", justifyContent: "center" }}>
+              <Ionicons name="water" size={22} color={waterLogged >= 4000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8"} />
             </View>
           </View>
 
           {/* Progress bar */}
           <View style={{ height: 6, borderRadius: 3, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", overflow: "hidden", marginBottom: 8 }}>
-            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 5000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
+            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 4000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
           </View>
 
           {/* WHO Guideline Advice */}
           <Text style={{ fontSize: 10, color: theme.textSecondary, fontStyle: "italic", marginBottom: 10 }}>
-            💡 WHO Advice: Space 250 mL intake by 15–30 min for optimal cellular absorption & renal health.
+            💡 WHO Rule: Max 1,000 mL/hr renal capacity. Space 250mL intake by 15m & 500mL by 30m.
           </Text>
 
-          {/* Action buttons */}
+          {/* Action buttons with WHO Hard Lockout */}
           <View style={{ flexDirection: "row", gap: 8 }}>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: isDark ? "rgba(56,189,248,0.15)" : "rgba(56,189,248,0.12)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
+              style={{
+                flex: 1,
+                backgroundColor: isWaterLocked
+                  ? (isDark ? "rgba(239,68,68,0.12)" : "rgba(239,68,68,0.08)")
+                  : (isDark ? "rgba(56,189,248,0.15)" : "rgba(56,189,248,0.12)"),
+                borderColor: isWaterLocked ? "rgba(239,68,68,0.3)" : "transparent",
+                borderWidth: isWaterLocked ? 1 : 0,
+                borderRadius: 8,
+                paddingVertical: 8,
+                alignItems: "center",
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 5,
+              }}
               onPress={() => addWater(250)}>
-              <Ionicons name="add-circle-outline" size={14} color="#0284C7" />
-              <Text style={{ fontSize: 12, color: "#0284C7", fontWeight: "700" }}>{t("today.addGlass", "+ Glass (250ml)")}</Text>
+              <Ionicons
+                name={isWaterLocked ? "timer-outline" : "add-circle-outline"}
+                size={14}
+                color={isWaterLocked ? "#EF4444" : "#0284C7"}
+              />
+              <Text style={{ fontSize: 11, color: isWaterLocked ? "#EF4444" : "#0284C7", fontWeight: "700" }}>
+                {isWaterLocked
+                  ? `⏱️ Locked (${formatCountdown(cooldownRemainingSecs)})`
+                  : t("today.addGlass", "+ Glass (250ml)")}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={{ flex: 1, backgroundColor: isDark ? "rgba(56,189,248,0.22)" : "rgba(56,189,248,0.18)", borderRadius: 8, paddingVertical: 8, alignItems: "center", flexDirection: "row", justifyContent: "center", gap: 5, opacity: waterLogged >= 5000 ? 0.4 : 1 }}
+              style={{
+                flex: 1,
+                backgroundColor: isWaterLocked
+                  ? (isDark ? "rgba(239,68,68,0.12)" : "rgba(239,68,68,0.08)")
+                  : (isDark ? "rgba(56,189,248,0.22)" : "rgba(56,189,248,0.18)"),
+                borderColor: isWaterLocked ? "rgba(239,68,68,0.3)" : "transparent",
+                borderWidth: isWaterLocked ? 1 : 0,
+                borderRadius: 8,
+                paddingVertical: 8,
+                alignItems: "center",
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 5,
+              }}
               onPress={() => addWater(500)}>
-              <Ionicons name="add" size={14} color="#0284C7" />
-              <Text style={{ fontSize: 12, color: "#0284C7", fontWeight: "700" }}>{t("today.addBottle", "+ Bottle (500ml)")}</Text>
+              <Ionicons
+                name={isWaterLocked ? "lock-closed-outline" : "add"}
+                size={14}
+                color={isWaterLocked ? "#EF4444" : "#0284C7"}
+              />
+              <Text style={{ fontSize: 11, color: isWaterLocked ? "#EF4444" : "#0284C7", fontWeight: "700" }}>
+                {isWaterLocked ? "🔒 WHO Lockout" : t("today.addBottle", "+ Bottle (500ml)")}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -687,33 +773,49 @@ export default function Today() {
         }}
       />
 
-      {/* WHO Smart Hydration Pacing Modal */}
+      {/* WHO Smart Hydration Clinical Pacing Modal */}
       <Modal visible={pacingModalOpen} transparent animationType="fade" onRequestClose={() => setPacingModalOpen(false)}>
         <View style={s.modalOverlay}>
           <View style={[s.modalContent, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
-            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(245,158,11,0.15)", alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 12 }}>
-              <Ionicons name="medical-outline" size={26} color="#F59E0B" />
+            <View style={{ width: 48, height: 48, borderRadius: 24, backgroundColor: "rgba(239,68,68,0.15)", alignItems: "center", justifyContent: "center", alignSelf: "center", marginBottom: 12 }}>
+              <Ionicons name="shield-checkmark-outline" size={26} color="#EF4444" />
             </View>
 
-            <Text style={[s.mTitle, { color: theme.textPrimary, textAlign: "center" }]}>WHO Smart Hydration Pacing</Text>
+            <Text style={[s.mTitle, { color: theme.textPrimary, textAlign: "center" }]}>
+              {pacingLockReason === "HOURLY_LIMIT" ? "WHO Hourly Limit Reached (1,000 mL)" : "WHO Gastric Absorption Cooldown"}
+            </Text>
             <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: "center", marginTop: 6, lineHeight: 19 }}>
-              You recently logged a glass of water. WHO & clinical guidelines recommend spacing 250 mL intake by at least <Text style={{ fontWeight: "700", color: theme.textPrimary }}>15–30 minutes</Text> to allow proper cellular absorption.
+              {pacingLockReason === "HOURLY_LIMIT"
+                ? `You have logged ${hourlyIntake} mL in the past 60 minutes. Human kidneys can filter a maximum of 800–1,000 mL per hour.`
+                : `You recently logged a glass of water. WHO & clinical guidelines require spacing 250–500 mL intake by 15–30 minutes for proper cellular hydration.`}
             </Text>
 
-            <View style={{ backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", borderRadius: 12, padding: 12, marginVertical: 14, gap: 4 }}>
-              <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>🩺 Clinical Note:</Text>
+            {/* Countdown Badge */}
+            {isCooldownActive && (
+              <View style={{ alignSelf: "center", backgroundColor: "rgba(239,68,68,0.12)", borderWidth: 1, borderColor: "rgba(239,68,68,0.3)", borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6, marginVertical: 10, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="timer-outline" size={14} color="#EF4444" />
+                <Text style={{ fontSize: 12, fontWeight: "700", color: "#EF4444" }}>
+                  Intake Unlocks In: {formatCountdown(cooldownRemainingSecs)}
+                </Text>
+              </View>
+            )}
+
+            <View style={{ backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", borderRadius: 12, padding: 12, marginVertical: 10, gap: 4 }}>
+              <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>🩺 Why This Rule Matters (Clinical Science):</Text>
               <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 16 }}>
-                Drinking large fluid volumes (&gt;500 mL) in 2–3 minutes exceeds maximum gastric emptying rate. Spacing intake improves medicine digestion.
+                {pacingLockReason === "HOURLY_LIMIT"
+                  ? "Exceeding 1,000 mL/hr causes rapid renal flushing and acute hyponatremia (water intoxication). Spacing water intake preserves blood sodium balance."
+                  : "Drinking large volumes faster than stomach emptying rate (25 mL/min) causes gastric bloating and rapid excretion without absorbing water into tissues."}
               </Text>
             </View>
 
-            <View style={{ gap: 8 }}>
+            <View style={{ gap: 8, marginTop: 4 }}>
               <TouchableOpacity
                 onPress={handleScheduleReminderOnly}
                 style={[s.mBtn, { backgroundColor: "#0284C7" }]}
               >
                 <Ionicons name="alarm-outline" size={16} color="#FFF" />
-                <Text style={{ fontSize: 13, fontWeight: "700", color: "#FFF" }}>Remind Me in 15 Minutes</Text>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#FFF" }}>Remind Me When Lockout Ends</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -721,16 +823,14 @@ export default function Today() {
                 style={[s.mBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)" }]}
               >
                 <Ionicons name="time-outline" size={16} color={theme.textPrimary} />
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Log as Earlier Past Glass</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textPrimary }}>Log for Earlier Time (Past Intake)</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={handleOverrideLog}
-                style={{ paddingVertical: 8, alignItems: "center" }}
+                onPress={() => setPacingModalOpen(false)}
+                style={[s.mBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: theme.surfaceBorder }]}
               >
-                <Text style={{ fontSize: 12, color: theme.textDisabled, textDecorationLine: "underline" }}>
-                  Override & Log {attemptedAmount} mL Now
-                </Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textSecondary }}>Close & Respect WHO Pacing</Text>
               </TouchableOpacity>
             </View>
           </View>
