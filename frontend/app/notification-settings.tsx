@@ -219,8 +219,9 @@ export default function NotificationSettingsScreen() {
                   <Ionicons name={profileInfo.icon as any} size={14} color={theme.accent} />
                   <Text style={[s.activeProfileName, { color: theme.textPrimary }]}>{profileInfo.label}</Text>
                 </View>
-                <TouchableOpacity onPress={() => handleTestPreview(currentProfile)} disabled={settings.masterMute}>
-                  <Text style={[s.previewBtnText, { color: theme.accent }]}>🔊 Play Chime</Text>
+                <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4 }} onPress={() => handleTestPreview(currentProfile)} disabled={settings.masterMute}>
+                  <Ionicons name="volume-medium-outline" size={14} color={theme.accent} />
+                  <Text style={[s.previewBtnText, { color: theme.accent }]}>Play Chime</Text>
                 </TouchableOpacity>
               </View>
 

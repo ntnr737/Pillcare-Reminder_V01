@@ -147,7 +147,7 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
   try {
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `🔊 Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,
+        title: `Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,
         body: SOUND_PROFILE_LABELS[profile].desc,
         sound: "default",
         priority: Notifications.AndroidNotificationPriority.HIGH,
