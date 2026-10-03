@@ -836,9 +836,9 @@ export default function Treatment() {
           mode="time"
           is24Hour={false}
           display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={(_, selected) => {
+          onChange={(evt, selected) => {
             setYogaTimePicker(false);
-            if (selected) scheduleYogaReminder(selected);
+            if ((Platform.OS === "ios" || evt.type === "set") && selected) scheduleYogaReminder(selected);
           }}
         />
       )}

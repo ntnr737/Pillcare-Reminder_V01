@@ -6,6 +6,7 @@ import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 import { PrimaryButton } from "./PrimaryButton";
 import { UnitDropdownModal } from "./UnitDropdownModal";
+import { TimePickerModal } from "./TimePickerModal";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { enqueueWrite, flushQueue } from "@/src/lib/sync";
@@ -259,29 +260,25 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
               value={startDate}
               mode="date"
               display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(_, d) => { setShowDate(false); if (d) setStartDate(d); }}
-            />
-          )}
-          {showTimeIdx !== null && (
-            <DateTimePicker
-              value={(() => {
-                const [hh, mm] = times[showTimeIdx].split(":").map(Number);
-                const d = new Date(); d.setHours(hh); d.setMinutes(mm); return d;
-              })()}
-              mode="time"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={(_, d) => {
-                if (showTimeIdx === null) return;
-                const idx = showTimeIdx;
-                setShowTimeIdx(null);
-                if (d) {
-                  const next = [...times];
-                  next[idx] = fmtTime(d);
-                  setTimes(next);
-                }
+              onChange={(evt, d) => {
+                setShowDate(false);
+                if ((Platform.OS === "ios" || evt.type === "set") && d) setStartDate(d);
               }}
             />
           )}
+
+          <TimePickerModal
+            visible={showTimeIdx !== null}
+            initialTime={showTimeIdx !== null ? times[showTimeIdx] || "08:00" : "08:00"}
+            onSelect={(newTimeStr) => {
+              if (showTimeIdx !== null) {
+                const next = [...times];
+                next[showTimeIdx] = newTimeStr;
+                setTimes(next);
+              }
+            }}
+            onClose={() => setShowTimeIdx(null)}
+          />
 
           <UnitDropdownModal
             visible={showUnitModal}

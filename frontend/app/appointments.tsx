@@ -367,7 +367,7 @@ export default function Appointments() {
                   minimumDate={new Date()}
                   onChange={(event, selected) => {
                     setShowDatePicker(false);
-                    if (selected) {
+                    if ((Platform.OS === "ios" || event.type === "set") && selected) {
                       const y = selected.getFullYear();
                       const m = String(selected.getMonth() + 1).padStart(2, "0");
                       const d = String(selected.getDate()).padStart(2, "0");
@@ -393,7 +393,7 @@ export default function Appointments() {
                   is24Hour={false}
                   onChange={(event, selected) => {
                     setShowTimePicker(false);
-                    if (selected) {
+                    if ((Platform.OS === "ios" || event.type === "set") && selected) {
                       const h = String(selected.getHours()).padStart(2, "0");
                       const min = String(selected.getMinutes()).padStart(2, "0");
                       setEditing(e => ({ ...e, time: `${h}:${min}` }));

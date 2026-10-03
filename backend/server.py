@@ -53,8 +53,16 @@ GROQ_TEXT_MODEL = "openai/gpt-oss-120b"
 GROQ_VISION_MODEL = "qwen/qwen3.6-27b"
 OPENWA_ENABLED = os.environ.get("OPENWA_ENABLED", "false").lower() == "true"
 WASENDER_API_KEY = os.environ.get("WASENDER_API_KEY", "")
-SCHEDULER_SECRET = os.environ.get("SCHEDULER_SECRET", "")
 APP_TIMEZONE = ZoneInfo("Asia/Kolkata")
+
+def get_user_timezone(tz_name: str = "") -> ZoneInfo:
+    """Safely resolves client device timezone name into ZoneInfo, falling back to APP_TIMEZONE."""
+    if tz_name and isinstance(tz_name, str):
+        try:
+            return ZoneInfo(tz_name.strip())
+        except Exception:
+            pass
+    return APP_TIMEZONE
 
 # ---------- Auth config ----------
 JWT_SECRET = os.environ.get("JWT_SECRET", "")

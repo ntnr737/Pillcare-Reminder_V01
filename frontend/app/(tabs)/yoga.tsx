@@ -711,9 +711,9 @@ export default function YogaTabScreen() {
           mode="time"
           is24Hour={false}
           display={Platform.OS === "ios" ? "spinner" : "default"}
-          onChange={(_, selected) => {
+          onChange={(evt, selected) => {
             setTimePickerOpen(false);
-            if (selected) scheduleYogaReminder(selected);
+            if ((Platform.OS === "ios" || evt.type === "set") && selected) scheduleYogaReminder(selected);
           }}
         />
       )}
