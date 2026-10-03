@@ -28,6 +28,7 @@ try {
 }
 
 export const MEDICATION_CATEGORY = "medication-reminder-category";
+export const WATER_CATEGORY = "water-reminder-category";
 export const YOGA_CATEGORY = "yoga-reminder-category";
 
 /**
@@ -42,8 +43,31 @@ export async function ensureCategories(): Promise<void> {
         options: { opensAppToForeground: false },
       },
       {
-        identifier: "SNOOZE_15",
-        buttonTitle: "Snooze 15m",
+        identifier: "SNOOZE_10",
+        buttonTitle: "Snooze 10m",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "SNOOZE_30",
+        buttonTitle: "Snooze 30m",
+        options: { opensAppToForeground: false },
+      },
+    ]);
+
+    await Notifications.setNotificationCategoryAsync(WATER_CATEGORY, [
+      {
+        identifier: "LOG_250ML",
+        buttonTitle: "✓ Log 250 mL",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "LOG_500ML",
+        buttonTitle: "+ Log 500 mL",
+        options: { opensAppToForeground: false },
+      },
+      {
+        identifier: "SNOOZE_WATER_15",
+        buttonTitle: "Remind 15m",
         options: { opensAppToForeground: false },
       },
     ]);
@@ -62,6 +86,38 @@ export async function ensureCategories(): Promise<void> {
     ]);
   } catch (e) {
     console.warn("Category setup failed:", e);
+  }
+}
+
+/**
+ * Helper to log water intake directly from notification bar actions
+ */
+async function handleLogWaterFromNotification(amount: number): Promise<void> {
+  try {
+    const todayDate = new Date().toISOString().split("T")[0];
+    const wKey = `water_${todayDate}`;
+    const wLoggedKey = `water_logged_${todayDate}`;
+    const wLogsKey = `water_logs_${todayDate}`;
+
+    const currentLogged = (await get<number>(wLoggedKey)) || (await get<number>(wKey)) || 0;
+    const currentLogs = (await get<Array<{ amount: number; ts: number }>>(wLogsKey)) || [];
+
+    const newAmount = currentLogged + amount;
+    const newLogs = [...currentLogs, { amount, ts: Date.now() }];
+
+    await set(wKey, newAmount);
+    await set(wLoggedKey, newAmount);
+    await set(wLogsKey, newLogs);
+
+    // Sync to backend activity API
+    api.createActivity({
+      type: "water",
+      value: amount,
+      unit: "ml",
+      note: "Logged from OS notification bar",
+    }).catch(() => {});
+  } catch (err) {
+    console.warn("Failed to log water from notification bar action:", err);
   }
 }
 
@@ -108,16 +164,38 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
             await set(key, updated);
           }
         }
-      } else if (actionId === "SNOOZE_15") {
+      } else if (actionId === "SNOOZE_10" || actionId === "SNOOZE_15" || actionId === "SNOOZE_30") {
+        const snoozeSecs = actionId === "SNOOZE_10" ? 600 : actionId === "SNOOZE_30" ? 1800 : 900;
+        const snoozeMins = snoozeSecs / 60;
         await Notifications.scheduleNotificationAsync({
           content: {
             title: response.notification.request.content.title,
-            body: `[Snoozed] ${response.notification.request.content.body}`,
+            body: `[Snoozed ${snoozeMins}m] ${response.notification.request.content.body}`,
             data: data,
             categoryIdentifier: MEDICATION_CATEGORY,
             sound: "default",
             channelId: "medication-reminders",
             priority: Notifications.AndroidNotificationPriority.MAX,
+          } as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: snoozeSecs,
+          },
+        });
+      } else if (actionId === "LOG_250ML") {
+        await handleLogWaterFromNotification(250);
+      } else if (actionId === "LOG_500ML") {
+        await handleLogWaterFromNotification(500);
+      } else if (actionId === "SNOOZE_WATER_15") {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Stay Hydrated! — PillCare Water Reminder",
+            body: "[Snoozed 15m] Drink a glass of water (250ml) for optimal cellular hydration.",
+            data: { type: "water_reminder" },
+            categoryIdentifier: WATER_CATEGORY,
+            sound: "default",
+            channelId: "hydration-reminders",
+            priority: Notifications.AndroidNotificationPriority.HIGH,
           } as any,
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
@@ -257,7 +335,7 @@ export async function sendTestNotificationNow(
       sound: soundSet.masterMute ? undefined : "default",
       channelId,
       priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
-      categoryIdentifier: MEDICATION_CATEGORY,
+      categoryIdentifier: category === "water" ? WATER_CATEGORY : category === "yoga" ? YOGA_CATEGORY : MEDICATION_CATEGORY,
     } as any,
     trigger: null,
   });
@@ -566,8 +644,9 @@ export async function scheduleWaterReminders(): Promise<void> {
           title: "Stay Hydrated! — PillCare Water Reminder",
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
           data: { type: "water_reminder" },
+          categoryIdentifier: WATER_CATEGORY,
           sound: "default",
-          channelId: "medication-reminders",
+          channelId: "hydration-reminders",
           priority: Notifications.AndroidNotificationPriority.HIGH,
         } as any,
         trigger: {
@@ -581,7 +660,7 @@ export async function scheduleWaterReminders(): Promise<void> {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: wt.hour,
             minute: wt.minute,
-            channelId: "medication-reminders",
+            channelId: "hydration-reminders",
           }
         : {
             hour: wt.hour,
@@ -594,8 +673,9 @@ export async function scheduleWaterReminders(): Promise<void> {
           title: "Stay Hydrated! — PillCare Water Reminder",
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
           data: { type: "water_reminder" },
+          categoryIdentifier: WATER_CATEGORY,
           sound: "default",
-          channelId: "medication-reminders",
+          channelId: "hydration-reminders",
           priority: Notifications.AndroidNotificationPriority.HIGH,
         } as any,
         trigger: dailyTrigger,
@@ -614,18 +694,19 @@ export async function scheduleHydrationPacingReminder(minutesFromNow: number = 1
     if (!granted) return;
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "💧 Hydration Pacing Reminder",
+        title: "Hydration Pacing Reminder",
         body: `15 minutes have passed since your last glass! Time to drink your next 250mL for optimal WHO cellular absorption.`,
         data: { type: "water_pacing_reminder" },
+        categoryIdentifier: WATER_CATEGORY,
         sound: "default",
-        channelId: "medication-reminders",
+        channelId: "hydration-reminders",
         priority: Notifications.AndroidNotificationPriority.HIGH,
       } as any,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: minutesFromNow * 60,
         repeats: false,
-        channelId: "medication-reminders",
+        channelId: "hydration-reminders",
       },
     });
     console.log(`Scheduled hydration pacing reminder in ${minutesFromNow} minutes`);
