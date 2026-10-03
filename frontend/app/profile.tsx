@@ -386,6 +386,22 @@ export default function Profile() {
             </View>
             <Switch value={profile.notifications_enabled !== false} onValueChange={v => update("notifications_enabled", v)} trackColor={{ false: theme.surfaceBorder, true: theme.accent }} thumbColor={theme.textPrimary} />
           </View>
+
+          <View style={{ height: 1, backgroundColor: theme.surfaceBorder }} />
+
+          <TouchableOpacity
+            style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
+            onPress={() => router.push("/notification-settings")}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+              <Ionicons name="volume-high-outline" size={18} color={theme.accent} />
+              <View>
+                <Text style={[s.cT, { color: theme.textPrimary }]}>Notification Sounds & Recall Chimes</Text>
+                <Text style={[s.cS, { color: theme.textSecondary }]}>Custom sounds for doses, water & refills</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={theme.textSecondary} />
+          </TouchableOpacity>
         </View>
 
         {/* Save button */}

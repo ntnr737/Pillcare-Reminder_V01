@@ -143,59 +143,95 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
   return () => sub.remove();
 }
 
+import { getSoundSettings, SoundCategory } from "./soundSettings";
+
 /**
- * Create Android notification channels.
+ * Create Android notification channels matching user sound preferences.
  * MUST be called on every app launch before any notification is scheduled.
- * Sets MAX importance, high-vibration pattern, and public lockscreen visibility.
+ * Sets MAX importance, customizable sound, vibration pattern, and lockscreen visibility.
  */
 export async function ensureChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
   try {
+    const soundSet = await getSoundSettings();
+    const isMuted = soundSet.masterMute;
+    const vibrate = soundSet.vibrationEnabled && !isMuted;
+
     await Notifications.setNotificationChannelAsync("medication-reminders", {
       name: "Medication Reminders",
       description: "Alerts when it is time to take a medication",
-      importance: Notifications.AndroidImportance.MAX,
-      sound: "default",
-      enableVibrate: true,
+      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
+      sound: isMuted || soundSet.categorySounds.medication === "mute" ? undefined : "default",
+      enableVibrate: vibrate,
       vibrationPattern: [0, 500, 250, 500, 250, 500],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: true,
+      bypassDnd: !isMuted,
+      showBadge: true,
+    });
+
+    await Notifications.setNotificationChannelAsync("hydration-reminders", {
+      name: "Hydration & Water Intake",
+      description: "WHO water intake and hydration pacing reminders",
+      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.HIGH,
+      sound: isMuted || soundSet.categorySounds.water === "mute" ? undefined : "default",
+      enableVibrate: vibrate,
+      vibrationPattern: [0, 300, 150, 300],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      showBadge: true,
+    });
+
+    await Notifications.setNotificationChannelAsync("appointment-reminders", {
+      name: "Doctor Appointments",
+      description: "Reminders for scheduled healthcare visits",
+      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.HIGH,
+      sound: isMuted || soundSet.categorySounds.appointment === "mute" ? undefined : "default",
+      enableVibrate: vibrate,
+      vibrationPattern: [0, 400, 200, 400],
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       showBadge: true,
     });
 
     await Notifications.setNotificationChannelAsync("yoga-reminders", {
       name: "Yoga & Wellness",
       description: "Daily wellness & yoga flow reminders",
-      importance: Notifications.AndroidImportance.MAX,
-      sound: "default",
-      enableVibrate: true,
+      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.HIGH,
+      sound: isMuted || soundSet.categorySounds.yoga === "mute" ? undefined : "default",
+      enableVibrate: vibrate,
       vibrationPattern: [0, 400, 200, 400],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       showBadge: true,
     });
 
     await Notifications.setNotificationChannelAsync("urgent-reminders", {
-      name: "Urgent Dose Alerts",
-      description: "High priority alerts for critical dose schedules",
-      importance: Notifications.AndroidImportance.MAX,
-      sound: "default",
-      enableVibrate: true,
+      name: "Urgent Dose & Refill Alerts",
+      description: "High priority alerts for critical dose schedules and low stock",
+      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
+      sound: isMuted || soundSet.categorySounds.refill === "mute" ? undefined : "default",
+      enableVibrate: vibrate,
       vibrationPattern: [0, 600, 200, 600, 200, 800],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: true,
+      bypassDnd: !isMuted,
       showBadge: true,
     });
 
     await Notifications.setNotificationChannelAsync("broadcasts", {
       name: "Updates & Announcements",
       description: "Live alerts and push broadcasts from PillCare Admin",
-      importance: Notifications.AndroidImportance.MAX,
-      sound: "default",
-      enableVibrate: true,
+      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
+      sound: isMuted || soundSet.categorySounds.broadcast === "mute" ? undefined : "default",
+      enableVibrate: vibrate,
       vibrationPattern: [0, 400, 200, 400],
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: true,
       showBadge: true,
+    });
+
+    await Notifications.setNotificationChannelAsync("silent-reminders", {
+      name: "Silent Notifications",
+      description: "Visual banner alerts with sound and vibration disabled",
+      importance: Notifications.AndroidImportance.LOW,
+      sound: undefined,
+      enableVibrate: false,
+      showBadge: false,
     });
   } catch (e) {
     console.warn("Channel setup failed:", e);
@@ -205,15 +241,22 @@ export async function ensureChannels(): Promise<void> {
 /**
  * Trigger an instant test notification for sound and bar verification.
  */
-export async function sendTestNotificationNow(title = "PillCare Alert Test", body = "Notification sound & bar alert working properly!"): Promise<void> {
+export async function sendTestNotificationNow(
+  title = "PillCare Alert Test",
+  body = "Notification sound & bar alert working properly!",
+  category: SoundCategory = "medication"
+): Promise<void> {
   await ensureChannels();
+  const soundSet = await getSoundSettings();
+  const channelId = soundSet.masterMute ? "silent-reminders" : (category === "water" ? "hydration-reminders" : category === "appointment" ? "appointment-reminders" : category === "refill" ? "urgent-reminders" : category === "yoga" ? "yoga-reminders" : "medication-reminders");
+
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
-      sound: "default",
-      channelId: "medication-reminders",
-      priority: Notifications.AndroidNotificationPriority.MAX,
+      sound: soundSet.masterMute ? undefined : "default",
+      channelId,
+      priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
       categoryIdentifier: MEDICATION_CATEGORY,
     } as any,
     trigger: null,
