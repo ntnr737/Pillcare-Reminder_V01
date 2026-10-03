@@ -894,7 +894,14 @@ async def create_medication(payload: MedicationCreate, user_id: str = Depends(ge
     med_dict = med.model_dump()
     await db.medications.insert_one(med_dict)
     
-    # Asynchronous background generic resolution (never blocks client response)
+    # Ensure dose log entries are immediately generated for start_date & today
+    today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    try:
+        await _ensure_doses_for_date(user_id, med.start_date)
+        if med.start_date != today_str:
+            await _ensure_doses_for_date(user_id, today_str)
+    except Exception as ex:
+        logger.warning(f"Immediate dose generation warning for {med.id}: {ex}")
     if not generic and (GROQ_API_KEY or FDA_API_KEY):
         async def _bg_resolve_generic(med_id: str, brand_name: str, u_id: str):
             try:

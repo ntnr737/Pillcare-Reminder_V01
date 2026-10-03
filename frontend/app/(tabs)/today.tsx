@@ -92,6 +92,55 @@ function getBadgeFirstName(profile?: any, authUser?: any): string {
   return parts[0].toUpperCase();
 }
 
+function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: any[] = []): any[] {
+  if (!Array.isArray(meds) || meds.length === 0) return existingDoses || [];
+
+  const existingMap = new Map<string, any>();
+  (existingDoses || []).forEach((d) => {
+    if (d && (d.medication_id || d.medication?.id) && d.scheduled_time) {
+      const medId = d.medication_id || d.medication?.id;
+      existingMap.set(`${medId}_${d.scheduled_time}`, d);
+    }
+  });
+
+  const result: any[] = [...(existingDoses || [])];
+
+  for (const m of meds) {
+    if (!m || m.active === false || m.completed === true) continue;
+    if (m.start_date && m.start_date > targetDate) continue;
+    if (m.duration_days && m.start_date) {
+      try {
+        const startDt = new Date(m.start_date);
+        const endDt = new Date(startDt.getTime() + m.duration_days * 86400000);
+        const targetDt = new Date(targetDate);
+        if (targetDt > endDt) continue;
+      } catch {}
+    }
+
+    const times: string[] = Array.isArray(m.times) ? m.times : [];
+    for (const t of times) {
+      const key = `${m.id}_${t}`;
+      if (!existingMap.has(key)) {
+        const synthDose = {
+          id: `local_dose_${m.id}_${targetDate}_${t.replace(":", "")}`,
+          user_id: m.user_id || "local",
+          medication_id: m.id,
+          medication: m,
+          date: targetDate,
+          scheduled_time: t,
+          status: "pending",
+          is_local: true,
+        };
+        result.push(synthDose);
+        existingMap.set(key, synthDose);
+      }
+    }
+  }
+
+  result.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""));
+  return result;
+}
+
 export default function Today() {
   const router = useRouter();
   const { theme, isDark } = useTheme();
@@ -158,16 +207,14 @@ export default function Today() {
   const fetchServer = async () => {
     try {
       await flushQueue().catch(() => {});
-      const [dos, prof, user, cachedProf] = await Promise.all([
-        api.listDoses(date),
+      const [dos, prof, user, cachedProf, cachedMeds] = await Promise.all([
+        api.listDoses(date).catch(() => null),
         api.getProfile().catch(() => null),
         getStoredUser().catch(() => null),
         get<any>(K.profile).catch(() => null),
+        get<any[]>(K.medications).catch(() => []),
       ]);
-      if (dos && Array.isArray(dos)) {
-        setDoses(dos);
-        await set(K.doses(date), dos);
-      }
+
       if (user) setAuthUser(user);
       if (prof) {
         setProfile(prof);
@@ -175,6 +222,18 @@ export default function Today() {
       } else if (cachedProf) {
         setProfile(cachedProf);
       }
+
+      const localMeds = (cachedMeds && Array.isArray(cachedMeds)) ? cachedMeds : [];
+      const apiMeds = await api.listMedications(true).catch(() => null);
+      const allMeds = (apiMeds && Array.isArray(apiMeds)) ? apiMeds : localMeds;
+      if (apiMeds && Array.isArray(apiMeds)) {
+        await set(K.medications, apiMeds).catch(() => {});
+      }
+
+      const rawDoses = Array.isArray(dos) ? dos : (((await get(K.doses(date))) as any[]) || []);
+      const finalDoses = synthesizeDosesForDate(allMeds, date, rawDoses);
+      setDoses(finalDoses);
+      await set(K.doses(date), finalDoses).catch(() => {});
 
       api.adherence(30).then((data: any) => {
         if (data && typeof data === "object") setAdherenceMap(data);
@@ -312,7 +371,12 @@ export default function Today() {
 
     // 3. Persist status to backend server and handle offline queue
     try {
-      await api.setDoseStatus(doseId, newStatus, taken_at);
+      const targetDose = doses.find((d: any) => d.id === doseId);
+      if (doseId.startsWith("local_dose_") && targetDose) {
+        await api.markTakenByMedication(targetDose.medication_id, targetDose.scheduled_time, taken_at);
+      } else {
+        await api.setDoseStatus(doseId, newStatus, taken_at);
+      }
     } catch (err) {
       console.warn("API setDoseStatus failed, queueing offline write:", err);
       await enqueueWrite("doseStatus", { id: doseId, status: newStatus, taken_at });
