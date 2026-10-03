@@ -346,7 +346,7 @@ export default function Today() {
 
     // Absolute Safety Limit: Max 4000 mL per day
     if (waterLogged + amount > 4000) {
-      Alert.alert("⚠️ Daily Hydration Safety Ceiling", "WHO guidelines recommend an optimal daily limit of 2,500 mL – 3,500 mL. Fluid intake exceeding 4,000 mL per day is restricted to prevent electrolyte dilution.");
+      Alert.alert("Daily Hydration Safety Ceiling", "WHO guidelines recommend an optimal daily limit of 2,500 mL – 3,500 mL. Fluid intake exceeding 4,000 mL per day is restricted to prevent electrolyte dilution.");
       return;
     }
 
@@ -615,9 +615,9 @@ export default function Today() {
                 />
                 <Text style={{ fontSize: 11, fontWeight: "700", color: isWaterLocked ? "#EF4444" : "#10B981" }}>
                   {isHourlyLimitReached
-                    ? `⚠️ WHO Hourly Limit (1,000 mL/hr reached)`
+                    ? `WHO Hourly Limit (1,000 mL/hr reached)`
                     : isCooldownActive
-                    ? `⏱️ WHO Lockout (Unlocks in ${formatCountdown(cooldownRemainingSecs)})`
+                    ? `WHO Lockout (Unlocks in ${formatCountdown(cooldownRemainingSecs)})`
                     : minsSinceLastWater === null
                     ? "Ready for first 250mL glass"
                     : `Optimal Pacing (Last intake ${minsSinceLastWater}m ago)`}
@@ -626,15 +626,15 @@ export default function Today() {
 
               {waterLogged >= 4000 ? (
                 <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700", marginTop: 2 }}>
-                  🛑 Daily Ceiling Reached (4,000 mL). WHO daily max: 3,500 mL.
+                  Daily Ceiling Reached (4,000 mL). WHO daily max: 3,500 mL.
                 </Text>
               ) : waterLogged >= 3000 ? (
                 <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "700", marginTop: 2 }}>
-                  ⚠️ High Daily Hydration ({waterLogged} mL). Space intake carefully.
+                  High Daily Hydration ({waterLogged} mL). Space intake carefully.
                 </Text>
               ) : waterLogged >= waterGoal ? (
                 <Text style={{ fontSize: 11, color: "#4ade80", fontWeight: "700", marginTop: 2 }}>
-                  🎉 Daily Goal Met! ({Math.round(waterLogged / 250)} glasses logged)
+                  Daily Goal Met! ({Math.round(waterLogged / 250)} glasses logged)
                 </Text>
               ) : (
                 <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "600", marginTop: 2 }}>
@@ -654,7 +654,7 @@ export default function Today() {
 
           {/* WHO Guideline Advice */}
           <Text style={{ fontSize: 10, color: theme.textSecondary, fontStyle: "italic", marginBottom: 10 }}>
-            💡 WHO Rule: Max 1,000 mL/hr renal capacity. Space 250mL intake by 15m & 500mL by 30m.
+            WHO Rule: Max 1,000 mL/hr renal capacity. Space 250mL intake by 15m & 500mL by 30m.
           </Text>
 
           {/* Action buttons with WHO Hard Lockout */}
@@ -682,7 +682,7 @@ export default function Today() {
               />
               <Text style={{ fontSize: 11, color: isWaterLocked ? "#EF4444" : "#0284C7", fontWeight: "700" }}>
                 {isWaterLocked
-                  ? `⏱️ Locked (${formatCountdown(cooldownRemainingSecs)})`
+                  ? `Locked (${formatCountdown(cooldownRemainingSecs)})`
                   : t("today.addGlass", "+ Glass (250ml)")}
               </Text>
             </TouchableOpacity>
@@ -708,7 +708,7 @@ export default function Today() {
                 color={isWaterLocked ? "#EF4444" : "#0284C7"}
               />
               <Text style={{ fontSize: 11, color: isWaterLocked ? "#EF4444" : "#0284C7", fontWeight: "700" }}>
-                {isWaterLocked ? "🔒 WHO Lockout" : t("today.addBottle", "+ Bottle (500ml)")}
+                {isWaterLocked ? "WHO Lockout" : t("today.addBottle", "+ Bottle (500ml)")}
               </Text>
             </TouchableOpacity>
           </View>
