@@ -132,7 +132,7 @@ api = APIRouter(prefix="/api")
 
 # Rate limiter
 def get_real_ip(request: Request) -> str:
-    """Get actual client IP — supports Cloud Run & reverse proxies."""
+    """Get actual client IP - supports Cloud Run & reverse proxies."""
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -240,7 +240,7 @@ class ProfileUpsert(BaseModel):
         import re as _re
         cleaned = _re.sub(r"[\s\-()]", "", str(v))
         if cleaned and not _re.match(r"^\+?[0-9]{7,15}$", cleaned):
-            raise ValueError("Invalid phone number — use international format e.g. +919876543210")
+            raise ValueError("Invalid phone number - use international format e.g. +919876543210")
         return v
 
 
@@ -383,7 +383,7 @@ async def get_current_user_id(authorization: str = Header(None)) -> str:
     if not JWT_SECRET:
         raise HTTPException(500, "Server auth is not configured")
     try:
-        # algorithms list must be explicit — prevents alg=none attack
+        # algorithms list must be explicit - prevents alg=none attack
         payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         if payload.get("alg", "HS256") == "none":
             raise ValueError("alg=none not allowed")
@@ -655,7 +655,7 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
 
     token = _create_session_token(user_id)
     user_doc = await db.users.find_one({"id": user_id}, PROJECTION)
-    # Analytics — track login + new signups with device info
+    # Analytics - track login + new signups with device info
     device_props = {
         "device_model": payload.device_model or "unknown",
         "device_os": payload.device_os or "unknown",
@@ -698,7 +698,7 @@ async def get_activity_catalog():
 # Profile
 @api.post("/auth/logout")
 async def logout(authorization: str = Header(default="")):
-    """Revoke current JWT — token immediately invalid after this call."""
+    """Revoke current JWT - token immediately invalid after this call."""
     if authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ").strip()
         _revoked_tokens.add(token)
@@ -765,7 +765,7 @@ async def update_caregiver(
     payload: dict = Body(...),
     user_id: str = Depends(get_current_user_id)
 ):
-    """Update only caregiver phone — no other profile fields required."""
+    """Update only caregiver phone - no other profile fields required."""
     import re as _re
     phone = payload.get("caregiver_phone", "").strip()
     if phone:
@@ -863,7 +863,7 @@ async def list_medications(active: Optional[bool] = None, user_id: str = Depends
     if active is not None:
         q["active"] = active
     items = await db.medications.find(q, PROJECTION).to_list(1000)
-    # Fix negative stock — clamp to 0, never show negative to user
+    # Fix negative stock - clamp to 0, never show negative to user
     for item in items:
         if item.get("stock", 0) < 0:
             item["stock"] = 0
@@ -1087,7 +1087,7 @@ async def list_doses(date_str: str, user_id: str = Depends(get_current_user_id))
     for d in doses:
         m = med_map.get(d["medication_id"])
         # Skip doses whose medication was soft-deleted (active: False) or completed (completed: True) via
-        # "Treatment complete" — otherwise the old dose row keeps resurfacing
+        # "Treatment complete" - otherwise the old dose row keeps resurfacing
         # its stale stock value forever, making the out-of-stock prompt look stuck.
         if m and m.get("active", True) and not m.get("completed", False):
             enriched.append({**d, "medication": m})
@@ -1102,7 +1102,7 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
         taken_at = payload.taken_at or datetime.now(timezone.utc)
         update["taken_at"] = taken_at
 
-    # Single atomic operation — only succeeds if dose is NOT already taken
+    # Single atomic operation - only succeeds if dose is NOT already taken
     # This prevents double-decrement from duplicate requests (offline sync + direct call)
     query = {"id": dose_id, "user_id": user_id, "status": {"$ne": "taken"}}
     res = await db.doses.find_one_and_update(
@@ -1110,11 +1110,11 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
     )
 
     if res is None:
-        # Dose already taken OR not found — return current state, do NOT decrement stock
+        # Dose already taken OR not found - return current state, do NOT decrement stock
         doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
         if not doc:
             raise HTTPException(404, "Dose not found")
-        return doc  # Idempotent — already taken, ignore duplicate request
+        return doc  # Idempotent - already taken, ignore duplicate request
 
     if payload.status == "taken":
         # Decrement stock only once, only on first successful take
@@ -1397,7 +1397,7 @@ async def ai_daily_briefing(request: Request, user_id: str = Depends(get_current
 @api.post("/ai/drug-interactions")
 @limiter.limit("20/minute")
 async def ai_drug_interactions(request: Request, user_id: str = Depends(get_current_user_id)):
-    """AI Drug & Food Conflict Scanner — checks active medications for interactions."""
+    """AI Drug & Food Conflict Scanner - checks active medications for interactions."""
     meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(20)
     if not meds or len(meds) < 2:
         return {"has_interactions": False, "warnings": [], "message": "Add at least 2 active medications to scan for interactions."}
@@ -1528,7 +1528,7 @@ async def yoga_tip(request: Request, user_id: str = Depends(get_current_user_id)
 
     # Medication → condition → yoga therapy mapping
     # Based on Ministry of AYUSH Common Yoga Protocol and clinical yoga therapy guidelines
-    # Verified YouTube video links — real video IDs confirmed via search
+    # Verified YouTube video links - real video IDs confirmed via search
     # Swami Ramdev videos from @SwamiRamdevOfficial
     # Sadhguru videos from @sadhguru (Isha Foundation)
     # Ministry of AYUSH from @ministryofayushofficial
@@ -1612,7 +1612,7 @@ async def yoga_tip(request: Request, user_id: str = Depends(get_current_user_id)
         channel_name = mapping["channel"]
         return {
             "title": "Daily Wellness Yoga",
-            "subtitle": "Common Yoga Protocol — Ministry of AYUSH, Govt. of India",
+            "subtitle": "Common Yoga Protocol - Ministry of AYUSH, Govt. of India",
             "duration": "15 min",
             "level": "Beginner",
             "description": "A daily yoga routine recommended by the Ministry of AYUSH to support overall health and complement your medication schedule.",
@@ -1629,8 +1629,8 @@ async def yoga_tip(request: Request, user_id: str = Depends(get_current_user_id)
             ],
             "channels": [
                 {"name": "Ministry of AYUSH, Govt. of India", "url": YOUTUBE_CHANNELS["Ministry of AYUSH"], "verified": True},
-                {"name": "Swami Ramdev — Patanjali Yogpeeth", "url": YOUTUBE_CHANNELS["Swami Ramdev"], "verified": True},
-                {"name": "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", "url": YOUTUBE_CHANNELS["Sadhguru / Isha Foundation"], "verified": True},
+                {"name": "Swami Ramdev - Patanjali Yogpeeth", "url": YOUTUBE_CHANNELS["Swami Ramdev"], "verified": True},
+                {"name": "Sadhguru - Isha Foundation (Padma Vibhushan, UN recognised)", "url": YOUTUBE_CHANNELS["Sadhguru / Isha Foundation"], "verified": True},
             ],
             "disclaimer": "Yoga recommendations are for general wellness only. Consult your doctor before starting any new exercise programme. References: Ministry of AYUSH Common Yoga Protocol, Patanjali Yogpeeth, Isha Foundation.",
         }
@@ -1668,8 +1668,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
   ],
   "channels": [
     {{"name": "Ministry of AYUSH, Govt. of India", "url": "https://www.youtube.com/@ministryofayushofficial", "verified": true}},
-    {{"name": "Swami Ramdev — Patanjali Yogpeeth", "url": "https://www.youtube.com/@SwamiRamdevOfficial", "verified": true}},
-    {{"name": "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", "url": "https://www.youtube.com/@sadhguru", "verified": true}}
+    {{"name": "Swami Ramdev - Patanjali Yogpeeth", "url": "https://www.youtube.com/@SwamiRamdevOfficial", "verified": true}},
+    {{"name": "Sadhguru - Isha Foundation (Padma Vibhushan, UN recognised)", "url": "https://www.youtube.com/@sadhguru", "verified": true}}
   ],
   "disclaimer": "Yoga recommendations are for general wellness only and complement, not replace, prescribed medication. Consult your doctor before starting. Sources: Ministry of AYUSH, Patanjali Yogpeeth, Isha Foundation."
 }}"""
@@ -1703,8 +1703,8 @@ Return ONLY valid JSON with exactly this structure (no markdown, no explanation)
         # Always enforce verified channels
         data["channels"] = [
             {"name": "Ministry of AYUSH, Govt. of India", "url": "https://www.youtube.com/@ministryofayushofficial", "verified": True},
-            {"name": "Swami Ramdev — Patanjali Yogpeeth", "url": "https://www.youtube.com/@SwamiRamdevOfficial", "verified": True},
-            {"name": "Sadhguru — Isha Foundation (Padma Vibhushan, UN recognised)", "url": "https://www.youtube.com/@sadhguru", "verified": True},
+            {"name": "Swami Ramdev - Patanjali Yogpeeth", "url": "https://www.youtube.com/@SwamiRamdevOfficial", "verified": True},
+            {"name": "Sadhguru - Isha Foundation (Padma Vibhushan, UN recognised)", "url": "https://www.youtube.com/@sadhguru", "verified": True},
         ]
         data["disclaimer"] = (
             "Yoga recommendations are for general wellness only and complement, not replace, prescribed medication. "
@@ -1726,7 +1726,7 @@ class YogaCompletion(BaseModel):
 
 @api.post("/yoga/complete")
 async def yoga_complete(payload: YogaCompletion, user_id: str = Depends(get_current_user_id)):
-    """Log a completed yoga routine step — feeds streak calculation and CSV export."""
+    """Log a completed yoga routine step - feeds streak calculation and CSV export."""
     d = payload.local_date or datetime.now(timezone.utc).date().isoformat()
     entry = {
         "id": str(uuid.uuid4()),
@@ -1764,7 +1764,7 @@ async def yoga_log_history(days: int = 30, user_id: str = Depends(get_current_us
 
 @api.get("/doses/history")
 async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_id)):
-    """Dose & yoga therapy history grouped by date for the Progress List logbook — bulk query optimized."""
+    """Dose & yoga therapy history grouped by date for the Progress List logbook - bulk query optimized."""
     today = datetime.now(timezone.utc).date()
     start = today - timedelta(days=days - 1)
     start_str = start.isoformat()
@@ -1887,7 +1887,7 @@ async def create_appointment(payload: AppointmentCreate, user_id: str = Depends(
         return doc
     except Exception as e:
         logger.error(f"Appointment create failed: {e}")
-        raise HTTPException(500, f"ERR_3001: Could not save appointment — {str(e)}")
+        raise HTTPException(500, f"ERR_3001: Could not save appointment - {str(e)}")
 
 @api.patch("/appointments/{appt_id}")
 async def update_appointment(appt_id: str, payload: AppointmentCreate, user_id: str = Depends(get_current_user_id)):
@@ -1933,7 +1933,7 @@ async def ai_daily_message(request: Request, local_date: str = None, user_id: st
         elif taken == 0:
             msg = "A new day. Tap a dose when you're ready."
         else:
-            msg = f"{taken} of {total} done — you're moving."
+            msg = f"{taken} of {total} done - you're moving."
         return {"message": msg, "streak": adh.get("streak", 0)}
     if insight_level == "weekly":
         cached = await db.ai_daily_cache.find_one({"user_id": user_id}, PROJECTION)
@@ -1955,7 +1955,7 @@ async def ai_daily_message(request: Request, local_date: str = None, user_id: st
         elif taken == 0:
             msg = "A new day. Tap a dose when you're ready."
         else:
-            msg = f"{taken} of {total} done — you're moving."
+            msg = f"{taken} of {total} done - you're moving."
         return {"message": msg, "streak": adh.get("streak", 0)}
 
     context_lines = [
@@ -2204,7 +2204,7 @@ async def nearby_places(
 ):
     import httpx, math, asyncio, datetime
 
-    # Validate coordinates — prevents SSRF and ensures real-world locations
+    # Validate coordinates - prevents SSRF and ensures real-world locations
     if not (-90 <= lat <= 90) or not (-180 <= lng <= 180):
         raise HTTPException(400, "Invalid coordinates")
     if not (100 <= radius <= 10000):
@@ -2354,7 +2354,7 @@ async def nearby_places(
 # since this endpoint has no per-user auth context of its own (called by a cron job).
 @api.post("/caregiver/daily-report")
 async def caregiver_daily_report(request: Request, secret: str = ""):
-    # Always require secret — if env var not set, block ALL calls (fail secure)
+    # Always require secret - if env var not set, block ALL calls (fail secure)
     if not SCHEDULER_SECRET:
         raise HTTPException(503, "Scheduler not configured")
     if secret != SCHEDULER_SECRET:
@@ -2427,7 +2427,7 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
         message = "\n".join(message_parts)
 
         # Once a week (Sunday night, same cron), append an AI-generated weekly
-        # summary — reuses the existing daily cron so no extra scheduler infra is needed.
+        # summary - reuses the existing daily cron so no extra scheduler infra is needed.
         if datetime.now(APP_TIMEZONE).weekday() == 6:
             try:
                 weekly_adh = await _adherence_for_user(user_id, 7)
@@ -2763,7 +2763,7 @@ async def track_event(event: str, user_id: str, props: dict = {}):
     except Exception:
         pass  # analytics must never break the app
 
-# Admin auth — separate secret for dashboard access
+# Admin auth - separate secret for dashboard access
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "pillcare_admin_secret_key_2026")
 
 def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
@@ -2771,7 +2771,7 @@ def require_admin(x_admin_secret: str = Header(default=""), authorization: str =
     if authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
-            # algorithms list must be explicit — prevents alg=none attack
+            # algorithms list must be explicit - prevents alg=none attack
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             if payload.get("alg", "HS256") == "none":
                 raise ValueError("alg=none not allowed")
@@ -2796,6 +2796,8 @@ ADMIN_PANEL_HTML = """<!DOCTYPE html>
     <a href="https://admin.pillcare.in" style="display:inline-block;margin-top:20px;padding:10px 20px;background:#0284c7;color:#fff;border-radius:8px;text-decoration:none;font-weight:600;">Open Admin Panel</a>
   </div>
 </body>
+</html>
+"""
 @app.get("/admin", response_class=HTMLResponse)
 @app.get("/admin/dashboard", response_class=HTMLResponse)
 async def admin_dashboard_ui():
@@ -2811,7 +2813,7 @@ async def admin_dashboard_ui():
 # ── Admin Analytics Endpoints ────────────────────────────────
 @app.get("/admin/stats")
 async def admin_stats(_: None = Depends(require_admin)):
-    """Business KPIs for the admin dashboard — ultra-fast concurrent execution."""
+    """Business KPIs for the admin dashboard - ultra-fast concurrent execution."""
     import asyncio
     now = datetime.now(timezone.utc)
     today = now.date().isoformat()
@@ -3089,10 +3091,10 @@ async def admin_retention(_: None = Depends(require_admin)):
 # ═══════════════════════════════════════════════════════════
 
 # ── Pricing ────────────────────────────────────────────────────
-# Free:    ₹0/month  — basic tracking, 3 meds
-# Basic:   ₹30/month — most features, 5 meds, good for daily users
-# Premium: ₹99/month — everything unlimited, daily AI, scanner
-# Enterprise: custom — for clinics and hospitals
+# Free:    ₹0/month  - basic tracking, 3 meds
+# Basic:   ₹30/month - most features, 5 meds, good for daily users
+# Premium: ₹99/month - everything unlimited, daily AI, scanner
+# Enterprise: custom - for clinics and hospitals
 
 PLAN_FEATURES = {
     "free": {
@@ -3380,7 +3382,7 @@ async def admin_subscriptions(limit: int = 50, skip: int = 0, plan: str = "", _:
 # Blocks after 3 failures for 24 hours
 
 async def check_admin_ip(ip: str):
-    """Block IP if it has 3+ failed admin login attempts in last 24h."""
+    """Block IP if it has 3 or more failed admin login attempts in last 24 hours."""
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     failed = await db.admin_login_attempts.count_documents({
         "ip": ip, "success": False, "ts": {"$gte": cutoff}
@@ -3445,7 +3447,7 @@ async def admin_google_login(request: Request, payload: AdminGoogleAuth):
 
     email = idinfo.get("email", "").lower().strip()
 
-    # Success — issue 24h Admin JWT token for verified Google user
+    # Success - issue 24h Admin JWT token for verified Google user
     await record_admin_attempt(ip, True, email)
     admin_token = pyjwt.encode({
         "sub": email, "role": "admin",
@@ -4040,7 +4042,7 @@ async def admin_user_detail(user_id: str, _: None = Depends(require_admin)):
 
 @api.post("/analytics/track")
 async def track_user_event(payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
-    """Frontend event tracking — every user action stored for admin dashboard."""
+    """Frontend event tracking - every user action stored for admin dashboard."""
     event = payload.get("event", "")
     props = payload.get("props", {})
     if not event or len(event) > 100:
@@ -4391,7 +4393,7 @@ async def admin_filter_analytics(
 async def admin_export_users(_: None = Depends(require_admin)):
     """Export all users to Excel with full analytics."""
     if not EXCEL_OK:
-        raise HTTPException(500, "Excel export not available — openpyxl not installed")
+        raise HTTPException(500, "Excel export not available - openpyxl not installed")
 
     wb = openpyxl.Workbook()
 
@@ -4495,7 +4497,7 @@ async def admin_export_users(_: None = Depends(require_admin)):
 
 def err(code: int, msg: str, detail: str = ""):
     """Standard error response with error code for frontend debugging."""
-    return HTTPException(code, f"ERR_{code}: {msg}" + (f" — {detail}" if detail else ""))
+    return HTTPException(code, f"ERR_{code}: {msg}" + (f" - {detail}" if detail else ""))
 
 @app.get("/health")
 @limiter.exempt
@@ -4522,7 +4524,7 @@ app.include_router(api)
 
 @app.middleware("http")
 async def request_size_limit(request: Request, call_next):
-    """Block suspiciously large requests — prevents payload bombs."""
+    """Block suspiciously large requests - prevents payload bombs."""
     content_length = request.headers.get("content-length")
     if content_length and int(content_length) > 1_000_000:  # 1MB max
         return Response("Payload too large", status_code=413)
