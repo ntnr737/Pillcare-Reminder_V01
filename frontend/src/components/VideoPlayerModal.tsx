@@ -13,6 +13,8 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
+import { get, set, K } from "@/src/lib/store";
+import { api } from "@/src/lib/api";
 
 // Web platform WebView import fallback
 let WebView: any = null;
@@ -72,6 +74,7 @@ export function VideoPlayerModal({
   const insets = useSafeAreaInsets();
   const [hasError, setHasError] = useState(false);
   const [secondsWatched, setSecondsWatched] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [isTimerActive, setIsTimerActive] = useState(false);
   const [modalStep, setModalStep] = useState<"player" | "feedback">("player");
   const [selectedFeeling, setSelectedFeeling] = useState<string>("energized");
@@ -81,13 +84,37 @@ export function VideoPlayerModal({
       setHasError(false);
       setUseMobileWeb(false);
       setSecondsWatched(0);
-      setIsTimerActive(true);
+      setIsPlaying(false);
+      setIsTimerActive(false);
       setModalStep("player");
       setSelectedFeeling("energized");
     } else {
+      setIsPlaying(false);
       setIsTimerActive(false);
     }
   }, [visible, videoUrl]);
+
+  // Web platform YouTube iframe API message listener
+  useEffect(() => {
+    if (Platform.OS === "web" && visible) {
+      const handleWebMessage = (event: MessageEvent) => {
+        try {
+          const data = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+          if (data && data.type === "YT_STATE_CHANGE") {
+            if (data.state === 1) {
+              setIsPlaying(true);
+              setIsTimerActive(true);
+            } else {
+              setIsPlaying(false);
+              setIsTimerActive(false);
+            }
+          }
+        } catch {}
+      };
+      window.addEventListener("message", handleWebMessage);
+      return () => window.removeEventListener("message", handleWebMessage);
+    }
+  }, [visible]);
 
   useEffect(() => {
     let interval: any = null;
@@ -107,6 +134,63 @@ export function VideoPlayerModal({
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const saveVideoLogToHistory = async (watchedSecs: number, feeling?: string) => {
+    if (watchedSecs <= 0) return;
+    try {
+      const d = new Date();
+      const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const hStr = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      const historyCache = (await get<any[]>(K.history)) || [];
+
+      let dayItem = historyCache.find((item: any) => item.date === dStr);
+      if (!dayItem) {
+        dayItem = { date: dStr, total: 0, taken: 0, entries: [] };
+        historyCache.unshift(dayItem);
+      }
+
+      const mins = Math.floor(watchedSecs / 60);
+      const secs = watchedSecs % 60;
+      const durationLabel = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+      const poseTitle = title || "Yoga Practice";
+
+      const selectedFeelingObj = FEELING_OPTIONS.find((f) => f.id === feeling);
+      const feelingText = selectedFeelingObj ? ` · Felt: ${selectedFeelingObj.label}` : feeling ? ` · Felt: ${feeling}` : "";
+
+      const logId = `yoga_video_${Date.now()}`;
+      const newEntry = {
+        id: logId,
+        name: `Yoga: ${poseTitle}`,
+        generic_name: channel || "Guided Yoga Practice",
+        dosage: `${durationLabel} video played`,
+        unit: "",
+        time: hStr,
+        status: "yoga_completed",
+        note: `Watched ${durationLabel} of ${poseTitle}${feelingText}`,
+      };
+
+      const existingIdx = dayItem.entries.findIndex(
+        (e: any) => e.name === newEntry.name && e.time === hStr
+      );
+      if (existingIdx >= 0) {
+        dayItem.entries[existingIdx] = newEntry;
+      } else {
+        dayItem.entries.unshift(newEntry);
+      }
+
+      await set(K.history, [...historyCache]);
+      api.yogaComplete(0, poseTitle, videoUrl).catch(() => {});
+    } catch (err) {
+      console.warn("Failed to save yoga video playback log:", err);
+    }
+  };
+
+  const handleCloseModal = () => {
+    if (secondsWatched > 3) {
+      saveVideoLogToHistory(secondsWatched, selectedFeeling);
+    }
+    onClose();
   };
 
   const videoId = extractYouTubeId(videoUrl);
@@ -155,6 +239,7 @@ export function VideoPlayerModal({
             },
             events: {
               'onReady': onPlayerReady,
+              'onStateChange': onPlayerStateChange,
               'onError': onPlayerError
             }
           });
@@ -162,6 +247,15 @@ export function VideoPlayerModal({
 
         function onPlayerReady(event) {
           try { event.target.playVideo(); } catch(e){}
+        }
+
+        function onPlayerStateChange(event) {
+          if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ 
+              type: 'YT_STATE_CHANGE', 
+              state: event.data 
+            }));
+          }
         }
 
         function onPlayerError(event) {
@@ -181,6 +275,8 @@ export function VideoPlayerModal({
 
   const handleInAppBrowser = async () => {
     try {
+      setIsPlaying(true);
+      setIsTimerActive(true);
       const targetUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
       await WebBrowser.openBrowserAsync(targetUrl, {
         toolbarColor: "#161926",
@@ -190,15 +286,20 @@ export function VideoPlayerModal({
       });
     } catch {
       handleExternalOpen();
+    } finally {
+      setIsPlaying(false);
+      setIsTimerActive(false);
     }
   };
 
   const handleProceedToFeedback = () => {
     setIsTimerActive(false);
+    setIsPlaying(false);
     setModalStep("feedback");
   };
 
   const handleSaveAndLog = () => {
+    saveVideoLogToHistory(secondsWatched, selectedFeeling);
     if (onCompleteSession) {
       onCompleteSession(secondsWatched, selectedFeeling);
     }
@@ -221,8 +322,8 @@ export function VideoPlayerModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCloseModal}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={handleCloseModal}>
         <SafeAreaView style={s.safeContainer} edges={["top", "bottom"]}>
           <TouchableOpacity activeOpacity={1} style={[s.cardContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
             {/* Modal Top Header */}
@@ -242,12 +343,30 @@ export function VideoPlayerModal({
               </View>
 
               {/* Live Session Timer Badge */}
-              <View style={s.timerBadge}>
-                <Ionicons name="stopwatch-outline" size={14} color={A3} />
-                <Text style={s.timerText}>{formatTimer(secondsWatched)}</Text>
+              <View
+                style={[
+                  s.timerBadge,
+                  !isPlaying && secondsWatched > 0 && {
+                    borderColor: "rgba(245, 158, 11, 0.4)",
+                    backgroundColor: "rgba(245, 158, 11, 0.12)",
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={isPlaying ? "stopwatch-outline" : "pause-circle-outline"}
+                  size={14}
+                  color={isPlaying ? A3 : secondsWatched > 0 ? "#F59E0B" : A3}
+                />
+                <Text style={[s.timerText, !isPlaying && secondsWatched > 0 && { color: "#F59E0B" }]}>
+                  {isPlaying
+                    ? formatTimer(secondsWatched)
+                    : secondsWatched > 0
+                    ? `Paused (${formatTimer(secondsWatched)})`
+                    : formatTimer(secondsWatched)}
+                </Text>
               </View>
 
-              <TouchableOpacity onPress={onClose} style={s.closeBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <TouchableOpacity onPress={handleCloseModal} style={s.closeBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={20} color={TM} />
               </TouchableOpacity>
             </View>
@@ -276,7 +395,54 @@ export function VideoPlayerModal({
                     </View>
                   ) : Platform.OS === "web" ? (
                     <iframe
-                      src={directEmbedUri}
+                      srcDoc={`
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                          <style>
+                            * { margin: 0; padding: 0; box-sizing: border-box; background-color: #0B0D14; }
+                            html, body { width: 100%; height: 100%; overflow: hidden; background: #0B0D14; display: flex; align-items: center; justify-content: center; }
+                            #player { width: 100%; height: 100%; border: none; border-radius: 12px; }
+                          </style>
+                        </head>
+                        <body>
+                          <div id="player"></div>
+                          <script>
+                            var tag = document.createElement('script');
+                            tag.src = "https://www.youtube.com/iframe_api";
+                            var firstScriptTag = document.getElementsByTagName('script')[0];
+                            firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+
+                            var player;
+                            function onYouTubeIframeAPIReady() {
+                              player = new YT.Player('player', {
+                                height: '100%',
+                                width: '100%',
+                                videoId: '${videoId}',
+                                host: 'https://www.youtube-nocookie.com',
+                                playerVars: {
+                                  'autoplay': 1,
+                                  'playsinline': 1,
+                                  'enablejsapi': 1,
+                                  'rel': 0,
+                                  'modestbranding': 1,
+                                  'controls': 1
+                                },
+                                events: {
+                                  'onReady': function(e) { try { e.target.playVideo(); } catch(err){} },
+                                  'onStateChange': function(e) {
+                                    try {
+                                      window.parent.postMessage(JSON.stringify({ type: 'YT_STATE_CHANGE', state: e.data }), '*');
+                                    } catch(err){}
+                                  }
+                                }
+                              });
+                            }
+                          </script>
+                        </body>
+                        </html>
+                      `}
                       title={title || "Yoga Video"}
                       style={{ width: "100%", height: "100%", border: 0, borderRadius: 12 }}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -303,7 +469,15 @@ export function VideoPlayerModal({
                       onMessage={(event: any) => {
                         try {
                           const data = JSON.parse(event.nativeEvent.data);
-                          if (data && data.type === "YT_ERROR") {
+                          if (data && data.type === "YT_STATE_CHANGE") {
+                            if (data.state === 1) {
+                              setIsPlaying(true);
+                              setIsTimerActive(true);
+                            } else {
+                              setIsPlaying(false);
+                              setIsTimerActive(false);
+                            }
+                          } else if (data && data.type === "YT_ERROR") {
                             console.warn("YouTube IFrame API returned error code:", data.code);
                             if (!useMobileWeb) {
                               setUseMobileWeb(true);

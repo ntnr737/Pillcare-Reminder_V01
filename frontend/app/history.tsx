@@ -46,11 +46,27 @@ export default function History() {
   };
 
   const statusColor = (s: string) =>
-    s === "taken" ? "#4ade80" : s === "missed" || s === "skipped" ? "#f87171" : "#fbbf24";
+    s === "taken" || s === "yoga_completed" || s === "yoga_practice" || s === "completed"
+      ? "#4ade80"
+      : s === "missed" || s === "skipped"
+      ? "#f87171"
+      : "#fbbf24";
   const statusIcon = (s: string) =>
-    s === "taken" ? "checkmark-circle" : "close-circle";
+    s === "taken"
+      ? "checkmark-circle"
+      : s === "yoga_completed" || s === "yoga_practice"
+      ? "fitness"
+      : s === "completed"
+      ? "checkmark-circle"
+      : "close-circle";
   const statusLabel = (s: string) =>
-    s === "taken" ? "Taken" : s === "missed" ? "Missed" : "Skipped";
+    s === "taken"
+      ? "Taken"
+      : s === "yoga_completed" || s === "yoga_practice" || s === "completed"
+      ? "Completed"
+      : s === "missed"
+      ? "Missed"
+      : "Skipped";
 
   return (
     <SafeAreaView style={s.safe} edges={["top"]}>
@@ -58,7 +74,7 @@ export default function History() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={20} color={TX} />
         </TouchableOpacity>
-        <Text style={s.title}>Dose history</Text>
+        <Text style={s.title}>Activity & Dose Log</Text>
         <TouchableOpacity style={s.exportBtn} onPress={downloadCsv}>
           <Ionicons name="download-outline" size={14} color={AC} />
           <Text style={s.exportTx}>Export CSV</Text>
@@ -80,7 +96,7 @@ export default function History() {
             <View style={{ alignItems: "center", padding: 48, gap: 12 }}>
               <Ionicons name="calendar-outline" size={40} color={TM} />
               <Text style={{ color: TM, fontSize: 14, textAlign: "center", lineHeight: 22 }}>
-                No history yet.{"\n"}Start marking doses as taken on the Today screen.
+                No history yet.{"\n"}Start marking doses as taken or completing yoga sessions.
               </Text>
             </View>
           ) : days.map((day: any) => {
@@ -107,6 +123,7 @@ export default function History() {
                       <Text style={s.time}>
                         {entry.time}
                         {entry.dosage ? ` · ${entry.dosage} ${entry.unit || ""}`.trim() : ""}
+                        {entry.note && !entry.note.includes(entry.dosage) ? ` · ${entry.note}` : ""}
                       </Text>
                     </View>
                     <View style={[s.badge, { backgroundColor: statusColor(entry.status) + "20" }]}>
