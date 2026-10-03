@@ -385,7 +385,7 @@ export function VideoPlayerModal({
                       <View style={{ flexDirection: "row", gap: 8 }}>
                         <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
                           <Ionicons name="globe-outline" size={14} color="#FFF" style={{ marginRight: 4 }} />
-                          <Text style={s.playBtnText}>In-App Browser 🌐</Text>
+                          <Text style={s.playBtnText}>In-App Browser</Text>
                         </TouchableOpacity>
                         <TouchableOpacity onPress={handleExternalOpen} style={s.playBtn}>
                           <Ionicons name="logo-youtube" size={14} color="#FFF" style={{ marginRight: 4 }} />
@@ -508,7 +508,7 @@ export function VideoPlayerModal({
                       <Ionicons name="logo-youtube" size={44} color="#FF0000" />
                       <Text style={s.fallbackText}>Tap below to play video</Text>
                       <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
-                        <Text style={s.playBtnText}>Play In-App Browser 🌐</Text>
+                        <Text style={s.playBtnText}>Play In-App Browser</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -526,7 +526,7 @@ export function VideoPlayerModal({
                 <View style={s.footerRow}>
                   <TouchableOpacity onPress={handleInAppBrowser} style={s.externalBtn} activeOpacity={0.7}>
                     <Ionicons name="globe-outline" size={14} color={A3} />
-                    <Text style={[s.externalBtnText, { color: A3 }]}>In-App Browser 🌐</Text>
+                    <Text style={[s.externalBtnText, { color: A3 }]}>In-App Browser</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={handleProceedToFeedback} style={s.completeBtn} activeOpacity={0.8}>
@@ -539,7 +539,7 @@ export function VideoPlayerModal({
               /* Step 2: Post-Pose Feeling Reflection & Insight */
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.feedbackContainer}>
                 <View style={s.summaryBox}>
-                  <Text style={s.summaryTitle}>SESSION COMPLETED 🔥</Text>
+                  <Text style={s.summaryTitle}>SESSION COMPLETED</Text>
                   <Text style={s.summaryTime}>
                     Total Practice Time: <Text style={{ color: A3, fontWeight: "700" }}>{formatTimer(secondsWatched)}</Text>
                   </Text>

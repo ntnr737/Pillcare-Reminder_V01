@@ -1257,12 +1257,12 @@ async def get_leaderboard(request: Request, user_id: str = Depends(get_current_u
 
     # Community champions list
     raw_champions = [
-        {"nickname": f"{user_name} (You)", "streak": current_streak, "points": current_streak * 100 + 250, "adherence": avg_adherence, "badge": "👑 Active", "is_user": True},
-        {"nickname": "Priya S.", "streak": 21, "points": 2180, "adherence": 96.2, "badge": "🌟 Legend", "is_user": False},
-        {"nickname": "Dr. Rajesh M.", "streak": 18, "points": 1920, "adherence": 95.0, "badge": "🔥 Master", "is_user": False},
-        {"nickname": "Anita V.", "streak": 14, "points": 1650, "adherence": 93.8, "badge": "⚡ Warrior", "is_user": False},
-        {"nickname": "Amit P.", "streak": 12, "points": 1420, "adherence": 91.5, "badge": "⚡ Warrior", "is_user": False},
-        {"nickname": "Sunita R.", "streak": 9, "points": 1150, "adherence": 89.0, "badge": "🛡️ Guardian", "is_user": False},
+        {"nickname": f"{user_name} (You)", "streak": current_streak, "points": current_streak * 100 + 250, "adherence": avg_adherence, "badge": "Active", "is_user": True},
+        {"nickname": "Priya S.", "streak": 21, "points": 2180, "adherence": 96.2, "badge": "Legend", "is_user": False},
+        {"nickname": "Dr. Rajesh M.", "streak": 18, "points": 1920, "adherence": 95.0, "badge": "Master", "is_user": False},
+        {"nickname": "Anita V.", "streak": 14, "points": 1650, "adherence": 93.8, "badge": "Warrior", "is_user": False},
+        {"nickname": "Amit P.", "streak": 12, "points": 1420, "adherence": 91.5, "badge": "Warrior", "is_user": False},
+        {"nickname": "Sunita R.", "streak": 9, "points": 1150, "adherence": 89.0, "badge": "Guardian", "is_user": False},
     ]
 
     # LEADERBOARD ORDERING RULE: Ranked strictly by active streak days (descending)
@@ -1279,13 +1279,13 @@ async def get_leaderboard(request: Request, user_id: str = Depends(get_current_u
 
     # Rank tier titles based strictly on streak days
     if current_streak >= 30:
-        rank_tier = "Grand Master Champion 👑"
+        rank_tier = "Grand Master Champion"
     elif current_streak >= 14:
-        rank_tier = "Adherence Legend 🌟"
+        rank_tier = "Adherence Legend"
     elif current_streak >= 7:
-        rank_tier = "Streak Warrior ⚡"
+        rank_tier = "Streak Warrior"
     else:
-        rank_tier = "Health Starter 🌱"
+        rank_tier = "Health Starter"
 
     badges = [
         {"id": "b1", "title": "7-Day Warrior", "desc": "Maintain 7 consecutive days of mandatory water & adherence", "icon": "flash", "unlocked": current_streak >= 7, "pts": 100},

@@ -126,7 +126,7 @@ export async function logCourseCompleted(
     const pillsText = takenPillsCount > 0 ? ` • Total ${takenPillsCount} doses taken` : "";
     const newEntry = {
       id: `course_completed_${medId}_${Date.now()}`,
-      name: `${medName} — Course Completed 🎓`,
+      name: `${medName} — Course Completed`,
       generic_name: genericName,
       dosage: dosage,
       unit: unit,

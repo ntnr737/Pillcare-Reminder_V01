@@ -572,7 +572,7 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "🧘 Time for Your AI Yoga Therapy",
+        title: "Time for Your AI Yoga Therapy",
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,
@@ -602,7 +602,7 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
 
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: "🧘 Time for Your AI Yoga Therapy",
+        title: "Time for Your AI Yoga Therapy",
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,

@@ -44,7 +44,7 @@ export function evaluateTodayStreakStatus(
 
   let streakStatusMessage = "";
   if (isStreakSecuredToday) {
-    streakStatusMessage = "🔥 Today's Streak Secured! Great job maintaining your health habits.";
+    streakStatusMessage = "Today's Streak Secured! Great job maintaining your health habits.";
   } else if (!isWaterQualified && !isMedsQualified) {
     const neededMl = targetWater - waterLoggedMl;
     streakStatusMessage = `Log ${neededMl} mL more water & mark doses taken to save today's streak.`;

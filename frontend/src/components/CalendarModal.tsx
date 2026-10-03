@@ -156,22 +156,22 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     }
     setClaimedBonus(true);
     await set(`daily_bonus_${todayIso}`, true);
-    Alert.alert("🔥 Daily Streak Saver Unlocked!", "Daily Streak Bonus unlocked! Keep logging mandatory water and doses to climb the PillCare Champions Leaderboard.");
+    Alert.alert("Daily Streak Saver Unlocked!", "Daily Streak Bonus unlocked! Keep logging mandatory water and doses to climb the PillCare Champions Leaderboard.");
   };
 
   const handleShareStreak = () => {
     const currentStrk = leaderboardData?.current_streak || streakDays || 14;
     const rank = leaderboardData?.user_rank ? `#${leaderboardData.user_rank}` : "#1";
-    const msg = encodeURIComponent(`🔥 I am on a ${currentStrk}-day Health Streak on PillCare (Rank ${rank} Champion)! Join me in maintaining daily hydration & health habits!`);
+    const msg = encodeURIComponent(`I am on a ${currentStrk}-day Health Streak on PillCare (Rank ${rank} Champion)! Join me in maintaining daily hydration & health habits!`);
     Linking.openURL(`https://wa.me/?text=${msg}`);
   };
 
   const champions = (leaderboardData?.champions || [
-    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), adherence: 98.5, badge: "👑 Champion", is_user: true },
-    { rank: 2, nickname: "Priya S.", streak: 21, adherence: 96.2, badge: "🌟 Legend", is_user: false },
-    { rank: 3, nickname: "Dr. Rajesh M.", streak: 18, adherence: 95.0, badge: "🔥 Master", is_user: false },
-    { rank: 4, nickname: "Anita V.", streak: 14, adherence: 93.8, badge: "⚡ Warrior", is_user: false },
-    { rank: 5, nickname: "Amit P.", streak: 12, adherence: 91.5, badge: "⚡ Warrior", is_user: false },
+    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), adherence: 98.5, badge: "Champion", is_user: true },
+    { rank: 2, nickname: "Priya S.", streak: 21, adherence: 96.2, badge: "Legend", is_user: false },
+    { rank: 3, nickname: "Dr. Rajesh M.", streak: 18, adherence: 95.0, badge: "Master", is_user: false },
+    { rank: 4, nickname: "Anita V.", streak: 14, adherence: 93.8, badge: "Warrior", is_user: false },
+    { rank: 5, nickname: "Amit P.", streak: 12, adherence: 91.5, badge: "Warrior", is_user: false },
   ]).sort((a: any, b: any) => b.streak - a.streak);
 
   const badges = leaderboardData?.badges || [
@@ -233,7 +233,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           YOUR STREAK RANK & TIER
                         </Text>
                         <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary }}>
-                          {leaderboardData?.rank_tier || "Adherence Champion 👑"}
+                          {leaderboardData?.rank_tier || "Adherence Champion"}
                         </Text>
                       </View>
                       <View style={s.rankBadge}>
@@ -243,11 +243,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
                     <View style={[s.statGrid, { justifyContent: "space-around" }]}>
                       <View style={s.statBox}>
-                        <Text style={s.statVal}>🔥 {streakDays} Days</Text>
+                        <Text style={s.statVal}>{streakDays} Days</Text>
                         <Text style={s.statLbl}>Active Streak</Text>
                       </View>
                       <View style={s.statBox}>
-                        <Text style={s.statVal}>⚡ {leaderboardData?.adherence_rate || 98.5}%</Text>
+                        <Text style={s.statVal}>{leaderboardData?.adherence_rate || 98.5}%</Text>
                         <Text style={s.statLbl}>Consistency Rate</Text>
                       </View>
                     </View>
@@ -316,7 +316,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           </View>
                         </View>
                         <View style={{ alignItems: "flex-end" }}>
-                          <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>🔥 {c.streak} Days</Text>
+                          <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} Days</Text>
                           <Text style={{ fontSize: 10, color: theme.textSecondary }}>{c.badge}</Text>
                         </View>
                       </View>
