@@ -539,7 +539,10 @@ export function VideoPlayerModal({
               /* Step 2: Post-Pose Feeling Reflection & Insight */
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.feedbackContainer}>
                 <View style={s.summaryBox}>
-                  <Text style={s.summaryTitle}>SESSION COMPLETED</Text>
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                    <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+                    <Text style={s.summaryTitle}>SESSION COMPLETED</Text>
+                  </View>
                   <Text style={s.summaryTime}>
                     Total Practice Time: <Text style={{ color: A3, fontWeight: "700" }}>{formatTimer(secondsWatched)}</Text>
                   </Text>

@@ -243,11 +243,17 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
                     <View style={[s.statGrid, { justifyContent: "space-around" }]}>
                       <View style={s.statBox}>
-                        <Text style={s.statVal}>{streakDays} Days</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Ionicons name="flame" size={16} color="#F59E0B" />
+                          <Text style={s.statVal}>{streakDays} Days</Text>
+                        </View>
                         <Text style={s.statLbl}>Active Streak</Text>
                       </View>
                       <View style={s.statBox}>
-                        <Text style={s.statVal}>{leaderboardData?.adherence_rate || 98.5}%</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Ionicons name="trending-up" size={16} color="#F59E0B" />
+                          <Text style={s.statVal}>{leaderboardData?.adherence_rate || 98.5}%</Text>
+                        </View>
                         <Text style={s.statLbl}>Consistency Rate</Text>
                       </View>
                     </View>
@@ -316,7 +322,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           </View>
                         </View>
                         <View style={{ alignItems: "flex-end" }}>
-                          <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} Days</Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                            <Ionicons name="flame" size={14} color="#F59E0B" />
+                            <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} Days</Text>
+                          </View>
                           <Text style={{ fontSize: 10, color: theme.textSecondary }}>{c.badge}</Text>
                         </View>
                       </View>
