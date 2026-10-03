@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import {
   Modal,
   View,
@@ -9,10 +9,12 @@ import {
   Linking,
   ActivityIndicator,
   ScrollView,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import * as WebBrowser from "expo-web-browser";
+import * as ScreenOrientation from "expo-screen-orientation";
 import { get, set, K } from "@/src/lib/store";
 import { api } from "@/src/lib/api";
 
@@ -72,10 +74,13 @@ export function VideoPlayerModal({
   onCompleteSession,
 }: VideoPlayerModalProps) {
   const insets = useSafeAreaInsets();
+  const webViewRef = useRef<any>(null);
   const [hasError, setHasError] = useState(false);
   const [secondsWatched, setSecondsWatched] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isTimerActive, setIsTimerActive] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [modalStep, setModalStep] = useState<"player" | "feedback">("player");
   const [selectedFeeling, setSelectedFeeling] = useState<string>("energized");
 
@@ -84,13 +89,17 @@ export function VideoPlayerModal({
       setHasError(false);
       setUseMobileWeb(false);
       setSecondsWatched(0);
-      setIsPlaying(false);
-      setIsTimerActive(false);
+      setIsPlaying(true);
+      setIsTimerActive(true);
+      setIsMuted(true);
+      setIsFullscreen(false);
       setModalStep("player");
       setSelectedFeeling("energized");
     } else {
       setIsPlaying(false);
       setIsTimerActive(false);
+      setIsFullscreen(false);
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
   }, [visible, videoUrl]);
 
@@ -187,10 +196,62 @@ export function VideoPlayerModal({
   };
 
   const handleCloseModal = () => {
+    if (isFullscreen) {
+      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+    }
     if (secondsWatched > 3) {
       saveVideoLogToHistory(secondsWatched, selectedFeeling);
     }
     onClose();
+  };
+
+  const toggleMute = () => {
+    if (isMuted) {
+      setIsMuted(false);
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          try {
+            if (window.unmuteAudio) { window.unmuteAudio(); }
+            if (player && player.unMute) { player.unMute(); player.setVolume(100); }
+          } catch(e) {}
+          true;
+        `);
+      }
+    } else {
+      setIsMuted(true);
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          try {
+            if (window.muteAudio) { window.muteAudio(); }
+            if (player && player.mute) { player.mute(); }
+          } catch(e) {}
+          true;
+        `);
+      }
+    }
+  };
+
+  const toggleFullscreen = async () => {
+    if (!isFullscreen) {
+      setIsFullscreen(true);
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      } catch (e) {
+        console.warn("Screen orientation landscape lock failed:", e);
+      }
+    } else {
+      setIsFullscreen(false);
+      try {
+        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+      } catch (e) {
+        console.warn("Screen orientation portrait lock failed:", e);
+      }
+    }
+  };
+
+  const toggleTimerPlayPause = () => {
+    setIsPlaying((prev) => !prev);
+    setIsTimerActive((prev) => !prev);
   };
 
   const videoId = extractYouTubeId(videoUrl);
@@ -248,6 +309,21 @@ export function VideoPlayerModal({
         function onPlayerReady(event) {
           try { event.target.playVideo(); } catch(e){}
         }
+
+        window.unmuteAudio = function() {
+          try {
+            if (player) {
+              if (player.unMute) player.unMute();
+              if (player.setVolume) player.setVolume(100);
+            }
+          } catch(e){}
+        };
+
+        window.muteAudio = function() {
+          try {
+            if (player && player.mute) player.mute();
+          } catch(e){}
+        };
 
         function onPlayerStateChange(event) {
           if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
@@ -342,8 +418,9 @@ export function VideoPlayerModal({
                 </View>
               </View>
 
-              {/* Live Session Timer Badge */}
-              <View
+              {/* Live Session Timer Badge (Clickable to Pause/Resume) */}
+              <TouchableOpacity
+                onPress={toggleTimerPlayPause}
                 style={[
                   s.timerBadge,
                   !isPlaying && secondsWatched > 0 && {
@@ -353,7 +430,7 @@ export function VideoPlayerModal({
                 ]}
               >
                 <Ionicons
-                  name={isPlaying ? "stopwatch-outline" : "pause-circle-outline"}
+                  name={isPlaying ? "stopwatch-outline" : "play-circle-outline"}
                   size={14}
                   color={isPlaying ? A3 : secondsWatched > 0 ? "#F59E0B" : A3}
                 />
@@ -364,7 +441,7 @@ export function VideoPlayerModal({
                     ? `Paused (${formatTimer(secondsWatched)})`
                     : formatTimer(secondsWatched)}
                 </Text>
-              </View>
+              </TouchableOpacity>
 
               <TouchableOpacity onPress={handleCloseModal} style={s.closeBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                 <Ionicons name="close" size={20} color={TM} />
@@ -373,7 +450,7 @@ export function VideoPlayerModal({
 
             {modalStep === "player" ? (
               <>
-                {/* Embedded Video Player */}
+                {/* Embedded Video Player Container */}
                 <View style={s.playerWrapper}>
                   {hasError ? (
                     <View style={s.fallbackContainer}>
@@ -450,6 +527,7 @@ export function VideoPlayerModal({
                     />
                   ) : WebView ? (
                     <WebView
+                      ref={webViewRef}
                       key={useMobileWeb ? "mobile-web" : "embed-html"}
                       source={
                         useMobileWeb
@@ -473,7 +551,7 @@ export function VideoPlayerModal({
                             if (data.state === 1) {
                               setIsPlaying(true);
                               setIsTimerActive(true);
-                            } else {
+                            } else if (data.state === 2) {
                               setIsPlaying(false);
                               setIsTimerActive(false);
                             }
@@ -512,6 +590,23 @@ export function VideoPlayerModal({
                       </TouchableOpacity>
                     </View>
                   )}
+                </View>
+
+                {/* Video Controls Bar: Unmute & Fullscreen Landscape */}
+                <View style={s.ctrlRow}>
+                  <TouchableOpacity onPress={toggleMute} style={[s.ctrlBtn, isMuted && s.ctrlBtnActive]} activeOpacity={0.8}>
+                    <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={16} color={isMuted ? "#F59E0B" : "#4ade80"} />
+                    <Text style={[s.ctrlBtnText, { color: isMuted ? "#F59E0B" : "#4ade80" }]}>
+                      {isMuted ? "Tap to Unmute Audio" : "Audio On (Unmuted)"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity onPress={toggleFullscreen} style={s.ctrlBtn} activeOpacity={0.8}>
+                    <Ionicons name={isFullscreen ? "contract-outline" : "expand-outline"} size={16} color={A3} />
+                    <Text style={[s.ctrlBtnText, { color: A3 }]}>
+                      {isFullscreen ? "Exit Fullscreen" : "Fullscreen Rotate"}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 {/* Clinical Benefit Callout */}
@@ -737,6 +832,32 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: A3,
     fontWeight: "600",
+  },
+  ctrlRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8,
+  },
+  ctrlBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor: BD,
+  },
+  ctrlBtnActive: {
+    backgroundColor: "rgba(245, 158, 11, 0.12)",
+    borderColor: "rgba(245, 158, 11, 0.3)",
+  },
+  ctrlBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   completeBtn: {
     flex: 1,
