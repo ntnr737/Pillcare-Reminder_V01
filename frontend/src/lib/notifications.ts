@@ -733,3 +733,42 @@ export function addForegroundNotificationReceivedListener(
   });
   return () => sub.remove();
 }
+
+/**
+ * Schedule 6:00 PM retention reminder to protect daily streak
+ */
+export async function scheduleDailyStreakSaverReminder(): Promise<void> {
+  try {
+    await ensureChannels();
+    const granted = await requestNotificationPermission();
+    if (!granted) return;
+
+    const streakTrigger: any = Platform.OS === "android"
+      ? {
+          type: Notifications.SchedulableTriggerInputTypes.DAILY,
+          hour: 18,
+          minute: 0,
+          channelId: "medication-reminders",
+        }
+      : {
+          hour: 18,
+          minute: 0,
+          repeats: true,
+        };
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Protect Your Daily Health Streak!",
+        body: "Don't break your streak! Log your mandatory water intake & medication doses to keep your rank on the Leaderboard.",
+        data: { type: "streak_saver" },
+        categoryIdentifier: WATER_CATEGORY,
+        sound: "default",
+        channelId: "medication-reminders",
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+      } as any,
+      trigger: streakTrigger,
+    });
+  } catch (e) {
+    console.warn("Streak saver reminder schedule failed:", e);
+  }
+}

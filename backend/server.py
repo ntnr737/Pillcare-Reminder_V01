@@ -504,14 +504,27 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
     activity_dates = set(await db.activities.distinct("date", {"user_id": user_id, "date": {"$gte": start_str, "$lte": end_str}}))
     dose_taken_dates = set(await db.doses.distinct("date", {"user_id": user_id, "date": {"$gte": start_str, "$lte": end_str}, "status": "taken"}))
 
+    # Fetch daily water intake logs for streak qualification (mandatory >= 1500ml)
+    water_activities = await db.activities.find(
+        {"user_id": user_id, "type": "water", "date": {"$gte": start_str, "$lte": end_str}},
+        {"date": 1, "value": 1}
+    ).to_list(1000)
+    water_by_date = {}
+    for w in water_activities:
+        water_by_date[w["date"]] = water_by_date.get(w["date"], 0) + (w.get("value") or 0)
+
     today_str = datetime.now(timezone.utc).date().isoformat()
     streak = 0
     streak_ongoing = True
 
     for entry in reversed(daily):
         e_date = entry["date"]
-        # Universal PillCare Active Day: Taken Dose OR Completed Yoga/Meditation OR Logged Health Activity
-        is_active = (entry["taken"] > 0 and entry["pct"] >= 40) or (e_date in dose_taken_dates) or (e_date in yoga_dates) or (e_date in activity_dates)
+        water_ml = water_by_date.get(e_date, 0)
+        is_water_ok = water_ml >= 1500
+        is_dose_ok = (entry["taken"] > 0) or (entry["total"] == 0) or (e_date in dose_taken_dates)
+
+        # Mandatory streak qualification: Water >= 1500 mL + dose taken (or no doses scheduled)
+        is_active = (is_water_ok and is_dose_ok) or (e_date in yoga_dates) or (e_date in activity_dates)
 
         if is_active:
             if streak_ongoing:
@@ -519,9 +532,9 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
         elif e_date == today_str:
             # Grace period for today: keep streak active if user hasn't completed today's tasks yet
             pass
-        elif entry["total"] == 0 and e_date not in yoga_dates and e_date not in activity_dates:
-            # Days without any scheduled medications or health activities don't break streak
-            pass
+        elif entry["total"] == 0 and e_date not in yoga_dates and e_date not in activity_dates and not is_water_ok:
+            # Days without scheduled tasks require at least water intake to maintain streak
+            streak_ongoing = False
         else:
             streak_ongoing = False
 
@@ -1239,38 +1252,47 @@ async def get_leaderboard(request: Request, user_id: str = Depends(get_current_u
     # Compute XP / Adherence Points based on streak and adherence
     user_xp = current_streak * 100 + int(avg_adherence * 10)
     
-    # Calculate user rank tier based on streak & points
-    if current_streak >= 30:
-        rank_tier = "Grand Master Champion 👑"
-        user_rank = 1
-    elif current_streak >= 14:
-        rank_tier = "Adherence Legend 🌟"
-        user_rank = 3
-    elif current_streak >= 7:
-        rank_tier = "Streak Warrior ⚡"
-        user_rank = 5
-    else:
-        rank_tier = "Health Starter 🌱"
-        user_rank = 12
-
-    # Benchmark Champions (community leaderboard)
     user_email = user.get("email", "")
-    champions = [
-        {"rank": 1, "nickname": "Nitin K. (You)" if "nitin" in user_email.lower() else "Nitin K.", "streak": max(14, current_streak), "points": 2450, "adherence": 98.5, "badge": "👑 Champion", "is_user": ("nitin" in user_email.lower())},
-        {"rank": 2, "nickname": "Priya S.", "streak": 21, "points": 2180, "adherence": 96.2, "badge": "🌟 Legend", "is_user": False},
-        {"rank": 3, "nickname": "Dr. Rajesh M.", "streak": 18, "points": 1920, "adherence": 95.0, "badge": "🔥 Master", "is_user": False},
-        {"rank": 4, "nickname": "Anita V.", "streak": 14, "points": 1650, "adherence": 93.8, "badge": "⚡ Warrior", "is_user": False},
-        {"rank": 5, "nickname": "Amit P.", "streak": 12, "points": 1420, "adherence": 91.5, "badge": "⚡ Warrior", "is_user": False},
-        {"rank": 6, "nickname": "Sunita R.", "streak": 9, "points": 1150, "adherence": 89.0, "badge": "🛡️ Guardian", "is_user": False},
+    user_name = user.get("name", "") or ("Nitin K." if "nitin" in user_email.lower() else "PillCare User")
+
+    # Community champions list
+    raw_champions = [
+        {"nickname": f"{user_name} (You)", "streak": current_streak, "points": current_streak * 100 + 250, "adherence": avg_adherence, "badge": "👑 Active", "is_user": True},
+        {"nickname": "Priya S.", "streak": 21, "points": 2180, "adherence": 96.2, "badge": "🌟 Legend", "is_user": False},
+        {"nickname": "Dr. Rajesh M.", "streak": 18, "points": 1920, "adherence": 95.0, "badge": "🔥 Master", "is_user": False},
+        {"nickname": "Anita V.", "streak": 14, "points": 1650, "adherence": 93.8, "badge": "⚡ Warrior", "is_user": False},
+        {"nickname": "Amit P.", "streak": 12, "points": 1420, "adherence": 91.5, "badge": "⚡ Warrior", "is_user": False},
+        {"nickname": "Sunita R.", "streak": 9, "points": 1150, "adherence": 89.0, "badge": "🛡️ Guardian", "is_user": False},
     ]
 
-    # Dynamic unlockable badges
+    # LEADERBOARD ORDERING RULE: Ranked strictly by active streak days (descending)
+    sorted_champions = sorted(raw_champions, key=lambda c: (c["streak"], c["points"]), reverse=True)
+    champions = []
+    user_rank = 1
+    for idx, champ in enumerate(sorted_champions):
+        r = idx + 1
+        champ_copy = dict(champ)
+        champ_copy["rank"] = r
+        if champ_copy["is_user"]:
+            user_rank = r
+        champions.append(champ_copy)
+
+    # Rank tier titles based strictly on streak days
+    if current_streak >= 30:
+        rank_tier = "Grand Master Champion 👑"
+    elif current_streak >= 14:
+        rank_tier = "Adherence Legend 🌟"
+    elif current_streak >= 7:
+        rank_tier = "Streak Warrior ⚡"
+    else:
+        rank_tier = "Health Starter 🌱"
+
     badges = [
-        {"id": "b1", "title": "7-Day Warrior", "desc": "Maintain 7 consecutive days of 100% adherence", "icon": "flash", "unlocked": current_streak >= 7, "pts": 100},
-        {"id": "b2", "title": "14-Day Champion", "desc": "Complete 14 days without missing a dose", "icon": "trophy", "unlocked": current_streak >= 14, "pts": 250},
+        {"id": "b1", "title": "7-Day Warrior", "desc": "Maintain 7 consecutive days of mandatory water & adherence", "icon": "flash", "unlocked": current_streak >= 7, "pts": 100},
+        {"id": "b2", "title": "14-Day Champion", "desc": "Complete 14 days of hydration & medication goal", "icon": "trophy", "unlocked": current_streak >= 14, "pts": 250},
         {"id": "b3", "title": "30-Day Master Legend", "desc": "Reach 1 month perfect health streak", "icon": "ribbon", "unlocked": current_streak >= 30, "pts": 500},
         {"id": "b4", "title": "Yoga & Mind Guru", "desc": "Log 5 clinical yoga sessions in a week", "icon": "body", "unlocked": True, "pts": 150},
-        {"id": "b5", "title": "Hydration Hero", "desc": "Achieve 2000mL daily water goal 3 days in a row", "icon": "water", "unlocked": True, "pts": 100},
+        {"id": "b5", "title": "Hydration Hero", "desc": "Achieve mandatory daily water goal 3 days in a row", "icon": "water", "unlocked": True, "pts": 100},
     ]
 
     return {
@@ -1278,7 +1300,7 @@ async def get_leaderboard(request: Request, user_id: str = Depends(get_current_u
         "rank_tier": rank_tier,
         "current_streak": current_streak,
         "adherence_rate": avg_adherence,
-        "user_xp": user_xp,
+        "user_xp": current_streak * 100 + int(avg_adherence * 10),
         "multiplier": "2x 🔥" if current_streak >= 7 else "1x",
         "champions": champions,
         "badges": badges,

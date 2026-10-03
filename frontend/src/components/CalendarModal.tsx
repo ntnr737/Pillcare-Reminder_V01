@@ -16,6 +16,7 @@ import { useTranslation } from "@/src/context/LanguageContext";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { getStoredUser } from "@/src/lib/auth";
+import { STREAK_RULES_EXPLANATION } from "@/src/lib/streakEngine";
 
 interface CalendarModalProps {
   visible: boolean;
@@ -150,36 +151,35 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
   const handleClaimBonus = async () => {
     if (claimedBonus) {
-      Alert.alert("Already Claimed", "You have already claimed today's +50 XP Streak Bonus! Come back tomorrow.");
+      Alert.alert("Already Claimed", "You have already claimed today's Daily Streak Bonus! Come back tomorrow.");
       return;
     }
     setClaimedBonus(true);
-    setBonusXP(prev => prev + 50);
     await set(`daily_bonus_${todayIso}`, true);
-    Alert.alert("🔥 +50 XP Bonus Claimed!", "Daily Streak Bonus unlocked! Keep taking your doses on time and practicing daily yoga to climb the PillCare Champions Leaderboard.");
+    Alert.alert("🔥 Daily Streak Saver Unlocked!", "Daily Streak Bonus unlocked! Keep logging mandatory water and doses to climb the PillCare Champions Leaderboard.");
   };
 
   const handleShareStreak = () => {
     const currentStrk = leaderboardData?.current_streak || streakDays || 14;
     const rank = leaderboardData?.user_rank ? `#${leaderboardData.user_rank}` : "#1";
-    const msg = encodeURIComponent(`🔥 I am on a ${currentStrk}-day Health Streak on PillCare (Rank ${rank} Champion)! Join me in staying 100% adherent to daily medications & wellness routines!`);
+    const msg = encodeURIComponent(`🔥 I am on a ${currentStrk}-day Health Streak on PillCare (Rank ${rank} Champion)! Join me in maintaining daily hydration & health habits!`);
     Linking.openURL(`https://wa.me/?text=${msg}`);
   };
 
-  const champions = leaderboardData?.champions || [
-    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), points: 2450 + bonusXP, adherence: 98.5, badge: "👑 Champion", is_user: true },
-    { rank: 2, nickname: "Priya S.", streak: 21, points: 2180, adherence: 96.2, badge: "🌟 Legend", is_user: false },
-    { rank: 3, nickname: "Dr. Rajesh M.", streak: 18, points: 1920, adherence: 95.0, badge: "🔥 Master", is_user: false },
-    { rank: 4, nickname: "Anita V.", streak: 14, points: 1650, adherence: 93.8, badge: "⚡ Warrior", is_user: false },
-    { rank: 5, nickname: "Amit P.", streak: 12, points: 1420, adherence: 91.5, badge: "⚡ Warrior", is_user: false },
-  ];
+  const champions = (leaderboardData?.champions || [
+    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), adherence: 98.5, badge: "👑 Champion", is_user: true },
+    { rank: 2, nickname: "Priya S.", streak: 21, adherence: 96.2, badge: "🌟 Legend", is_user: false },
+    { rank: 3, nickname: "Dr. Rajesh M.", streak: 18, adherence: 95.0, badge: "🔥 Master", is_user: false },
+    { rank: 4, nickname: "Anita V.", streak: 14, adherence: 93.8, badge: "⚡ Warrior", is_user: false },
+    { rank: 5, nickname: "Amit P.", streak: 12, adherence: 91.5, badge: "⚡ Warrior", is_user: false },
+  ]).sort((a: any, b: any) => b.streak - a.streak);
 
   const badges = leaderboardData?.badges || [
-    { id: "b1", title: "7-Day Warrior", desc: "Maintain 7 consecutive days of adherence", icon: "flash", unlocked: streakDays >= 7, pts: 100 },
-    { id: "b2", title: "14-Day Champion", desc: "Complete 14 days without missing a dose", icon: "trophy", unlocked: streakDays >= 14, pts: 250 },
-    { id: "b3", title: "30-Day Master Legend", desc: "Reach 1 month perfect health streak", icon: "ribbon", unlocked: streakDays >= 30, pts: 500 },
-    { id: "b4", title: "Yoga & Mind Guru", desc: "Log 5 clinical yoga sessions in a week", icon: "body", unlocked: true, pts: 150 },
-    { id: "b5", title: "Hydration Hero", desc: "Achieve daily water goal 3 days in a row", icon: "water", unlocked: true, pts: 100 },
+    { id: "b1", title: "7-Day Warrior", desc: "Maintain 7 consecutive days of hydration & adherence", icon: "flash", unlocked: streakDays >= 7 },
+    { id: "b2", title: "14-Day Champion", desc: "Complete 14 days without breaking streak", icon: "trophy", unlocked: streakDays >= 14 },
+    { id: "b3", title: "30-Day Master Legend", desc: "Reach 1 month perfect health streak", icon: "ribbon", unlocked: streakDays >= 30 },
+    { id: "b4", title: "Yoga & Mind Guru", desc: "Log 5 clinical yoga sessions in a week", icon: "body", unlocked: true },
+    { id: "b5", title: "Hydration Hero", desc: "Achieve mandatory daily water goal 3 days in a row", icon: "water", unlocked: true },
   ];
 
   return (
@@ -207,9 +207,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                 <TouchableOpacity
                   style={[s.tabBtn, activeTab === "leaderboard" && { backgroundColor: theme.accent }]}
                   onPress={() => setActiveTab("leaderboard")}>
-                  <Ionicons name="trophy-outline" size={14} color={activeTab === "leaderboard" ? "#fff" : theme.textSecondary} />
+                  <Ionicons name="flame-outline" size={14} color={activeTab === "leaderboard" ? "#fff" : theme.textSecondary} />
                   <Text style={[s.tabText, { color: activeTab === "leaderboard" ? "#fff" : theme.textSecondary }]}>
-                    Leaderboard & Ranks
+                    Streak Ranks
                   </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -230,7 +230,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                       <View style={{ gap: 4 }}>
                         <Text style={{ fontSize: 11, fontWeight: "800", color: "#F59E0B", letterSpacing: 0.8 }}>
-                          YOUR RANK & TIER
+                          YOUR STREAK RANK & TIER
                         </Text>
                         <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary }}>
                           {leaderboardData?.rank_tier || "Adherence Champion 👑"}
@@ -241,31 +241,49 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                       </View>
                     </View>
 
-                    <View style={s.statGrid}>
+                    <View style={[s.statGrid, { justifyContent: "space-around" }]}>
                       <View style={s.statBox}>
-                        <Text style={s.statVal}>🔥 {streakDays}d</Text>
-                        <Text style={s.statLbl}>Streak Days</Text>
+                        <Text style={s.statVal}>🔥 {streakDays} Days</Text>
+                        <Text style={s.statLbl}>Active Streak</Text>
                       </View>
                       <View style={s.statBox}>
                         <Text style={s.statVal}>⚡ {leaderboardData?.adherence_rate || 98.5}%</Text>
-                        <Text style={s.statLbl}>Adherence Rate</Text>
-                      </View>
-                      <View style={s.statBox}>
-                        <Text style={s.statVal}>⭐ {2450 + bonusXP}</Text>
-                        <Text style={s.statLbl}>Health XP</Text>
+                        <Text style={s.statLbl}>Consistency Rate</Text>
                       </View>
                     </View>
                   </View>
 
-                  {/* Daily Bonus Claim Button */}
+                  {/* Daily Streak Saver Claim Button */}
                   <TouchableOpacity
                     style={[s.claimBtn, { backgroundColor: claimedBonus ? "rgba(74,222,128,0.15)" : "#F59E0B", borderColor: claimedBonus ? "#4ade80" : "#F59E0B" }]}
                     onPress={handleClaimBonus}>
-                    <Ionicons name={claimedBonus ? "checkmark-circle" : "gift"} size={18} color={claimedBonus ? "#4ade80" : "#fff"} />
+                    <Ionicons name={claimedBonus ? "checkmark-circle" : "shield-checkmark"} size={18} color={claimedBonus ? "#4ade80" : "#fff"} />
                     <Text style={[s.claimBtnText, { color: claimedBonus ? "#4ade80" : "#fff" }]}>
-                      {claimedBonus ? "Daily Streak Bonus Claimed (+50 XP)" : "Claim Daily Streak Bonus (+50 XP)"}
+                      {claimedBonus ? "Daily Streak Saver Activated" : "Activate Daily Streak Saver Shield"}
                     </Text>
                   </TouchableOpacity>
+
+                  {/* How Streak Works Card */}
+                  <View style={{ backgroundColor: theme.surface, borderColor: theme.surfaceBorder, padding: 12, gap: 8, borderRadius: 14, borderWidth: 1 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="information-circle" size={18} color={theme.accent} />
+                      <Text style={{ fontSize: 13, fontWeight: "800", color: theme.textPrimary }}>How Streak Works</Text>
+                    </View>
+
+                    <View style={{ gap: 8, marginTop: 4 }}>
+                      {STREAK_RULES_EXPLANATION.map((rule) => (
+                        <View key={rule.step} style={{ flexDirection: "row", alignItems: "flex-start", gap: 8 }}>
+                          <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: rule.color, alignItems: "center", justifyContent: "center" }}>
+                            <Ionicons name={rule.icon as any} size={12} color="#fff" />
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: theme.textPrimary }}>{rule.title}</Text>
+                            <Text style={{ fontSize: 10, color: theme.textSecondary, lineHeight: 14 }}>{rule.desc}</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
 
                   {/* Community Champions Leaderboard */}
                   <View style={{ gap: 8 }}>
@@ -298,7 +316,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           </View>
                         </View>
                         <View style={{ alignItems: "flex-end" }}>
-                          <Text style={{ fontSize: 12, fontWeight: "700", color: "#F59E0B" }}>{c.points} XP</Text>
+                          <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>🔥 {c.streak} Days</Text>
                           <Text style={{ fontSize: 10, color: theme.textSecondary }}>{c.badge}</Text>
                         </View>
                       </View>
@@ -307,7 +325,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
                   {/* Health Badges & Trophies */}
                   <View style={{ gap: 8 }}>
-                    <Text style={[s.secTitle, { color: theme.textSecondary }]}>HEALTH BADGES & TROPHIES</Text>
+                    <Text style={[s.secTitle, { color: theme.textSecondary }]}>STREAK BADGES & TROPHIES</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
                       {badges.map((b: any) => (
                         <View key={b.id} style={[s.badgeCard, { backgroundColor: theme.surface, borderColor: b.unlocked ? "#F59E0B" : theme.surfaceBorder }]}>
@@ -318,7 +336,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           <Text style={{ fontSize: 9, color: theme.textSecondary, textAlign: "center" }} numberOfLines={2}>{b.desc}</Text>
                           <View style={[s.badgeStatusPill, { backgroundColor: b.unlocked ? "rgba(74,222,128,0.15)" : "rgba(255,255,255,0.06)" }]}>
                             <Text style={{ fontSize: 9, fontWeight: "700", color: b.unlocked ? "#4ade80" : theme.textSecondary }}>
-                              {b.unlocked ? `Unlocked (+${b.pts} XP)` : "Locked"}
+                              {b.unlocked ? "Unlocked" : "Locked"}
                             </Text>
                           </View>
                         </View>
