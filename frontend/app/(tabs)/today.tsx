@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -415,21 +415,45 @@ export default function Today() {
   const pending = doses.filter(d => d.status === "pending" || !d.status);
   const next = pending.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""))[0];
 
-  const lastWaterLog = waterLogs.length > 0 ? waterLogs[waterLogs.length - 1] : null;
-  const minsSinceLastWater = lastWaterLog ? Math.floor((nowTs - lastWaterLog.ts) / 60000) : null;
-  const isPacingOptimal = minsSinceLastWater === null || minsSinceLastWater >= 15;
+  const {
+    lastWaterLog,
+    minsSinceLastWater,
+    isPacingOptimal,
+    cooldownMs,
+    elapsedMs,
+    isCooldownActive,
+    cooldownRemainingSecs,
+    hourlyIntake,
+    isHourlyLimitReached,
+    isWaterLocked,
+  } = useMemo(() => {
+    const last = waterLogs.length > 0 ? waterLogs[waterLogs.length - 1] : null;
+    const mins = last ? Math.floor((nowTs - last.ts) / 60000) : null;
+    const pacing = mins === null || mins >= 15;
 
-  const cooldownMs = lastWaterLog ? (lastWaterLog.amount >= 500 ? 30 * 60 * 1000 : 15 * 60 * 1000) : 0;
-  const elapsedMs = lastWaterLog ? (nowTs - lastWaterLog.ts) : Infinity;
-  const isCooldownActive = lastWaterLog ? elapsedMs < cooldownMs : false;
-  const cooldownRemainingSecs = isCooldownActive ? Math.max(0, Math.ceil((cooldownMs - elapsedMs) / 1000)) : 0;
+    const cdMs = last ? (last.amount >= 500 ? 30 * 60 * 1000 : 15 * 60 * 1000) : 0;
+    const elMs = last ? (nowTs - last.ts) : Infinity;
+    const cdActive = last ? elMs < cdMs : false;
+    const cdRemSecs = cdActive ? Math.max(0, Math.ceil((cdMs - elMs) / 1000)) : 0;
 
-  const oneHourMs = 60 * 60 * 1000;
-  const logsPastHour = waterLogs.filter((l) => nowTs - l.ts < oneHourMs);
-  const hourlyIntake = logsPastHour.reduce((sum, l) => sum + l.amount, 0);
-  const isHourlyLimitReached = hourlyIntake >= 1000;
+    const oneHourMs = 60 * 60 * 1000;
+    const logsPastHr = waterLogs.filter((l) => nowTs - l.ts < oneHourMs);
+    const hIntake = logsPastHr.reduce((sum, l) => sum + l.amount, 0);
+    const hLimit = hIntake >= 1000;
 
-  const isWaterLocked = isCooldownActive || isHourlyLimitReached;
+    return {
+      lastWaterLog: last,
+      minsSinceLastWater: mins,
+      isPacingOptimal: pacing,
+      cooldownMs: cdMs,
+      elapsedMs: elMs,
+      isCooldownActive: cdActive,
+      cooldownRemainingSecs: cdRemSecs,
+      hourlyIntake: hIntake,
+      isHourlyLimitReached: hLimit,
+      isWaterLocked: cdActive || hLimit,
+    };
+  }, [waterLogs, nowTs]);
 
   const formatCountdown = (secs: number) => {
     const m = Math.floor(secs / 60);

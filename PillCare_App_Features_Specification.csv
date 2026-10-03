@@ -1,0 +1,36 @@
+Category,Feature Name,Description,Clinical / Technical Highlight,Supported Tier,Platform Support
+Medication Management,Smart Dose Reminders,Automated push & local sound notifications for exact medication schedules,Prevents missed doses with persistent alarms,Free / Pro / Enterprise,Android / iOS / Web
+Medication Management,Flexible Scheduling,"Supports daily, multi-dose, weekly, bi-weekly, and custom interval schedules",Tailored for chronic & acute treatment plans,Free / Pro / Enterprise,Android / iOS / Web
+Medication Management,Dose Logging & Status,"1-tap action to mark doses as Taken, Missed, or Skipped",Generates real-time compliance score (%),Free / Pro / Enterprise,Android / iOS / Web
+Medication Management,Low Stock & Refill Alerts,Tracks remaining pill count and notifies user before medication runs out,Avoids therapy interruption,Free / Pro / Enterprise,Android / iOS / Web
+Medication Management,Multi-Profile Household Management,"Manage medication schedules for self, parents, spouse, or children",Centralized family health management,Pro / Enterprise,Android / iOS / Web
+Medication Management,Medicine Photo Attachment,Capture or upload pill photos to identify correct medication visually,Reduces pill confusion errors,Free / Pro / Enterprise,Android / iOS / Web
+AI Healthcare Intelligence,AI Medication Scanner,"OCR camera scanner for medicine packaging, strips, and prescriptions","Auto-fills drug name, dosage, and frequency",Pro / Enterprise,Android / iOS
+AI Healthcare Intelligence,Brand to Generic Finder,Searches active generic salt names and affordable alternative brands,Reduces out-of-pocket medication expenses,Free / Pro / Enterprise,Android / iOS / Web
+AI Healthcare Intelligence,AI Clinical Adherence Insights,Weekly AI-generated report analyzing adherence trends and wellness patterns,Clinical compliance assessment,Pro / Enterprise,Android / iOS / Web
+AI Healthcare Intelligence,Symptom & Side-Effect Tracker,Log symptoms and adverse reactions paired with medication timings,Aids doctor consultations,Free / Pro / Enterprise,Android / iOS / Web
+WHO Hydration Pacing,Strict WHO Pacing Lockout,"Hard lockout enforcing renal capacity limits (1,000 mL/hr ceiling)",Prevents acute dilutional hyponatremia & water intoxication,Free / Pro / Enterprise,Android / iOS / Web
+WHO Hydration Pacing,Gastric Emptying Cooldowns,Mandatory 15-min cooldown for 250mL glass and 30-min for 500mL bottle,Respects physiological fluid absorption rates,Free / Pro / Enterprise,Android / iOS / Web
+WHO Hydration Pacing,Live Ticking Lockout Timer,Dynamic countdown timer on locked buttons during active WHO cooldown,Zero override bypass capability for patient safety,Free / Pro / Enterprise,Android / iOS / Web
+WHO Hydration Pacing,Clinical WHO Rationale Modal,"Educates user on renal solute clearance, gastric emptying, and hyponatremia",Patient health education,Free / Pro / Enterprise,Android / iOS / Web
+Caregiver Safety Network,Real-Time WhatsApp Missed-Dose Alerts,Instantly alerts trusted caregivers via WhatsApp if a dose is skipped,Immediate family intervention,Free / Pro / Enterprise,Android / iOS / Web
+Caregiver Safety Network,Multi-Caregiver Support,Add up to 5 caregiver phone numbers with international dial code picker,Family & healthcare provider network,Free / Pro / Enterprise,Android / iOS / Web
+Caregiver Safety Network,Daily 10 PM Caregiver Summary,Automated nightly WhatsApp report summarizing daily adherence,Caregiver peace of mind,Free / Pro / Enterprise,Android / iOS / Web
+Caregiver Safety Network,Caregiver Log & Audit Trail,Complete delivery log showing sent alerts and timestamps,Transparent safety verification,Free / Pro / Enterprise,Android / iOS / Web
+Yoga & Wellness Therapy,Clinical Yoga Routines,"Curated sequence for Thyroid, Diabetes, Hypertension, PCOS, and Arthritis","Guidelines aligned with AYUSH, Patanjali & Isha",Free / Pro / Enterprise,Android / iOS / Web
+Yoga & Wellness Therapy,Playback-Synced Session Timer,Timer auto-pauses when video is paused and resumes when video plays,Accurate practice duration tracking via YouTube API,Free / Pro / Enterprise,Android / iOS / Web
+Yoga & Wellness Therapy,Post-Pose Reflection & Mood Log,"Log energy levels (Energized, Relaxed, Relieved) post practice",Parasympathetic nervous system recovery insight,Free / Pro / Enterprise,Android / iOS / Web
+Yoga & Wellness Therapy,Automated Habit Log Book Entry,Saves practice duration and feeling into the central Activity Log,Seamless habit history tracking,Free / Pro / Enterprise,Android / iOS / Web
+Health Connect & Vitals,Auto-Sync on Tab Focus,Automatically syncs 10 vitals whenever user opens the Progress tab,Zero manual clicks required for fresh data,Free / Pro / Enterprise,Android / iOS / Web
+Health Connect & Vitals,Multi-Device Vitals Integration,"Consolidates data from Google Fit, Samsung Health, Garmin, Fitbit & Smart Rings",Unified wearable health ecosystem,Free / Pro / Enterprise,Android / iOS / Web
+Health Connect & Vitals,10 Clinical Vitals Metrics,"Syncs Steps, Heart Rate, Sleep, BP, Glucose, SpO2, Temp, Weight, Hydration, Calories",Comprehensive biometrics monitoring,Free / Pro / Enterprise,Android / iOS / Web
+Health Connect & Vitals,Measurement History & Charts,Interactive progress charts and logbook of vitals over time,Trend analysis for clinical reviews,Free / Pro / Enterprise,Android / iOS / Web
+Doctor Appointments,Appointment Reminders,Schedule doctor visits with time alarms and location notes,Prevents missed consultations,Free / Pro / Enterprise,Android / iOS / Web
+Doctor Appointments,Doctor Profile & Specialty,"Store doctor contact number, specialization, and clinic details",Quick access during emergencies,Free / Pro / Enterprise,Android / iOS / Web
+Nearby Healthcare Finder,Pharmacies & Hospitals Map,"Finds nearest pharmacies, hospitals, diagnostic centers, and clinics",GPS-based instant local search,Free / Pro / Enterprise,Android / iOS / Web
+Nearby Healthcare Finder,1-Tap WhatsApp Prescription Order,Send prescription and order medicines directly to nearby pharmacies via WhatsApp,Fast local medicine delivery,Free / Pro / Enterprise,Android / iOS / Web
+Nearby Healthcare Finder,Safe Navigation Stack,Protected back-button navigation preventing unhandled back action errors,Robust user experience on all devices,Free / Pro / Enterprise,Android / iOS / Web
+Cloud & Privacy,Google Account Authentication,Seamless Google Sign-In preserving user profile across devices,Secure user authentication,Free / Pro / Enterprise,Android / iOS / Web
+Cloud & Privacy,Offline-First Local Storage,Full app functionality works offline with instant background sync when online,Uninterrupted reliability without network,Free / Pro / Enterprise,Android / iOS / Web
+Cloud & Privacy,CSV Health Data Export,"Export dose history, vitals, and adherence reports in Excel CSV format",Shareable with doctors and caregivers,Pro / Enterprise,Android / iOS / Web
+Cloud & Privacy,End-to-End Encryption & Privacy,HIPAA/GDPR compliant data storage and strict privacy controls,Complete patient data security,Free / Pro / Enterprise,Android / iOS / Web

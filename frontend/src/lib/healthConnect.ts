@@ -95,14 +95,21 @@ export async function requestHealthPermissions(): Promise<boolean> {
   }
 }
 
-export async function readTodayVitals(): Promise<HealthSnapshot> {
+let _vitalsCache: { snapshot: HealthSnapshot; ts: number } | null = null;
+const VITALS_CACHE_TTL_MS = 5000;
+
+export async function readTodayVitals(forceRefresh = false): Promise<HealthSnapshot> {
+  if (!forceRefresh && _vitalsCache && Date.now() - _vitalsCache.ts < VITALS_CACHE_TTL_MS) {
+    return _vitalsCache.snapshot;
+  }
+
   const isPersistentConnected = await getHealthConnectConnected();
   const nowStr = new Date().toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
   const hc = getModule();
 
   if (!hc) {
     if (isPersistentConnected) {
-      return {
+      const res: HealthSnapshot = {
         steps: 6420,
         heartRate: 72,
         sleepHours: 7.5,
@@ -118,23 +125,29 @@ export async function readTodayVitals(): Promise<HealthSnapshot> {
         granted: true,
         available: true,
       };
+      _vitalsCache = { snapshot: res, ts: Date.now() };
+      return res;
     }
-    return {
+    const res: HealthSnapshot = {
       steps: null, heartRate: null, sleepHours: null, systolic: null, diastolic: null,
       bloodGlucose: null, spo2: null, bodyTemp: null, weight: null, hydrationMl: null,
       caloriesBurned: null, lastSyncedAt: null, granted: false, available: false,
     };
+    _vitalsCache = { snapshot: res, ts: Date.now() };
+    return res;
   }
 
   try {
     await hc.initialize();
     const granted = await hasHealthPermissions();
     if (!granted && !isPersistentConnected) {
-      return {
+      const res: HealthSnapshot = {
         steps: null, heartRate: null, sleepHours: null, systolic: null, diastolic: null,
         bloodGlucose: null, spo2: null, bodyTemp: null, weight: null, hydrationMl: null,
         caloriesBurned: null, lastSyncedAt: null, granted: false, available: true,
       };
+      _vitalsCache = { snapshot: res, ts: Date.now() };
+      return res;
     }
 
     const now = new Date();
@@ -199,26 +212,32 @@ export async function readTodayVitals(): Promise<HealthSnapshot> {
 
     const caloriesBurned = calRecs.reduce((sum: number, r: any) => sum + Math.round(r.energy?.inKilocalories || 0), 0) || (isPersistentConnected ? 420 : null);
 
-    return {
+    const res: HealthSnapshot = {
       steps, heartRate, sleepHours, systolic, diastolic, bloodGlucose,
       spo2, bodyTemp, weight, hydrationMl, caloriesBurned,
       lastSyncedAt: nowStr,
       granted: true, available: true,
     };
+    _vitalsCache = { snapshot: res, ts: Date.now() };
+    return res;
   } catch (e: any) {
     if (isPersistentConnected) {
-      return {
+      const res: HealthSnapshot = {
         steps: 6420, heartRate: 72, sleepHours: 7.5, systolic: 120, diastolic: 80,
         bloodGlucose: 95, spo2: 98, bodyTemp: 36.6, weight: 68.5, hydrationMl: 1750,
         caloriesBurned: 420, lastSyncedAt: nowStr, granted: true, available: true,
       };
+      _vitalsCache = { snapshot: res, ts: Date.now() };
+      return res;
     }
-    return {
+    const res: HealthSnapshot = {
       steps: null, heartRate: null, sleepHours: null, systolic: null, diastolic: null,
       bloodGlucose: null, spo2: null, bodyTemp: null, weight: null, hydrationMl: null,
       caloriesBurned: null, lastSyncedAt: null, granted: false, available: true,
       error: String(e?.message || e),
     };
+    _vitalsCache = { snapshot: res, ts: Date.now() };
+    return res;
   }
 }
 
