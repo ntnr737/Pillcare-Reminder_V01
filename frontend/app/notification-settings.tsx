@@ -27,7 +27,18 @@ const CATEGORIES: Array<{ key: SoundCategory; title: string; subtitle: string; i
   { key: "yoga", title: "Yoga & Wellness", subtitle: "Daily wellness flows & stretch exercises", icon: "body-outline", defaultColor: "#d97706" },
 ];
 
-const PROFILES: SoundProfile[] = ["chime", "water_drop", "gentle", "pulse", "urgent", "default", "mute"];
+const PROFILES: SoundProfile[] = [
+  "pillcare_reminder",
+  "pillcare_urgent",
+  "pillcare_wellness",
+  "chime",
+  "water_drop",
+  "gentle",
+  "pulse",
+  "urgent",
+  "default",
+  "mute",
+];
 
 export default function NotificationSettingsScreen() {
   const { theme, isDark } = useTheme();
@@ -107,6 +118,26 @@ export default function NotificationSettingsScreen() {
     }
   };
 
+  const handleApplySignatureToAll = async () => {
+    const updated: SoundSettings = {
+      ...settings,
+      categorySounds: {
+        medication: "pillcare_reminder",
+        water: "water_drop",
+        appointment: "pillcare_wellness",
+        refill: "pillcare_urgent",
+        yoga: "pillcare_wellness",
+        broadcast: "pillcare_reminder",
+      },
+    };
+    setSettings(updated);
+    await saveSoundSettings(updated);
+    await ensureChannels();
+    await resyncReminders();
+    await playSoundPreview("pillcare_reminder");
+    Alert.alert("Signature Tones Activated", "⭐ PillCare Signature Chimes have been set as the primary recall sound across all categories!");
+  };
+
   const handleSendTestNotification = async (category: SoundCategory) => {
     setTestingCategory(category);
     try {
@@ -173,18 +204,34 @@ export default function NotificationSettingsScreen() {
           </View>
         )}
 
-        {/* Banner */}
-        <View style={[s.bannerCard, { backgroundColor: isDark ? "rgba(79,70,229,0.15)" : "rgba(79,70,229,0.08)", borderColor: "rgba(79,70,229,0.3)" }]}>
+        {/* ⭐ PillCare Signature Tone Hero Card */}
+        <View style={[s.signatureHeroCard, { backgroundColor: isDark ? "rgba(99,102,241,0.18)" : "rgba(99,102,241,0.09)", borderColor: "#6366f1" }]}>
           <View style={s.bannerRow}>
-            <View style={[s.iconBox, { backgroundColor: "#4f46e5" }]}>
-              <Ionicons name="volume-high" size={22} color="#fff" />
+            <View style={[s.iconBox, { backgroundColor: "#6366f1" }]}>
+              <Ionicons name="sparkles" size={22} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.bannerTitle, { color: theme.textPrimary }]}>Custom Recall Chimes</Text>
+              <Text style={[s.bannerTitle, { color: theme.textPrimary, fontSize: 15 }]}>⭐ PillCare Signature Chimes</Text>
               <Text style={[s.bannerSub, { color: theme.textSecondary }]}>
-                Distinct sounds per notification category so you know instantly what PillCare is reminding you about.
+                Exclusive, harmonic 3-tone recall melody crafted for calm dose clarity & instant medical recognition.
               </Text>
             </View>
+          </View>
+          <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
+            <TouchableOpacity
+              style={[s.sigActionBtn, { backgroundColor: "#6366f1" }]}
+              onPress={() => handleTestPreview("pillcare_reminder")}
+            >
+              <Ionicons name="play-circle-outline" size={16} color="#fff" />
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 11 }}>Listen Signature Tone</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.sigActionBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", borderWidth: 1, borderColor: "#6366f1" }]}
+              onPress={handleApplySignatureToAll}
+            >
+              <Ionicons name="checkmark-done" size={14} color={theme.accent} />
+              <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 11 }}>Activate Signature Package</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -307,6 +354,17 @@ const s = StyleSheet.create({
   title: { fontSize: 15, fontWeight: "700" },
   body: { padding: 16, gap: 14 },
   bannerCard: { borderRadius: 16, padding: 14, borderWidth: 1 },
+  signatureHeroCard: { borderRadius: 16, padding: 14, borderWidth: 1.5 },
+  sigActionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 34,
+    borderRadius: 10,
+    flex: 1,
+  },
   bannerRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   iconBox: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   bannerTitle: { fontSize: 14, fontWeight: "700" },
