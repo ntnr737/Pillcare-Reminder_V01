@@ -5,7 +5,10 @@ const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
 
 async function req<T>(path: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<T> {
   const token = await getStoredToken();
-  const deviceTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+  let deviceTimezone = "Asia/Kolkata";
+  try {
+    deviceTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
+  } catch {}
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {

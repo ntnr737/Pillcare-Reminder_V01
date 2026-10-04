@@ -1,7 +1,7 @@
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect, useState } from "react";
-import { LogBox, AppState, View } from "react-native";
+import React, { Component, useEffect, useState } from "react";
+import { LogBox, AppState, View, Text, TouchableOpacity } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
@@ -25,7 +25,48 @@ import {
 } from "@/src/components/InAppBottomNotification";
 
 LogBox.ignoreAllLogs(true);
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class PillCareErrorBoundary extends Component<{ children: React.ReactNode }, ErrorBoundaryState> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.warn("PillCare ErrorBoundary Caught Error:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, backgroundColor: "#0b0f19", justifyContent: "center", alignItems: "center", padding: 24 }}>
+          <Text style={{ fontSize: 22, fontWeight: "bold", color: "#f87171", marginBottom: 12 }}>PillCare Alert</Text>
+          <Text style={{ fontSize: 14, color: "#94a3b8", textAlign: "center", marginBottom: 24 }}>
+            An unexpected error occurred. Tap below to reload app.
+          </Text>
+          <TouchableOpacity
+            onPress={this.handleReset}
+            style={{ backgroundColor: "#9184d9", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 }}
+          >
+            <Text style={{ color: "#ffffff", fontWeight: "bold", fontSize: 16 }}>Reload App</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function RootStack() {
   const { theme } = useTheme();
@@ -90,7 +131,7 @@ export default function RootLayout() {
       })
       .catch(() => {});
 
-    // Periodic heartbeat ping to sync active connectivity & Tag Manager dwell telemetry
+    // Periodic heartbeat ping to sync active connectivity
     const sendHeartbeat = () => {
       getStoredToken().then((token) => {
         if (token) {
@@ -131,12 +172,14 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <ThemeProvider>
-        <LanguageProvider>
-          <RootStack />
-        </LanguageProvider>
-      </ThemeProvider>
-    </SafeAreaProvider>
+    <PillCareErrorBoundary>
+      <SafeAreaProvider>
+        <ThemeProvider>
+          <LanguageProvider>
+            <RootStack />
+          </LanguageProvider>
+        </ThemeProvider>
+      </SafeAreaProvider>
+    </PillCareErrorBoundary>
   );
 }
