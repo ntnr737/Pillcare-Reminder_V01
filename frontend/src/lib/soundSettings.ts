@@ -52,13 +52,29 @@ export const SOUND_PROFILE_LABELS: Record<SoundProfile, { label: string; desc: s
   mute: { label: "Muted / Silent", desc: "Visual banner only, no sound", icon: "volume-mute-outline" },
 };
 
-const SOUND_ASSETS: Record<string, any> = {
-  chime: require("../../assets/sounds/chime.wav"),
-  water_drop: require("../../assets/sounds/water_drop.wav"),
-  gentle: require("../../assets/sounds/gentle.wav"),
-  pulse: require("../../assets/sounds/pulse.wav"),
-  urgent: require("../../assets/sounds/urgent.wav"),
-};
+/**
+ * Lazy asset loader for audio previews to prevent module initialization crashes
+ */
+function getSoundAsset(profile: SoundProfile): any {
+  try {
+    switch (profile) {
+      case "chime":
+        return require("../../assets/sounds/chime.wav");
+      case "water_drop":
+        return require("../../assets/sounds/water_drop.wav");
+      case "gentle":
+        return require("../../assets/sounds/gentle.wav");
+      case "pulse":
+        return require("../../assets/sounds/pulse.wav");
+      case "urgent":
+        return require("../../assets/sounds/urgent.wav");
+      default:
+        return null;
+    }
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Fetch sound settings from AsyncStorage with fallback to defaults.
@@ -93,21 +109,18 @@ export async function saveSoundSettings(settings: SoundSettings): Promise<void> 
 }
 
 /**
- * Map sound profile to Expo Notification sound parameter (Android raw resource name or iOS sound file string)
+ * Map sound profile to Expo Notification sound parameter.
+ * Always returns "default" or undefined to guarantee Android system compatibility.
  */
 export function getNotificationSoundParam(profile: SoundProfile, masterMute: boolean): string | boolean | undefined {
   if (masterMute || profile === "mute") {
     return undefined;
   }
-  if (profile === "default") {
-    return "default";
-  }
-  return profile;
+  return "default";
 }
 
 /**
  * Map category, profile & vibration setting to a unique dynamic Android Channel ID.
- * Dynamic suffix forces Android OS to bypass cached channel settings and apply fresh sound & vibration parameters!
  */
 export function getChannelIdForCategory(
   category: SoundCategory,
@@ -130,26 +143,31 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
 
   // STRICT VIBRATION ENFORCEMENT: Only trigger haptic feedback if vibrationEnabled is explicitly TRUE
   if (vibrationEnabled === true) {
-    if (profile === "urgent") {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
-    } else if (profile === "water_drop" || profile === "gentle") {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
-    } else {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-    }
+    try {
+      if (profile === "urgent") {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      } else if (profile === "water_drop" || profile === "gentle") {
+        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } else {
+        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (e) {}
   }
 
   // 1. Direct in-app Audio playback using expo-av
   try {
-    const asset = SOUND_ASSETS[profile];
+    const asset = getSoundAsset(profile);
     if (asset) {
-      await Audio.setAudioModeAsync({
-        playsInSilentModeIOS: true,
-        shouldDuckAndroid: true,
-      });
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          shouldDuckAndroid: true,
+        });
+      } catch (e) {}
+
       const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: true, volume: 1.0 });
       sound.setOnPlaybackStatusUpdate((status: any) => {
-        if (status.isLoaded && status.didJustFinish) {
+        if (status?.isLoaded && status?.didJustFinish) {
           sound.unloadAsync().catch(() => {});
         }
       });
@@ -159,14 +177,14 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
     console.warn("expo-av playback error:", err);
   }
 
-  // 2. Fallback to notification status bar trigger with dynamic channel ID
+  // 2. Fallback to notification status bar trigger
   try {
     const channelId = getChannelIdForCategory("medication", profile, false, vibrationEnabled);
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,
         body: SOUND_PROFILE_LABELS[profile].desc,
-        sound: getNotificationSoundParam(profile, false),
+        sound: "default",
         channelId: channelId,
         priority: Notifications.AndroidNotificationPriority.HIGH,
       } as any,

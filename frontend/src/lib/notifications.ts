@@ -238,31 +238,36 @@ export async function ensureChannels(): Promise<void> {
     const categories: SoundCategory[] = ["medication", "water", "appointment", "yoga", "refill", "broadcast"];
 
     for (const cat of categories) {
-      const profile = soundSet.categorySounds[cat] || "default";
-      const channelId = getChannelIdForCategory(cat, profile, isMuted, soundSet.vibrationEnabled);
-      const soundParam = getNotificationSoundParam(profile, isMuted) as string | undefined;
+      try {
+        const profile = soundSet.categorySounds[cat] || "default";
+        const channelId = getChannelIdForCategory(cat, profile, isMuted, soundSet.vibrationEnabled);
 
-      await Notifications.setNotificationChannelAsync(channelId, {
-        name: `PillCare ${cat.charAt(0).toUpperCase() + cat.slice(1)} Alerts`,
-        description: `Custom sound alert channel for ${cat}`,
-        importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
-        sound: soundParam,
-        enableVibrate: vibrate,
-        vibrationPattern: vibrate ? [0, 500, 250, 500] : undefined,
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        bypassDnd: !isMuted,
-        showBadge: true,
-      });
+        await Notifications.setNotificationChannelAsync(channelId, {
+          name: `PillCare ${cat.charAt(0).toUpperCase() + cat.slice(1)} Alerts`,
+          description: `Custom sound alert channel for ${cat}`,
+          importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
+          sound: isMuted || profile === "mute" ? undefined : "default",
+          enableVibrate: vibrate,
+          vibrationPattern: vibrate ? [0, 500, 250, 500] : undefined,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: !isMuted,
+          showBadge: true,
+        });
+      } catch (err) {
+        console.warn(`Channel setup error for ${cat}:`, err);
+      }
     }
 
-    await Notifications.setNotificationChannelAsync("pc_silent", {
-      name: "Silent Notifications",
-      description: "Visual banner alerts with sound and vibration disabled",
-      importance: Notifications.AndroidImportance.LOW,
-      sound: undefined,
-      enableVibrate: false,
-      showBadge: false,
-    });
+    try {
+      await Notifications.setNotificationChannelAsync("pc_silent", {
+        name: "Silent Notifications",
+        description: "Visual banner alerts with sound and vibration disabled",
+        importance: Notifications.AndroidImportance.LOW,
+        sound: undefined,
+        enableVibrate: false,
+        showBadge: false,
+      });
+    } catch (err) {}
   } catch (e) {
     console.warn("Channel setup failed:", e);
   }
