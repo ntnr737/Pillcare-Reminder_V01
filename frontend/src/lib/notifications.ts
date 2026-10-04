@@ -20,7 +20,6 @@ try {
       shouldSetBadge: true,
       shouldShowBanner: true,
       shouldShowList: true,
-      priority: Notifications.AndroidNotificationPriority.MAX,
     }),
   });
 } catch (e) {
