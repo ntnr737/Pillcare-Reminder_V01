@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import * as Haptics from "expo-haptics";
-import { Audio } from "expo-av";
 import { Platform } from "react-native";
 
 export const SOUND_SETTINGS_KEY = "pc_sound_settings_v1";
@@ -154,27 +153,30 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
     } catch (e) {}
   }
 
-  // 1. Direct in-app Audio playback using expo-av
+  // 1. Direct in-app Audio playback using expo-av (if available)
   try {
     const asset = getSoundAsset(profile);
     if (asset) {
-      try {
-        await Audio.setAudioModeAsync({
-          playsInSilentModeIOS: true,
-          shouldDuckAndroid: true,
-        });
-      } catch (e) {}
+      const { Audio } = require("expo-av");
+      if (Audio && Audio.Sound) {
+        try {
+          await Audio.setAudioModeAsync({
+            playsInSilentModeIOS: true,
+            shouldDuckAndroid: true,
+          }).catch(() => {});
+        } catch (e) {}
 
-      const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: true, volume: 1.0 });
-      sound.setOnPlaybackStatusUpdate((status: any) => {
-        if (status?.isLoaded && status?.didJustFinish) {
-          sound.unloadAsync().catch(() => {});
-        }
-      });
-      return;
+        const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: true, volume: 1.0 });
+        sound.setOnPlaybackStatusUpdate((status: any) => {
+          if (status?.isLoaded && status?.didJustFinish) {
+            sound.unloadAsync().catch(() => {});
+          }
+        });
+        return;
+      }
     }
   } catch (err) {
-    console.warn("expo-av playback error:", err);
+    console.warn("In-app audio preview fallback:", err);
   }
 
   // 2. Fallback to notification status bar trigger
