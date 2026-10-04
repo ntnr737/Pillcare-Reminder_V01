@@ -221,12 +221,12 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
   return () => sub.remove();
 }
 
-import { getSoundSettings, getNotificationSoundParam, SoundCategory } from "./soundSettings";
+import { getSoundSettings, getNotificationSoundParam, getChannelIdForCategory, SoundCategory } from "./soundSettings";
 
 /**
  * Create Android notification channels matching user sound preferences.
  * MUST be called on every app launch before any notification is scheduled.
- * Deletes old channels first so Android OS updates sound/importance settings instantly.
+ * Uses dynamic channel IDs to bypass Android OS channel settings caching and guarantee fresh sound & vibration parameters.
  */
 export async function ensureChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
@@ -235,99 +235,27 @@ export async function ensureChannels(): Promise<void> {
     const isMuted = soundSet.masterMute;
     const vibrate = soundSet.vibrationEnabled && !isMuted;
 
-    const channels = [
-      "medication-reminders",
-      "hydration-reminders",
-      "appointment-reminders",
-      "yoga-reminders",
-      "urgent-reminders",
-      "broadcasts",
-      "silent-reminders",
-    ];
+    const categories: SoundCategory[] = ["medication", "water", "appointment", "yoga", "refill", "broadcast"];
 
-    // Delete existing channels to bypass Android channel immutability
-    for (const channelId of channels) {
-      try {
-        await Notifications.deleteNotificationChannelAsync(channelId);
-      } catch (err) {}
+    for (const cat of categories) {
+      const profile = soundSet.categorySounds[cat] || "default";
+      const channelId = getChannelIdForCategory(cat, profile, isMuted, soundSet.vibrationEnabled);
+      const soundParam = getNotificationSoundParam(profile, isMuted) as string | undefined;
+
+      await Notifications.setNotificationChannelAsync(channelId, {
+        name: `PillCare ${cat.charAt(0).toUpperCase() + cat.slice(1)} Alerts`,
+        description: `Custom sound alert channel for ${cat}`,
+        importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
+        sound: soundParam,
+        enableVibrate: vibrate,
+        vibrationPattern: vibrate ? [0, 500, 250, 500] : undefined,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        bypassDnd: !isMuted,
+        showBadge: true,
+      });
     }
 
-    const medSound = getNotificationSoundParam(soundSet.categorySounds.medication, isMuted) as string | undefined;
-    const waterSound = getNotificationSoundParam(soundSet.categorySounds.water, isMuted) as string | undefined;
-    const apptSound = getNotificationSoundParam(soundSet.categorySounds.appointment, isMuted) as string | undefined;
-    const yogaSound = getNotificationSoundParam(soundSet.categorySounds.yoga, isMuted) as string | undefined;
-    const refillSound = getNotificationSoundParam(soundSet.categorySounds.refill, isMuted) as string | undefined;
-    const broadcastSound = getNotificationSoundParam(soundSet.categorySounds.broadcast, isMuted) as string | undefined;
-
-    await Notifications.setNotificationChannelAsync("medication-reminders", {
-      name: "Medication Reminders",
-      description: "Alerts when it is time to take a medication",
-      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
-      sound: medSound,
-      enableVibrate: vibrate,
-      vibrationPattern: vibrate ? [0, 500, 250, 500, 250, 500] : undefined,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: !isMuted,
-      showBadge: true,
-    });
-
-    await Notifications.setNotificationChannelAsync("hydration-reminders", {
-      name: "Hydration & Water Intake",
-      description: "WHO water intake and hydration pacing reminders",
-      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.HIGH,
-      sound: waterSound,
-      enableVibrate: vibrate,
-      vibrationPattern: vibrate ? [0, 300, 150, 300] : undefined,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      showBadge: true,
-    });
-
-    await Notifications.setNotificationChannelAsync("appointment-reminders", {
-      name: "Doctor Appointments",
-      description: "Reminders for scheduled healthcare visits",
-      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.HIGH,
-      sound: apptSound,
-      enableVibrate: vibrate,
-      vibrationPattern: vibrate ? [0, 400, 200, 400] : undefined,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      showBadge: true,
-    });
-
-    await Notifications.setNotificationChannelAsync("yoga-reminders", {
-      name: "Yoga & Wellness",
-      description: "Daily wellness & yoga flow reminders",
-      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.HIGH,
-      sound: yogaSound,
-      enableVibrate: vibrate,
-      vibrationPattern: vibrate ? [0, 400, 200, 400] : undefined,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      showBadge: true,
-    });
-
-    await Notifications.setNotificationChannelAsync("urgent-reminders", {
-      name: "Urgent Dose & Refill Alerts",
-      description: "High priority alerts for critical dose schedules and low stock",
-      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
-      sound: refillSound,
-      enableVibrate: vibrate,
-      vibrationPattern: vibrate ? [0, 600, 200, 600, 200, 800] : undefined,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: !isMuted,
-      showBadge: true,
-    });
-
-    await Notifications.setNotificationChannelAsync("broadcasts", {
-      name: "Updates & Announcements",
-      description: "Live alerts and push broadcasts from PillCare Admin",
-      importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
-      sound: broadcastSound,
-      enableVibrate: vibrate,
-      vibrationPattern: vibrate ? [0, 400, 200, 400] : undefined,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      showBadge: true,
-    });
-
-    await Notifications.setNotificationChannelAsync("silent-reminders", {
+    await Notifications.setNotificationChannelAsync("pc_silent", {
       name: "Silent Notifications",
       description: "Visual banner alerts with sound and vibration disabled",
       importance: Notifications.AndroidImportance.LOW,
@@ -354,23 +282,14 @@ export async function sendTestNotificationNow(
   }
   await ensureChannels();
   const soundSet = await getSoundSettings();
-  const channelId = soundSet.masterMute
-    ? "silent-reminders"
-    : category === "water"
-    ? "hydration-reminders"
-    : category === "appointment"
-    ? "appointment-reminders"
-    : category === "refill"
-    ? "urgent-reminders"
-    : category === "yoga"
-    ? "yoga-reminders"
-    : "medication-reminders";
+  const profile = soundSet.categorySounds[category] || "default";
+  const channelId = getChannelIdForCategory(category, profile, soundSet.masterMute, soundSet.vibrationEnabled);
 
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
-      sound: soundSet.masterMute || soundSet.categorySounds[category] === "mute" ? undefined : "default",
+      sound: getNotificationSoundParam(profile, soundSet.masterMute),
       channelId,
       priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
       categoryIdentifier: category === "water" ? WATER_CATEGORY : category === "yoga" ? YOGA_CATEGORY : MEDICATION_CATEGORY,
@@ -511,6 +430,11 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
           nextOccurrence.setDate(nextOccurrence.getDate() + 1);
         }
 
+        const soundSet = await getSoundSettings();
+        const medProfile = soundSet.categorySounds.medication || "default";
+        const medChannel = getChannelIdForCategory("medication", medProfile, soundSet.masterMute, soundSet.vibrationEnabled);
+        const medSoundParam = getNotificationSoundParam(medProfile, soundSet.masterMute);
+
         // Schedule exact DATE trigger for next upcoming dose
         await Notifications.scheduleNotificationAsync({
           content: {
@@ -518,9 +442,9 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             body,
             data,
             categoryIdentifier: MEDICATION_CATEGORY,
-            sound: "default",
-            channelId: "medication-reminders",
-            priority: Notifications.AndroidNotificationPriority.MAX,
+            sound: medSoundParam,
+            channelId: medChannel,
+            priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
           } as any,
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -534,7 +458,7 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
               type: Notifications.SchedulableTriggerInputTypes.DAILY,
               hour: parsed.hour,
               minute: parsed.minute,
-              channelId: "medication-reminders",
+              channelId: medChannel,
             }
           : {
               hour: parsed.hour,
@@ -548,9 +472,9 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             body,
             data,
             categoryIdentifier: MEDICATION_CATEGORY,
-            sound: "default",
-            channelId: "medication-reminders",
-            priority: Notifications.AndroidNotificationPriority.MAX,
+            sound: medSoundParam,
+            channelId: medChannel,
+            priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
           } as any,
           trigger: dailyTrigger,
         });
@@ -593,6 +517,11 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
     const yogaTip = await get<any>(K.yogaTip);
     const title = yogaTip?.title || "Daily Medication Yoga Therapy Flow";
 
+    const soundSet = await getSoundSettings();
+    const yogaProfile = soundSet.categorySounds.yoga || "default";
+    const yogaChannel = getChannelIdForCategory("yoga", yogaProfile, soundSet.masterMute, soundSet.vibrationEnabled);
+    const yogaSoundParam = getNotificationSoundParam(yogaProfile, soundSet.masterMute);
+
     // Cancel existing yoga reminders before scheduling new one
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const notif of scheduled) {
@@ -614,9 +543,9 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,
-        sound: "default",
-        channelId: "yoga-reminders",
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        sound: yogaSoundParam,
+        channelId: yogaChannel,
+        priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
       } as any,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -630,7 +559,7 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
           hour: parsed.hour,
           minute: parsed.minute,
-          channelId: "yoga-reminders",
+          channelId: yogaChannel,
         }
       : {
           hour: parsed.hour,
@@ -644,9 +573,9 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
         body: `${title} — Tap to view poses & video guide.`,
         data: { isYogaReminder: true },
         categoryIdentifier: YOGA_CATEGORY,
-        sound: "default",
-        channelId: "yoga-reminders",
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        sound: yogaSoundParam,
+        channelId: yogaChannel,
+        priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
       } as any,
       trigger: dailyTrigger,
     });
@@ -662,6 +591,12 @@ export async function scheduleWaterReminders(): Promise<void> {
     await ensureChannels();
     const granted = await requestNotificationPermission();
     if (!granted) return;
+
+    const soundSet = await getSoundSettings();
+    const waterProfile = soundSet.categorySounds.water || "default";
+    const waterChannel = getChannelIdForCategory("water", waterProfile, soundSet.masterMute, soundSet.vibrationEnabled);
+    const waterSoundParam = getNotificationSoundParam(waterProfile, soundSet.masterMute);
+
     const waterTimes = [
       { hour: 9, minute: 0 },
       { hour: 11, minute: 30 },
@@ -683,9 +618,9 @@ export async function scheduleWaterReminders(): Promise<void> {
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
           data: { type: "water_reminder" },
           categoryIdentifier: WATER_CATEGORY,
-          sound: "default",
-          channelId: "hydration-reminders",
-          priority: Notifications.AndroidNotificationPriority.HIGH,
+          sound: waterSoundParam,
+          channelId: waterChannel,
+          priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.HIGH,
         } as any,
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -698,7 +633,7 @@ export async function scheduleWaterReminders(): Promise<void> {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: wt.hour,
             minute: wt.minute,
-            channelId: "hydration-reminders",
+            channelId: waterChannel,
           }
         : {
             hour: wt.hour,
@@ -712,9 +647,9 @@ export async function scheduleWaterReminders(): Promise<void> {
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
           data: { type: "water_reminder" },
           categoryIdentifier: WATER_CATEGORY,
-          sound: "default",
-          channelId: "hydration-reminders",
-          priority: Notifications.AndroidNotificationPriority.HIGH,
+          sound: waterSoundParam,
+          channelId: waterChannel,
+          priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.HIGH,
         } as any,
         trigger: dailyTrigger,
       });
@@ -730,21 +665,27 @@ export async function scheduleHydrationPacingReminder(minutesFromNow: number = 1
     await ensureChannels();
     const granted = await requestNotificationPermission();
     if (!granted) return;
+
+    const soundSet = await getSoundSettings();
+    const waterProfile = soundSet.categorySounds.water || "default";
+    const waterChannel = getChannelIdForCategory("water", waterProfile, soundSet.masterMute, soundSet.vibrationEnabled);
+    const waterSoundParam = getNotificationSoundParam(waterProfile, soundSet.masterMute);
+
     await Notifications.scheduleNotificationAsync({
       content: {
         title: "Hydration Pacing Reminder",
         body: `15 minutes have passed since your last glass! Time to drink your next 250mL for optimal WHO cellular absorption.`,
         data: { type: "water_pacing_reminder" },
         categoryIdentifier: WATER_CATEGORY,
-        sound: "default",
-        channelId: "hydration-reminders",
-        priority: Notifications.AndroidNotificationPriority.HIGH,
+        sound: waterSoundParam,
+        channelId: waterChannel,
+        priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.HIGH,
       } as any,
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: minutesFromNow * 60,
         repeats: false,
-        channelId: "hydration-reminders",
+        channelId: waterChannel,
       },
     });
     console.log(`Scheduled hydration pacing reminder in ${minutesFromNow} minutes`);

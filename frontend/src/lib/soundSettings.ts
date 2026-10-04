@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import * as Haptics from "expo-haptics";
+import { Audio } from "expo-av";
 import { Platform } from "react-native";
 
 export const SOUND_SETTINGS_KEY = "pc_sound_settings_v1";
@@ -51,6 +52,14 @@ export const SOUND_PROFILE_LABELS: Record<SoundProfile, { label: string; desc: s
   mute: { label: "Muted / Silent", desc: "Visual banner only, no sound", icon: "volume-mute-outline" },
 };
 
+const SOUND_ASSETS: Record<string, any> = {
+  chime: require("../../assets/sounds/chime.wav"),
+  water_drop: require("../../assets/sounds/water_drop.wav"),
+  gentle: require("../../assets/sounds/gentle.wav"),
+  pulse: require("../../assets/sounds/pulse.wav"),
+  urgent: require("../../assets/sounds/urgent.wav"),
+};
+
 /**
  * Fetch sound settings from AsyncStorage with fallback to defaults.
  */
@@ -97,27 +106,20 @@ export function getNotificationSoundParam(profile: SoundProfile, masterMute: boo
 }
 
 /**
- * Map category & profile to Android Channel ID
+ * Map category, profile & vibration setting to a unique dynamic Android Channel ID.
+ * Dynamic suffix forces Android OS to bypass cached channel settings and apply fresh sound & vibration parameters!
  */
-export function getChannelIdForCategory(category: SoundCategory, profile: SoundProfile, masterMute: boolean): string {
+export function getChannelIdForCategory(
+  category: SoundCategory,
+  profile: SoundProfile,
+  masterMute: boolean,
+  vibrationEnabled = true
+): string {
   if (masterMute || profile === "mute") {
-    return "silent-reminders";
+    return "pc_silent";
   }
-  switch (category) {
-    case "medication":
-      return "medication-reminders";
-    case "water":
-      return "hydration-reminders";
-    case "appointment":
-      return "appointment-reminders";
-    case "refill":
-      return "urgent-reminders";
-    case "yoga":
-      return "yoga-reminders";
-    case "broadcast":
-    default:
-      return "broadcasts";
-  }
+  const vibSuffix = vibrationEnabled ? "v1" : "v0";
+  return `pc_${category}_${profile}_${vibSuffix}`;
 }
 
 /**
@@ -137,20 +139,40 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
     }
   }
 
-  // Instant notification trigger using custom Android channel sound
+  // 1. Direct in-app Audio playback using expo-av
   try {
-    const soundParam = getNotificationSoundParam(profile, false);
+    const asset = SOUND_ASSETS[profile];
+    if (asset) {
+      await Audio.setAudioModeAsync({
+        playsInSilentModeIOS: true,
+        shouldDuckAndroid: true,
+      });
+      const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: true, volume: 1.0 });
+      sound.setOnPlaybackStatusUpdate((status: any) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync().catch(() => {});
+        }
+      });
+      return;
+    }
+  } catch (err) {
+    console.warn("expo-av playback error:", err);
+  }
+
+  // 2. Fallback to notification status bar trigger with dynamic channel ID
+  try {
+    const channelId = getChannelIdForCategory("medication", profile, false, vibrationEnabled);
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,
         body: SOUND_PROFILE_LABELS[profile].desc,
-        sound: soundParam,
-        channelId: "medication-reminders",
+        sound: getNotificationSoundParam(profile, false),
+        channelId: channelId,
         priority: Notifications.AndroidNotificationPriority.HIGH,
       } as any,
       trigger: null,
     });
   } catch (e) {
-    console.warn("Sound preview playback error:", e);
+    console.warn("Notification preview playback error:", e);
   }
 }
