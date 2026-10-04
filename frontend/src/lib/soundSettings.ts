@@ -153,40 +153,14 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
     } catch (e) {}
   }
 
-  // 1. Direct in-app Audio playback using expo-av (if available)
-  try {
-    const asset = getSoundAsset(profile);
-    if (asset) {
-      const { Audio } = require("expo-av");
-      if (Audio && Audio.Sound) {
-        try {
-          await Audio.setAudioModeAsync({
-            playsInSilentModeIOS: true,
-            shouldDuckAndroid: true,
-          }).catch(() => {});
-        } catch (e) {}
-
-        const { sound } = await Audio.Sound.createAsync(asset, { shouldPlay: true, volume: 1.0 });
-        sound.setOnPlaybackStatusUpdate((status: any) => {
-          if (status?.isLoaded && status?.didJustFinish) {
-            sound.unloadAsync().catch(() => {});
-          }
-        });
-        return;
-      }
-    }
-  } catch (err) {
-    console.warn("In-app audio preview fallback:", err);
-  }
-
-  // 2. Fallback to notification status bar trigger
+  // Safe notification sound & status bar preview trigger without native expo-av crash risk
   try {
     const channelId = getChannelIdForCategory("medication", profile, false, vibrationEnabled);
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,
         body: SOUND_PROFILE_LABELS[profile].desc,
-        sound: "default",
+        sound: getNotificationSoundParam(profile),
         channelId: channelId,
         priority: Notifications.AndroidNotificationPriority.HIGH,
       } as any,

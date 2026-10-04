@@ -12,6 +12,7 @@ import * as Notifications from "expo-notifications";
 import { get, set } from "@/src/lib/store";
 import { enqueueWrite, flushQueue } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import { getSoundSettings, getChannelIdForCategory, getNotificationSoundParam } from "@/src/lib/soundSettings";
 import { ensureChannels } from "@/src/lib/notifications";
 

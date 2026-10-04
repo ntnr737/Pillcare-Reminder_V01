@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, Alert, Modal, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Linking, Alert, Modal, ActivityIndicator, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -537,6 +537,19 @@ export default function Support() {
             </View>
           </View>
         )}
+
+        {/* Android OS Version & App Build Footer */}
+        <View style={{ alignItems: "center", marginTop: 24, marginBottom: 16, gap: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <Ionicons name="logo-android" size={16} color={theme.accent} />
+            <Text style={{ fontSize: 12, fontWeight: "700", color: theme.textPrimary }}>
+              Android OS {Platform.OS === "android" ? `v${Platform.Version}` : "Supported"} (Target API 35)
+            </Text>
+          </View>
+          <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "500" }}>
+            PillCare App v1.0.71 (Build 71) • Release Build
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Emergency Modal */}
