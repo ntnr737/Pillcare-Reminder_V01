@@ -27,18 +27,7 @@ const CATEGORIES: Array<{ key: SoundCategory; title: string; subtitle: string; i
   { key: "yoga", title: "Yoga & Wellness", subtitle: "Daily wellness flows & stretch exercises", icon: "body-outline", defaultColor: "#d97706" },
 ];
 
-const PROFILES: SoundProfile[] = [
-  "pillcare_reminder",
-  "pillcare_urgent",
-  "pillcare_wellness",
-  "chime",
-  "water_drop",
-  "gentle",
-  "pulse",
-  "urgent",
-  "default",
-  "mute",
-];
+const PROFILES: SoundProfile[] = ["chime", "gentle", "urgent", "water_drop", "default", "mute"];
 
 export default function NotificationSettingsScreen() {
   const { theme, isDark } = useTheme();
@@ -122,20 +111,20 @@ export default function NotificationSettingsScreen() {
     const updated: SoundSettings = {
       ...settings,
       categorySounds: {
-        medication: "pillcare_reminder",
-        water: "water_drop",
-        appointment: "pillcare_wellness",
-        refill: "pillcare_urgent",
-        yoga: "pillcare_wellness",
-        broadcast: "pillcare_reminder",
+        medication: "chime",
+        water: "chime",
+        appointment: "chime",
+        refill: "chime",
+        yoga: "chime",
+        broadcast: "chime",
       },
     };
     setSettings(updated);
     await saveSoundSettings(updated);
     await ensureChannels();
     await resyncReminders();
-    await playSoundPreview("pillcare_reminder");
-    Alert.alert("Signature Tones Activated", "⭐ PillCare Signature Chimes have been set as the primary recall sound across all categories!");
+    await playSoundPreview("chime");
+    Alert.alert("Default Signature Sound Set", "🔔 Sound 1 — Medical Chime is now active as the default signature tone across all reminders!");
   };
 
   const handleSendTestNotification = async (category: SoundCategory) => {
@@ -211,26 +200,26 @@ export default function NotificationSettingsScreen() {
               <Ionicons name="sparkles" size={22} color="#fff" />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[s.bannerTitle, { color: theme.textPrimary, fontSize: 15 }]}>⭐ PillCare Signature Chimes</Text>
+              <Text style={[s.bannerTitle, { color: theme.textPrimary, fontSize: 15 }]}>🔔 Default App Signature: Sound 1 (Medical Chime)</Text>
               <Text style={[s.bannerSub, { color: theme.textSecondary }]}>
-                Exclusive, harmonic 3-tone recall melody crafted for calm dose clarity & instant medical recognition.
+                Soft, peaceful 3-tone ascending chime selected for medical dose clarity & calm recall.
               </Text>
             </View>
           </View>
           <View style={{ flexDirection: "row", gap: 8, marginTop: 12 }}>
             <TouchableOpacity
               style={[s.sigActionBtn, { backgroundColor: "#6366f1" }]}
-              onPress={() => handleTestPreview("pillcare_reminder")}
+              onPress={() => handleTestPreview("chime")}
             >
               <Ionicons name="play-circle-outline" size={16} color="#fff" />
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 11 }}>Listen Signature Tone</Text>
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 11 }}>Listen Sound 1 (Chime)</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[s.sigActionBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", borderWidth: 1, borderColor: "#6366f1" }]}
               onPress={handleApplySignatureToAll}
             >
               <Ionicons name="checkmark-done" size={14} color={theme.accent} />
-              <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 11 }}>Activate Signature Package</Text>
+              <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 11 }}>Set Default for All</Text>
             </TouchableOpacity>
           </View>
         </View>

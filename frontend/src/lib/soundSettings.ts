@@ -13,12 +13,8 @@ export type SoundCategory =
   | "broadcast";
 
 export type SoundProfile =
-  | "pillcare_reminder"
-  | "pillcare_urgent"
-  | "pillcare_wellness"
   | "chime"
   | "gentle"
-  | "pulse"
   | "urgent"
   | "water_drop"
   | "default"
@@ -34,26 +30,22 @@ export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
   masterMute: false,
   vibrationEnabled: true,
   categorySounds: {
-    medication: "pillcare_reminder",
-    water: "water_drop",
-    appointment: "pillcare_wellness",
-    refill: "pillcare_urgent",
-    yoga: "pillcare_wellness",
-    broadcast: "pillcare_reminder",
+    medication: "chime",
+    water: "chime",
+    appointment: "chime",
+    refill: "chime",
+    yoga: "chime",
+    broadcast: "chime",
   },
 };
 
 export const SOUND_PROFILE_LABELS: Record<SoundProfile, { label: string; desc: string; icon: string; isSignature?: boolean }> = {
-  pillcare_reminder: { label: "⭐ PillCare Signature", desc: "Exclusive 3-tone harmonic chime for medical clarity", icon: "sparkles-outline", isSignature: true },
-  pillcare_urgent: { label: "🚨 Signature Urgent", desc: "High priority double-pulse for critical alerts & refills", icon: "warning-outline", isSignature: true },
-  pillcare_wellness: { label: "🍃 Signature Zen", desc: "Calm, acoustic ambient chime for hydration & yoga", icon: "leaf-outline", isSignature: true },
-  chime: { label: "Medical Chime", desc: "Clear, gentle 3-tone chime for doses", icon: "medical-outline" },
-  gentle: { label: "Gentle Bell", desc: "Soft ambient bell for calm reminders", icon: "notifications-outline" },
-  pulse: { label: "Digital Pulse", desc: "Rhythmic pulse for active alerts", icon: "pulse-outline" },
-  water_drop: { label: "Water Drop", desc: "Refreshing fluid drop tone", icon: "water-outline" },
-  urgent: { label: "High Alert", desc: "Urgent double-beep for low refills", icon: "alert-circle-outline" },
-  default: { label: "System Default", desc: "Standard device notification sound", icon: "phone-portrait-outline" },
-  mute: { label: "Muted / Silent", desc: "Visual banner only, no sound", icon: "volume-mute-outline" },
+  chime: { label: "🔔 Medical Chime (Default Signature)", desc: "Soft, peaceful 3-tone ascending chime for dose clarity", icon: "sparkles-outline", isSignature: true },
+  gentle: { label: "🌿 Gentle Bell", desc: "Soothing acoustic ambient bell tone", icon: "notifications-outline" },
+  urgent: { label: "⚡ High Alert Pulse", desc: "Clear, distinct double-beep alert", icon: "alert-circle-outline" },
+  water_drop: { label: "💧 Water Drop", desc: "Refreshing fluid drop tone", icon: "water-outline" },
+  default: { label: "📱 Phone Default Ringtone", desc: "Standard device notification sound from phone settings", icon: "phone-portrait-outline" },
+  mute: { label: "🔇 Muted / Silent", desc: "Visual banner only, no sound", icon: "volume-mute-outline" },
 };
 
 /**
