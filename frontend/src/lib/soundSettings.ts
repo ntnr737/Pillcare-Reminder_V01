@@ -1,6 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
-import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 
 export const SOUND_SETTINGS_KEY = "pc_sound_settings_v1";
@@ -50,30 +49,6 @@ export const SOUND_PROFILE_LABELS: Record<SoundProfile, { label: string; desc: s
   urgent: { label: "High Alert", desc: "Urgent double-beep for low refills & critical doses", icon: "warning-outline" },
   mute: { label: "Muted / Silent", desc: "Visual banner only, no sound", icon: "volume-mute-outline" },
 };
-
-/**
- * Lazy asset loader for audio previews to prevent module initialization crashes
- */
-function getSoundAsset(profile: SoundProfile): any {
-  try {
-    switch (profile) {
-      case "chime":
-        return require("../../assets/sounds/chime.wav");
-      case "water_drop":
-        return require("../../assets/sounds/water_drop.wav");
-      case "gentle":
-        return require("../../assets/sounds/gentle.wav");
-      case "pulse":
-        return require("../../assets/sounds/pulse.wav");
-      case "urgent":
-        return require("../../assets/sounds/urgent.wav");
-      default:
-        return null;
-    }
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Fetch sound settings from AsyncStorage with fallback to defaults.
@@ -130,32 +105,18 @@ export function getChannelIdForCategory(
   if (masterMute || profile === "mute") {
     return "pc_silent";
   }
-  const vibSuffix = vibrationEnabled ? "v1" : "v0";
-  return `pc_${category}_${profile}_${vibSuffix}`;
+  return `pc_${category}_${profile}_v1`;
 }
 
 /**
  * Trigger live audio sound preview directly in app for user testing.
  */
-export async function playSoundPreview(profile: SoundProfile, vibrationEnabled = true): Promise<void> {
+export async function playSoundPreview(profile: SoundProfile): Promise<void> {
   if (profile === "mute") return;
-
-  // STRICT VIBRATION ENFORCEMENT: Only trigger haptic feedback if vibrationEnabled is explicitly TRUE
-  if (vibrationEnabled === true) {
-    try {
-      if (profile === "urgent") {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      } else if (profile === "water_drop" || profile === "gentle") {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } else {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (e) {}
-  }
 
   // Safe notification sound & status bar preview trigger without native expo-av crash risk
   try {
-    const channelId = getChannelIdForCategory("medication", profile, false, vibrationEnabled);
+    const channelId = getChannelIdForCategory("medication", profile, false, true);
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,

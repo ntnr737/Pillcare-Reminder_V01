@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -10,6 +10,7 @@ import {
   getSoundSettings,
   saveSoundSettings,
   playSoundPreview,
+  getChannelIdForCategory,
   SoundCategory,
   SoundProfile,
   SoundSettings,
@@ -67,13 +68,6 @@ export default function NotificationSettingsScreen() {
     }
   };
 
-  const updateVibration = async (val: boolean) => {
-    const updated = { ...settings, vibrationEnabled: val };
-    setSettings(updated);
-    await saveSoundSettings(updated);
-    await ensureChannels();
-  };
-
   const updateCategorySound = async (category: SoundCategory, profile: SoundProfile) => {
     const updated = {
       ...settings,
@@ -89,7 +83,28 @@ export default function NotificationSettingsScreen() {
   };
 
   const handleTestPreview = async (profile: SoundProfile) => {
-    await playSoundPreview(profile, settings.vibrationEnabled);
+    await playSoundPreview(profile);
+  };
+
+  const handleOpenDeviceChannelSettings = async (category: SoundCategory) => {
+    try {
+      await ensureChannels();
+      const currentProfile = settings.categorySounds[category] || "default";
+      const channelId = getChannelIdForCategory(category, currentProfile, false, true);
+      if (Platform.OS === "android") {
+        const intentUrl = `intent:#Intent;action=android.settings.CHANNEL_NOTIFICATION_SETTINGS;S.android.provider.extra.APP_PACKAGE=com.pillcare.reminder;S.android.provider.extra.CHANNEL_ID=${channelId};end`;
+        const canOpen = await Linking.canOpenURL(intentUrl).catch(() => false);
+        if (canOpen) {
+          await Linking.openURL(intentUrl);
+        } else {
+          await Linking.openSettings();
+        }
+      } else {
+        await Linking.openSettings();
+      }
+    } catch (e: any) {
+      await Linking.openSettings().catch(() => {});
+    }
   };
 
   const handleSendTestNotification = async (category: SoundCategory) => {
@@ -173,26 +188,6 @@ export default function NotificationSettingsScreen() {
           </View>
         </View>
 
-        {/* Global Controls Section */}
-        <Text style={[s.secL, { color: theme.accent }]}>GLOBAL ALERT PREFERENCES</Text>
-        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
-          <View style={s.rowBetween}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-              <Ionicons name="hardware-chip-outline" size={20} color={theme.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={[s.cT, { color: theme.textPrimary }]}>Haptic Vibration</Text>
-                <Text style={[s.cS, { color: theme.textSecondary }]}>Vibrate on incoming notification alerts</Text>
-              </View>
-            </View>
-            <Switch
-              value={settings.vibrationEnabled}
-              onValueChange={updateVibration}
-              trackColor={{ false: theme.surfaceBorder, true: theme.accent }}
-              thumbColor="#fff"
-            />
-          </View>
-        </View>
-
         {/* Category Profiles Section */}
         <Text style={[s.secL, { color: theme.accent }]}>CATEGORY RECALL SOUND PROFILES</Text>
 
@@ -243,6 +238,18 @@ export default function NotificationSettingsScreen() {
                   <Text style={[s.previewBtnText, { color: theme.accent }]}>Play Chime</Text>
                 </TouchableOpacity>
               </View>
+
+              {/* Choose Phone Available Ringtone Button */}
+              <TouchableOpacity
+                style={[s.deviceRingBtn, { backgroundColor: isDark ? "rgba(79,70,229,0.18)" : "rgba(79,70,229,0.07)", borderColor: "rgba(79,70,229,0.3)" }]}
+                onPress={() => handleOpenDeviceChannelSettings(cat.key)}
+              >
+                <Ionicons name="phone-portrait-outline" size={15} color={theme.accent} />
+                <Text style={[s.deviceRingBtnText, { color: theme.accent }]}>
+                  Choose from Phone Ringtones (Device Sound Settings)
+                </Text>
+                <Ionicons name="open-outline" size={13} color={theme.accent} />
+              </TouchableOpacity>
 
               {/* Sound Profile Selector Chips */}
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chipRow}>
@@ -335,6 +342,22 @@ const s = StyleSheet.create({
   },
   activeProfileName: { fontSize: 11, fontWeight: "600" },
   previewBtnText: { fontSize: 10, fontWeight: "700" },
+  deviceRingBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 2,
+    gap: 6,
+  },
+  deviceRingBtnText: {
+    fontSize: 11,
+    fontWeight: "700",
+    flex: 1,
+  },
   chipRow: { gap: 6, paddingTop: 2 },
   profileChip: {
     flexDirection: "row",
