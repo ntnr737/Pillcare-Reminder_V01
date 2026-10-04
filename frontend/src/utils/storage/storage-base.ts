@@ -23,9 +23,8 @@ export abstract class StorageBase {
     if (raw === null) return fallback;
     try {
       return JSON.parse(raw) as Fallback;
-    } catch (e) {
-      this.warn("retrieve", "parse error", e);
-      return fallback;
+    } catch {
+      return (raw as unknown) as Fallback;
     }
   }
 
