@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch, Alert } f
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as Notifications from "expo-notifications";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
 import {
@@ -15,7 +16,7 @@ import {
   SOUND_PROFILE_LABELS,
   DEFAULT_SOUND_SETTINGS,
 } from "@/src/lib/soundSettings";
-import { sendTestNotificationNow, ensureChannels } from "@/src/lib/notifications";
+import { sendTestNotificationNow, ensureChannels, requestNotificationPermission, resyncReminders } from "@/src/lib/notifications";
 
 const CATEGORIES: Array<{ key: SoundCategory; title: string; subtitle: string; icon: string; defaultColor: string }> = [
   { key: "medication", title: "Medication Reminders", subtitle: "Scheduled dose alerts & pill reminders", icon: "medical-outline", defaultColor: "#4f46e5" },
@@ -35,19 +36,43 @@ export default function NotificationSettingsScreen() {
   const [settings, setSettings] = useState<SoundSettings>(DEFAULT_SOUND_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [testingCategory, setTestingCategory] = useState<SoundCategory | null>(null);
+  const [permissionGranted, setPermissionGranted] = useState<boolean | null>(null);
+
+  const checkPermissions = async () => {
+    try {
+      const res = await Notifications.getPermissionsAsync();
+      setPermissionGranted(res.status === "granted");
+    } catch {
+      setPermissionGranted(false);
+    }
+  };
 
   useEffect(() => {
     getSoundSettings().then((s) => {
       setSettings(s);
       setLoading(false);
     });
+    checkPermissions();
   }, []);
+
+  const handleGrantPermission = async () => {
+    const granted = await requestNotificationPermission();
+    setPermissionGranted(granted);
+    if (granted) {
+      await ensureChannels();
+      await resyncReminders();
+      Alert.alert("Notifications Enabled", "PillCare notifications and alert chimes are now fully active!");
+    } else {
+      Alert.alert("Permission Required", "Please allow notification permissions in your Android settings to receive dose alerts.");
+    }
+  };
 
   const updateMasterMute = async (val: boolean) => {
     const updated = { ...settings, masterMute: val };
     setSettings(updated);
     await saveSoundSettings(updated);
     await ensureChannels();
+    await resyncReminders();
   };
 
   const updateVibration = async (val: boolean) => {
@@ -68,6 +93,7 @@ export default function NotificationSettingsScreen() {
     setSettings(updated);
     await saveSoundSettings(updated);
     await ensureChannels();
+    await resyncReminders();
   };
 
   const handleTestPreview = async (profile: SoundProfile) => {
@@ -84,11 +110,12 @@ export default function NotificationSettingsScreen() {
         category
       );
       Alert.alert(
-        "Notification Sent",
-        "Check your status bar notification pop-up to hear the alert tone!"
+        "Test Alert Dispatched",
+        "Check your device status bar for the PillCare test pop-up alert & sound!"
       );
-    } catch (e) {
-      Alert.alert("Error", "Could not dispatch test notification.");
+    } catch (e: any) {
+      Alert.alert("Permission Required", e?.message || "Could not dispatch test notification. Please ensure notification permissions are granted.");
+      await checkPermissions();
     } finally {
       setTestingCategory(null);
     }
@@ -116,6 +143,29 @@ export default function NotificationSettingsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+        {/* OS Notification Permission Warning Banner */}
+        {permissionGranted === false && (
+          <View style={[s.bannerCard, { backgroundColor: "rgba(220, 38, 38, 0.12)", borderColor: "rgba(220, 38, 38, 0.4)", marginBottom: 14 }]}>
+            <View style={s.bannerRow}>
+              <View style={[s.iconBox, { backgroundColor: "#dc2626" }]}>
+                <Ionicons name="alert-circle" size={22} color="#fff" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.bannerTitle, { color: "#f87171" }]}>OS Notifications Disabled</Text>
+                <Text style={[s.bannerSub, { color: theme.textSecondary, marginBottom: 8 }]}>
+                  PillCare requires device notification permission to trigger medication reminders & sound alerts.
+                </Text>
+                <TouchableOpacity
+                  style={{ backgroundColor: "#dc2626", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, alignSelf: "flex-start" }}
+                  onPress={handleGrantPermission}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 13 }}>Enable Notifications</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Banner */}
         <View style={[s.bannerCard, { backgroundColor: isDark ? "rgba(79,70,229,0.15)" : "rgba(79,70,229,0.08)", borderColor: "rgba(79,70,229,0.3)" }]}>
           <View style={s.bannerRow}>

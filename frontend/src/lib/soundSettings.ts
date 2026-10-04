@@ -1,9 +1,3 @@
-/**
- * soundSettings.ts
- * Core sound profile management and preferences for PillCare Notifications.
- * Supports distinct category sounds (Medications, Water, Appointments, Refills, Yoga)
- * and in-app sound previews.
- */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import * as Haptics from "expo-haptics";
@@ -90,7 +84,7 @@ export async function saveSoundSettings(settings: SoundSettings): Promise<void> 
 }
 
 /**
- * Map sound profile to Expo Notification sound parameter
+ * Map sound profile to Expo Notification sound parameter (Android raw resource name or iOS sound file string)
  */
 export function getNotificationSoundParam(profile: SoundProfile, masterMute: boolean): string | boolean | undefined {
   if (masterMute || profile === "mute") {
@@ -99,8 +93,7 @@ export function getNotificationSoundParam(profile: SoundProfile, masterMute: boo
   if (profile === "default") {
     return "default";
   }
-  // Android raw resource name or iOS sound file string fallback
-  return "default";
+  return profile;
 }
 
 /**
@@ -133,7 +126,8 @@ export function getChannelIdForCategory(category: SoundCategory, profile: SoundP
 export async function playSoundPreview(profile: SoundProfile, vibrationEnabled = true): Promise<void> {
   if (profile === "mute") return;
 
-  if (vibrationEnabled) {
+  // STRICT VIBRATION ENFORCEMENT: Only trigger haptic feedback if vibrationEnabled is explicitly TRUE
+  if (vibrationEnabled === true) {
     if (profile === "urgent") {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
     } else if (profile === "water_drop" || profile === "gentle") {
@@ -143,13 +137,15 @@ export async function playSoundPreview(profile: SoundProfile, vibrationEnabled =
     }
   }
 
-  // Use instant notification trigger to play device system sound chime preview
+  // Instant notification trigger using custom Android channel sound
   try {
+    const soundParam = getNotificationSoundParam(profile, false);
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `Sound Preview: ${SOUND_PROFILE_LABELS[profile].label}`,
         body: SOUND_PROFILE_LABELS[profile].desc,
-        sound: "default",
+        sound: soundParam,
+        channelId: "medication-reminders",
         priority: Notifications.AndroidNotificationPriority.HIGH,
       } as any,
       trigger: null,

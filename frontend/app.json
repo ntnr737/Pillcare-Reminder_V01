@@ -2,7 +2,7 @@
   "expo": {
     "name": "PillCare Reminder",
     "slug": "pillcare-reminder",
-    "version": "1.0.62",
+    "version": "1.0.63",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "pillcare",
@@ -36,7 +36,7 @@
         "android.permission.SYSTEM_ALERT_WINDOW"
       ],
       "jsEngine": "hermes",
-      "versionCode": 62
+      "versionCode": 63
     },
     "web": {
       "bundler": "metro",

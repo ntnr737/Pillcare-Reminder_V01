@@ -150,12 +150,12 @@ export default function Appointments() {
               body: `Dr. ${newAppt.doctor_name}${newAppt.specialty ? " — " + newAppt.specialty : ""} at ${newAppt.time}`,
               data: { appointmentId: targetId },
               sound: "default",
+              channelId: "appointment-reminders",
               categoryIdentifier: "medication-reminder-category",
-            },
+            } as any,
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: notifTime,
-              channelId: "medication-reminders",
             },
           });
         }
