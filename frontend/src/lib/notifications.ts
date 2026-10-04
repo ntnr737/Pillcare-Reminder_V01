@@ -131,32 +131,40 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
       const actionId = response.actionIdentifier;
       const data = response.notification.request.content.data || {};
 
-      if (actionId === "MARK_TAKEN" || actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+      if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
+        if (onNavigate) {
+          onNavigate("/(tabs)/today");
+        }
+        return;
+      }
+
+      if (actionId === "MARK_TAKEN") {
         if (data.medicationId) {
           const medId = String(data.medicationId);
           const schedTime = data.scheduledTime ? String(data.scheduledTime) : undefined;
           const nowStr = new Date().toISOString();
           const todayDate = nowStr.split("T")[0];
 
-          // 1. Mark local persistent taken registry immediately (offline-first, zero latency)
+          // 1. Mark local persistent taken registry immediately
           if (data.doseId) {
             await recordTaken(String(data.doseId), todayDate, nowStr);
           }
           await recordTaken(medId, todayDate, nowStr);
 
-          // 2. Call backend endpoint to mark dose as taken and update stock in database
+          // 2. Call backend endpoint to mark dose as taken
           try {
             await api.markTakenByMedication(medId, schedTime, nowStr);
           } catch (err) {
-            console.warn("Server mark taken failed, enqueued locally:", err);
+            const { enqueueWrite } = require("./sync");
+            await enqueueWrite("doseStatus", { medication_id: medId, scheduled_time: schedTime, taken_at: nowStr }).catch(() => {});
           }
 
-          // 3. Update cached doses array in AsyncStorage so UI updates instantly when app opens
+          // 3. Update cached doses array specifically for medId AND scheduledTime
           const key = K.doses(todayDate);
           const cached = (await get<any[]>(key)) || [];
           if (cached.length) {
             const updated = cached.map((d: any) =>
-              d.medication_id === medId || d.id === medId || (d.medication_id === medId && d.scheduled_time === schedTime)
+              (d.medication_id === medId || d.id === medId) && (!schedTime || d.scheduled_time === schedTime)
                 ? { ...d, status: "taken", taken_at: nowStr }
                 : d
             );
@@ -412,8 +420,20 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
       }
     }
 
+    // Cancel ONLY medication reminders, preserving appointments, water, snooze & streak-saver timers
+    try {
+      const allScheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const item of allScheduled) {
+        const cat = item.content.categoryIdentifier;
+        const data = item.content.data;
+        if (cat === MEDICATION_CATEGORY || (data && data.medicationId) || item.identifier.startsWith("med_")) {
+          await Notifications.cancelScheduledNotificationAsync(item.identifier);
+        }
+      }
+    } catch (err) {
+      console.warn("Targeted medication cancellation fallback:", err);
+    }
     const activeMeds = (meds || []).filter((m: any) => m.active !== false);
-    await Notifications.cancelAllScheduledNotificationsAsync();
     let scheduled = 0;
     const now = new Date();
 

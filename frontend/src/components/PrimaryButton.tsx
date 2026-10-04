@@ -22,6 +22,9 @@ export function PrimaryButton({ label, onPress, testID, variant = "primary", loa
       onPress={onPress}
       disabled={disabled || loading}
       activeOpacity={0.85}
+      accessibilityRole="button"
+      accessibilityLabel={loading ? "Loading, please wait" : label}
+      accessibilityState={{ disabled: Boolean(disabled || loading) }}
       style={[styles.btn, { backgroundColor: bg, borderColor: border, opacity: disabled ? 0.5 : 1 }, style]}
     >
       {loading ? (

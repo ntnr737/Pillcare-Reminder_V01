@@ -15,10 +15,16 @@ API = f"{BASE_URL}/api"
 @pytest.fixture(scope="session")
 def s():
     sess = requests.Session()
-    sess.headers.update({
-        "Content-Type": "application/json",
-        "Authorization": "Bearer demo_token_monkey_test"
-    })
+    sess.headers.update({"Content-Type": "application/json"})
+    try:
+        r = sess.post(f"{API}/auth/guest", json={}, timeout=10)
+        if r.status_code == 200:
+            token = r.json().get("token")
+            sess.headers["Authorization"] = f"Bearer {token}"
+            return sess
+    except Exception:
+        pass
+    sess.headers["Authorization"] = "Bearer demo_token_monkey_test"
     return sess
 
 

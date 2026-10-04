@@ -18,10 +18,14 @@ export type EventName = string;
 /**
  * Universal event tracker: Dispatches events to Firebase GA4, GTM DataLayer, and PillCare Telemetry Backend.
  */
+import { getStoredUser, isGuestUser } from "./auth";
+
 export async function trackEvent(eventName: string, params: AnalyticsEventParams = {}) {
   try {
+    const user = await getStoredUser().catch(() => null);
     const enrichedParams = {
       ...params,
+      is_guest: params.is_guest !== undefined ? params.is_guest : isGuestUser(user),
       platform: Platform.OS,
       timestamp: new Date().toISOString(),
     };
@@ -57,11 +61,12 @@ export function trackScreenView(screenName: string, previousScreen?: string) {
 /**
  * Track Specific Medication Doses
  */
-export function trackDoseAction(medName: string, status: "taken" | "skipped", timeSlot?: string) {
+export function trackDoseAction(medName: string, status: "taken" | "skipped", timeSlot?: string, isQueued: boolean = false) {
   trackEvent("dose_action", {
     category: "treatment",
     medication_name: medName,
     status,
+    sync_status: isQueued ? "queued" : "confirmed",
     time_slot: timeSlot || "scheduled",
   });
 }
@@ -69,11 +74,12 @@ export function trackDoseAction(medName: string, status: "taken" | "skipped", ti
 /**
  * Track Hydration Logs
  */
-export function trackHydrationLog(amountMl: number, totalMl: number) {
+export function trackHydrationLog(amountMl: number, totalMl: number, isQueued: boolean = false) {
   trackEvent("hydration_logged", {
     category: "wellness",
     amount_ml: amountMl,
     total_logged_ml: totalMl,
+    sync_status: isQueued ? "queued" : "confirmed",
   });
 }
 

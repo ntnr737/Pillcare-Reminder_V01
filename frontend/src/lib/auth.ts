@@ -33,6 +33,7 @@ export type PillcareUser = {
   email: string;
   name: string;
   picture?: string | null;
+  is_guest?: boolean;
 };
 
 export async function signInWithGoogle(): Promise<PillcareUser> {
@@ -62,55 +63,84 @@ export async function signInWithGoogle(): Promise<PillcareUser> {
     }
   }
 
-  // Construct a valid Google user from Native or Web Google Auth info
-  const googleUser: PillcareUser = {
-    id: googleUserData?.id ? `google_${googleUserData.id}` : `google_${Date.now()}`,
-    email: googleUserData?.email || "patient.google@pillcare.app",
-    name: googleUserData?.name || googleUserData?.givenName || "Google Patient",
-    picture: googleUserData?.photo || null,
-  };
-
-  if (idToken) {
-    try {
-      const res = await fetch(`${BASE}/api/auth/google`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id_token: idToken }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.user) {
-          await storage.secureSet(TOKEN_KEY, data.token || `google_token_${Date.now()}`);
-          await storage.secureSet(USER_KEY, JSON.stringify(data.user));
-          await set(K.profile, { nickname: data.user.nickname || data.user.name || "User", ...data.user }).catch(() => {});
-          return data.user as PillcareUser;
-        }
-      }
-    } catch (err) {
-      console.warn("Backend auth fetch failed — saving Google user profile locally:", err);
-    }
+  if (!idToken) {
+    throw new Error("Google Sign-In failed to return an ID token. Please try again.");
   }
 
-  // Save the Google user profile locally so the user is authenticated with Google
-  const token = `google_token_${Date.now()}`;
-  await storage.secureSet(TOKEN_KEY, token);
-  await storage.secureSet(USER_KEY, JSON.stringify(googleUser));
-  await set(K.profile, { nickname: googleUser.name, email: googleUser.email, picture: googleUser.picture }).catch(() => {});
+  const existingGuestToken = await getStoredToken();
+  const res = await fetch(`${BASE}/api/auth/google`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(existingGuestToken ? { Authorization: `Bearer ${existingGuestToken}` } : {}),
+    },
+    body: JSON.stringify({
+      id_token: idToken,
+      guest_token: existingGuestToken || undefined,
+    }),
+  });
 
-  return googleUser;
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(`Google sign-in failed (${res.status}): ${errorText || "Server error"}`);
+  }
+
+  const data = await res.json();
+  if (!data.user || !data.token) {
+    throw new Error("Invalid response from Google authentication server.");
+  }
+
+  const user: PillcareUser = {
+    id: data.user.id || data.user._id,
+    email: data.user.email || googleUserData?.email || "",
+    name: data.user.name || googleUserData?.name || "PillCare User",
+    picture: data.user.picture || googleUserData?.photo || null,
+    is_guest: false,
+  };
+
+  await storage.secureSet(TOKEN_KEY, data.token);
+  await storage.secureSet(USER_KEY, JSON.stringify(user));
+  await set(K.profile, { nickname: user.name, email: user.email, picture: user.picture, is_guest: false }).catch(() => {});
+  return user;
 }
 
-export async function signInAsGuest(name: string = "PillCare User"): Promise<PillcareUser> {
+export async function signInAsGuest(name: string = "PillCare Guest"): Promise<PillcareUser> {
+  try {
+    const res = await fetch(`${BASE}/api/auth/guest`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token && data.user) {
+        const guestUser: PillcareUser = {
+          id: data.user.id,
+          email: data.user.email,
+          name: data.user.name || name,
+          is_guest: true,
+        };
+        await storage.secureSet(TOKEN_KEY, data.token);
+        await storage.secureSet(USER_KEY, JSON.stringify(guestUser));
+        await set(K.profile, { nickname: guestUser.name, email: guestUser.email, is_guest: true }).catch(() => {});
+        return guestUser;
+      }
+    }
+  } catch (err) {
+    console.warn("Server guest creation offline — generating local guest session:", err);
+  }
+
+  // Fallback for offline guest session creation
+  const guestId = `guest_${Math.random().toString(36).substring(2, 10)}`;
   const guestUser: PillcareUser = {
-    id: "user_" + Math.random().toString(36).substring(2, 9),
-    email: "demo@pillcare.app",
+    id: guestId,
+    email: `${guestId}@guest.pillcare.app`,
     name: name,
+    is_guest: true,
   };
-  const token = "demo_token_" + Date.now();
+  const token = `guest_offline_${Date.now()}`;
   await storage.secureSet(TOKEN_KEY, token);
   await storage.secureSet(USER_KEY, JSON.stringify(guestUser));
-  await set(K.profile, { nickname: guestUser.name, email: guestUser.email }).catch(() => {});
+  await set(K.profile, { nickname: guestUser.name, email: guestUser.email, is_guest: true }).catch(() => {});
   return guestUser;
 }
 
@@ -122,7 +152,8 @@ export async function getStoredUser(): Promise<PillcareUser | null> {
   const raw = await storage.secureGet(USER_KEY, null);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as PillcareUser;
+    const user = typeof raw === "string" ? JSON.parse(raw) : raw;
+    return user as PillcareUser;
   } catch {
     return null;
   }
@@ -130,14 +161,8 @@ export async function getStoredUser(): Promise<PillcareUser | null> {
 
 export function isGuestUser(user?: PillcareUser | null): boolean {
   if (!user) return true;
-  if (!user.email) return true;
-  if (
-    user.email === "demo@pillcare.app" ||
-    user.email === "patient.google@pillcare.app" && user.id.startsWith("user_") ||
-    user.id?.startsWith("user_")
-  ) {
-    return true;
-  }
+  if (user.is_guest === true) return true;
+  if (user.id?.startsWith("guest_") || user.email?.includes("@guest.pillcare.app")) return true;
   return false;
 }
 
@@ -146,8 +171,15 @@ export async function signOut(): Promise<void> {
   await storage.secureRemove(USER_KEY);
   await remove(K.profile).catch(() => {});
   try {
+    const { clearAllCachesOnSignOut } = require("./sync");
+    await clearAllCachesOnSignOut();
+  } catch (e) {}
+  try {
+    const { cancelAllScheduledNotifications } = require("./notifications");
+    await cancelAllScheduledNotifications();
+  } catch (e) {}
+  try {
     await GoogleSignin.signOut();
-  } catch {
-  }
+  } catch {}
 }
 

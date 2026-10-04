@@ -68,17 +68,28 @@ export async function mergeDoses(serverDoses: any[], date: string): Promise<any[
 
 // ─── Write queue ─────────────────────────────────────────────────────────────
 
+import { getStoredUser } from "./auth";
+
 type WriteItem = {
   id: string;
   ts: number;
   type: string;
   payload: any;
+  owner_id?: string;
 };
 
 async function getQueue(): Promise<WriteItem[]> {
   try {
     const raw = await AsyncStorage.getItem(QUEUE_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const items: WriteItem[] = JSON.parse(raw);
+    // 48-hour expiration filter
+    const now = Date.now();
+    const filtered = items.filter(i => (now - i.ts) < 48 * 60 * 60 * 1000);
+    if (filtered.length !== items.length) {
+      await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(filtered));
+    }
+    return filtered;
   } catch { return []; }
 }
 
@@ -89,7 +100,9 @@ async function removeFromQueue(id: string): Promise<void> {
   } catch {}
 }
 
-export async function enqueueWrite(type: string, payload: any): Promise<string> {
+export async function enqueueWrite(type: string, payload: any, ownerId?: string): Promise<string> {
+  const currentUser = await getStoredUser();
+  const activeOwner = ownerId || currentUser?.id || "guest";
   const itemKey = payload?.id ? `${type}_${payload.id}` : null;
   const id = itemKey || `${Date.now()}_${Math.random()}`;
   try {
@@ -97,22 +110,26 @@ export async function enqueueWrite(type: string, payload: any): Promise<string> 
     if (itemKey) {
       q = q.filter(i => i.id !== itemKey);
     }
-    q.push({ id, ts: Date.now(), type, payload });
+    q.push({ id, ts: Date.now(), type, payload, owner_id: activeOwner });
     await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(q));
   } catch {}
   return id;
 }
 
 /**
- * Flush all pending writes to the server.
- * Call this BEFORE fetching fresh data from server.
+ * Flush all pending writes for the active authenticated user to the server.
+ * Drop 4xx permanent failures to prevent queue blocking.
  */
 export async function flushQueue(): Promise<void> {
   if (syncing) return;
   syncing = true;
   try {
+    const currentUser = await getStoredUser();
+    const activeOwner = currentUser?.id || "guest";
     const queue = await getQueue();
-    for (const item of queue) {
+    const userQueue = queue.filter(item => !item.owner_id || item.owner_id === activeOwner);
+
+    for (const item of userQueue) {
       try {
         switch (item.type) {
           case "doseStatus":
@@ -150,13 +167,37 @@ export async function flushQueue(): Promise<void> {
             break;
         }
         await removeFromQueue(item.id);
-      } catch {
-        // Network still unavailable — keep in queue, retry next flush
-        break; // stop trying if network is down
+      } catch (err: any) {
+        const errMsg = err?.message || "";
+        // Drop permanent 4xx failures to avoid blocking later queue entries
+        if (errMsg.includes("400") || errMsg.includes("404") || errMsg.includes("422")) {
+          console.warn(`Dropping unprocessable queued write (${item.id}):`, errMsg);
+          await removeFromQueue(item.id);
+        } else {
+          // Network offline / 5xx error — pause queue flush until next connectivity cycle
+          break;
+        }
       }
     }
   } finally {
     syncing = false;
+  }
+}
+
+/**
+ * Complete sign-out cleanup: Purge all local user caches, queue, and registries.
+ */
+export async function clearAllCachesOnSignOut(): Promise<void> {
+  try {
+    const allKeys = await AsyncStorage.getAllKeys();
+    const keysToRemove = allKeys.filter(k =>
+      k.startsWith("pc6_") ||
+      k.startsWith("pillcare_") ||
+      k.startsWith("@pillcare_")
+    );
+    await AsyncStorage.multiRemove(keysToRemove);
+  } catch (e) {
+    console.warn("Failed to clear local caches on sign-out:", e);
   }
 }
 

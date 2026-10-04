@@ -22,6 +22,12 @@ async function req<T>(path: string, opts: RequestInit = {}, timeoutMs = 7000): P
       signal: controller.signal,
       ...opts,
     });
+    if (res.status === 401) {
+      // Import signOut dynamically to prevent circular imports
+      const { signOut } = require("./auth");
+      signOut().catch(() => {});
+      throw new Error("Session expired. Please sign in again.");
+    }
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`API ${res.status}: ${text}`);

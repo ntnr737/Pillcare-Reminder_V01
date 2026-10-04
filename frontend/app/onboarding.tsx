@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity, Platform, ActivityIndicator } from "react-native";
+import { View, Text, TextInput, ScrollView, StyleSheet, TouchableOpacity, Platform, ActivityIndicator, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,6 +7,10 @@ import * as Location from "expo-location";
 import { api } from "@/src/lib/api";
 import { getStoredUser } from "@/src/lib/auth";
 import { set, K } from "@/src/lib/store";
+import { enqueueWrite } from "@/src/lib/sync";
+import { requestNotificationPermission, resyncReminders } from "@/src/lib/notifications";
+import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
+import { trackEvent } from "@/src/lib/analytics";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -14,13 +18,6 @@ const BG = "#161826", SF = "#232532", TX = "#e9e9ed",
 
 const GENDERS = ["Female", "Male", "Non-binary", "Prefer not to say"];
 const CY = new Date().getFullYear();
-
-const FEATURES = [
-  { icon: "notifications-outline", title: "Smart Reminders", body: "Sound alerts at your scheduled times, never missed." },
-  { icon: "people-outline", title: "Family Alerts", body: "Caregiver gets a WhatsApp summary if you miss a dose." },
-  { icon: "body-outline", title: "Yoga & Wellness", body: "Personalised yoga routine based on your medications." },
-  { icon: "bar-chart-outline", title: "Health Insights", body: "Weekly adherence charts and AI-powered daily tips." },
-];
 
 export default function Onboarding() {
   const router = useRouter();
@@ -34,17 +31,18 @@ export default function Onboarding() {
   const [cityState, setCityState] = useState("");
   const [locLoading, setLocLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [showAddMed, setShowAddMed] = useState(false);
+  const [addedMed, setAddedMed] = useState<string | null>(null);
   const TOTAL = 3;
 
-  // Pre-fill from Google account
   useEffect(() => {
+    trackEvent("onboarding_started", {}).catch(() => {});
     getStoredUser().then(u => {
       if (u?.name && !nickname) setNickname(u.name);
       if (u?.email && !email) setEmail(u.email);
     });
   }, []);
 
-  // Auto-detect location on step 0
   useEffect(() => {
     if (step === 0 && !city) fetchGPS();
   }, [step]);
@@ -64,6 +62,24 @@ export default function Onboarding() {
     finally { setLocLoading(false); }
   };
 
+  const handleMedicationAdded = async () => {
+    setShowAddMed(false);
+    setAddedMed("Medication added successfully");
+    trackEvent("first_medication_added", {}).catch(() => {});
+
+    // Request notification permission immediately
+    const granted = await requestNotificationPermission();
+    if (granted) {
+      await resyncReminders().catch(() => {});
+    } else {
+      Alert.alert(
+        "Notifications Disabled",
+        "Enable notifications in device settings to receive timely medication reminder alerts.",
+        [{ text: "OK" }]
+      );
+    }
+  };
+
   const submit = async () => {
     setSaving(true);
     try {
@@ -76,11 +92,23 @@ export default function Onboarding() {
         location_state: cityState.trim() || undefined,
         phone: phone.trim() || undefined,
       };
-      await api.upsertProfile(profile);
-      set(K.profile, profile);
+
+      // Local-first saving
+      await set(K.profile, profile);
+      try {
+        await api.upsertProfile(profile);
+      } catch (err) {
+        await enqueueWrite("profile", profile);
+      }
+
+      trackEvent("onboarding_completed", {}).catch(() => {});
       router.replace("/(tabs)/today");
-    } catch (e) { console.warn(e); }
-    finally { setSaving(false); }
+    } catch (e) {
+      console.warn(e);
+      router.replace("/(tabs)/today");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const canNext = step === 0 ? nickname.trim().length > 0 && yob.length === 4 : true;
@@ -96,7 +124,7 @@ export default function Onboarding() {
 
       <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-        {/* ── STEP 1: Tell us about you ── */}
+        {/* ── STEP 1: Profile ── */}
         {step === 0 && (
           <View>
             <Text style={s.stepTag}>Step 1 of 3</Text>
@@ -104,39 +132,63 @@ export default function Onboarding() {
             <Text style={s.sub}>We'll use this to personalise your reminders and care plan.</Text>
 
             <Text style={s.label}>Full name *</Text>
-            <TextInput value={nickname} onChangeText={setNickname}
-              placeholder="e.g. Nitin" placeholderTextColor={TM}
-              style={s.input} autoFocus />
-            <Text style={s.hint}>Pre-filled from your Google account — feel free to change.</Text>
+            <TextInput
+              value={nickname}
+              onChangeText={setNickname}
+              placeholder="e.g. Nitin"
+              placeholderTextColor={TM}
+              style={s.input}
+              accessibilityLabel="Full name"
+              testID="onboarding-name-input"
+              autoFocus
+            />
 
             <Text style={s.label}>Email</Text>
             <View style={[s.input, { flexDirection: "row", alignItems: "center" }]}>
-              <Text style={{ color: email ? TX : TM, fontSize: 15, flex: 1 }}>{email || "From your Google account"}</Text>
-              <Ionicons name="checkmark-circle" size={16} color={email ? A3 : "rgba(233,233,237,0.2)"} />
+              <Text style={{ color: email ? TX : TM, fontSize: 16, flex: 1 }}>{email || "From your Google account"}</Text>
+              <Ionicons name="checkmark-circle" size={18} color={email ? A3 : "rgba(233,233,237,0.2)"} />
             </View>
 
             <Text style={s.label}>Birth year *</Text>
-            <TextInput value={yob} onChangeText={v => setYob(v.replace(/[^0-9]/g, "").slice(0, 4))}
-              keyboardType="number-pad" placeholder="e.g. 1990" placeholderTextColor={TM}
-              style={s.input} />
+            <TextInput
+              value={yob}
+              onChangeText={v => setYob(v.replace(/[^0-9]/g, "").slice(0, 4))}
+              keyboardType="number-pad"
+              placeholder="e.g. 1990"
+              placeholderTextColor={TM}
+              style={s.input}
+              accessibilityLabel="Birth year"
+              testID="onboarding-yob-input"
+            />
             <Text style={s.hint}>Year only — we never ask for your full date of birth.</Text>
 
             <Text style={s.label}>Gender *</Text>
             <View style={s.chipRow}>
               {GENDERS.map(g => (
-                <TouchableOpacity key={g} onPress={() => setGender(g)} style={[s.chip, gender === g && s.chipOn]}>
+                <TouchableOpacity
+                  key={g}
+                  onPress={() => setGender(g)}
+                  style={[s.chip, gender === g && s.chipOn]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Select gender ${g}`}
+                  accessibilityState={{ selected: gender === g }}
+                >
                   <Text style={[s.chipTx, gender === g && s.chipTxOn]}>{g}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <Text style={s.hintSmall}>Required so we can tailor dosage reminders and health tips to you.</Text>
 
-            <Text style={s.label}>Phone <Text style={{ fontWeight: "400", fontStyle: "italic", color: TM }}>(optional)</Text></Text>
-            <TextInput value={phone} onChangeText={setPhone}
-              keyboardType="phone-pad" placeholder="+91 XXXXX XXXXX" placeholderTextColor={TM}
-              style={s.input} />
+            <Text style={s.label}>Phone (optional)</Text>
+            <TextInput
+              value={phone}
+              onChangeText={setPhone}
+              keyboardType="phone-pad"
+              placeholder="+91 XXXXX XXXXX"
+              placeholderTextColor={TM}
+              style={s.input}
+              accessibilityLabel="Phone number optional"
+            />
 
-            {/* Location — detected silently */}
             {city ? (
               <View style={s.locCard}>
                 <Ionicons name="location" size={16} color={A3} />
@@ -152,29 +204,37 @@ export default function Onboarding() {
           </View>
         )}
 
-        {/* ── STEP 2: Here's what PillCare offers ── */}
+        {/* ── STEP 2: Add First Medication ── */}
         {step === 1 && (
           <View>
             <Text style={s.stepTag}>Step 2 of 3</Text>
-            <Text style={s.h1}>Here's what{"\n"}PillCare offers</Text>
-            <Text style={s.sub}>Using the details you shared, we've set up a personalised care experience across four areas.</Text>
+            <Text style={s.h1}>Add your first{"\n"}medication</Text>
+            <Text style={s.sub}>Set up your primary medicine now so PillCare can schedule your reminder alerts.</Text>
 
-            <View style={{ gap: 10, marginTop: 8 }}>
-              {FEATURES.map(f => (
-                <View key={f.title} style={s.feCard}>
-                  <View style={s.feIco}><Ionicons name={f.icon as any} size={18} color={A3} /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.feTitle}>{f.title}</Text>
-                    <Text style={s.feBody}>{f.body}</Text>
-                  </View>
+            {addedMed ? (
+              <View style={[s.locCard, { backgroundColor: AB, borderColor: AC, padding: 16 }]}>
+                <Ionicons name="checkmark-circle" size={24} color={A3} />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 16, fontWeight: "700", color: TX }}>Medication Ready!</Text>
+                  <Text style={{ fontSize: 13, color: TM, marginTop: 2 }}>Reminder schedule has been generated.</Text>
                 </View>
-              ))}
-            </View>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={s.addMedBtn}
+                onPress={() => setShowAddMed(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Add first medication now"
+                testID="onboarding-add-med-btn"
+              >
+                <Ionicons name="add-circle-outline" size={24} color="#fff" />
+                <Text style={s.addMedBtnTx}>+ Add Medication Now</Text>
+              </TouchableOpacity>
+            )}
 
-            <View style={[s.locCard, { marginTop: 20 }]}>
-              <Ionicons name="lock-closed-outline" size={14} color={A3} />
-              <Text style={[s.hint, { marginTop: 0, flex: 1 }]}>Your data is safe and secure with us.</Text>
-            </View>
+            <TouchableOpacity style={{ marginTop: 20, alignItems: "center" }} onPress={() => setStep(2)}>
+              <Text style={{ fontSize: 14, color: A3, fontWeight: "600" }}>Skip for now →</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -195,7 +255,7 @@ export default function Onboarding() {
                 { icon: "call-outline", label: "Phone", value: phone || "Not set" },
               ].map(r => (
                 <View key={r.label} style={[s.feCard, { paddingVertical: 10 }]}>
-                  <View style={s.feIco}><Ionicons name={r.icon as any} size={16} color={A3} /></View>
+                  <View style={s.feIco}><Ionicons name={r.icon as any} size={18} color={A3} /></View>
                   <View style={{ flex: 1 }}>
                     <Text style={[s.hint, { marginTop: 0 }]}>{r.label}</Text>
                     <Text style={s.feTitle}>{r.value}</Text>
@@ -220,12 +280,24 @@ export default function Onboarding() {
               <Text style={s.btnTx}>Continue</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={[s.btn, { flex: 1 }]} onPress={submit} disabled={saving}>
+            <TouchableOpacity
+              style={[s.btn, { flex: 1 }]}
+              onPress={submit}
+              disabled={saving}
+              accessibilityLabel={saving ? "Saving profile, please wait" : "Get Started"}
+              accessibilityRole="button"
+            >
               {saving ? <ActivityIndicator color="#fff" /> : <Text style={s.btnTx}>Get Started →</Text>}
             </TouchableOpacity>
           )}
         </View>
       </View>
+
+      <AddMedicationSheet
+        visible={showAddMed}
+        onClose={() => setShowAddMed(false)}
+        onSaved={handleMedicationAdded}
+      />
     </SafeAreaView>
   );
 }
@@ -236,25 +308,25 @@ const s = StyleSheet.create({
   dot: { flex: 1, height: 4, borderRadius: 2, backgroundColor: "rgba(233,233,237,0.12)" },
   dotOn: { backgroundColor: AC },
   body: { padding: 24, paddingBottom: 32 },
-  stepTag: { fontSize: 11, color: A3, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 },
+  stepTag: { fontSize: 12, color: A3, fontWeight: "700", letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 },
   h1: { fontSize: 28, fontWeight: "700", color: TX, marginBottom: 8, letterSpacing: -0.5, lineHeight: 34 },
   sub: { fontSize: 14, color: TM, marginBottom: 20, lineHeight: 20 },
-  label: { fontSize: 13, color: TM, fontWeight: "600", marginTop: 16, marginBottom: 6 },
-  hint: { fontSize: 11, color: TM, marginTop: 4, fontStyle: "italic" },
-  hintSmall: { fontSize: 11, color: TM, marginTop: 6 },
-  input: { backgroundColor: SF, borderRadius: 12, padding: 14, color: TX, fontSize: 15, borderWidth: 1, borderColor: BD, minHeight: 50 },
+  label: { fontSize: 14, color: TX, fontWeight: "600", marginTop: 16, marginBottom: 6 },
+  hint: { fontSize: 12, color: TM, marginTop: 4, fontStyle: "italic" },
+  input: { backgroundColor: SF, borderRadius: 12, padding: 14, color: TX, fontSize: 16, borderWidth: 1, borderColor: BD, minHeight: 50 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
-  chip: { paddingHorizontal: 16, height: 38, borderRadius: 999, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" },
+  chip: { paddingHorizontal: 18, minHeight: 48, borderRadius: 24, borderWidth: 1, borderColor: BD, alignItems: "center", justifyContent: "center" },
   chipOn: { backgroundColor: AB, borderColor: AC },
-  chipTx: { color: TM, fontWeight: "600", fontSize: 13 },
+  chipTx: { color: TM, fontWeight: "600", fontSize: 15 },
   chipTxOn: { color: A3 },
-  locCard: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: SF, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: BD, marginTop: 12 },
-  locTx: { color: TX, fontSize: 13, fontWeight: "600", flex: 1 },
+  locCard: { flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: SF, borderRadius: 12, padding: 14, borderWidth: 1, borderColor: BD, marginTop: 12 },
+  locTx: { color: TX, fontSize: 14, fontWeight: "600", flex: 1 },
   feCard: { flexDirection: "row", alignItems: "center", gap: 12, backgroundColor: SF, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: BD },
   feIco: { width: 38, height: 38, borderRadius: 19, backgroundColor: AB, alignItems: "center", justifyContent: "center" },
-  feTitle: { fontSize: 14, fontWeight: "700", color: TX, marginBottom: 2 },
-  feBody: { fontSize: 12, color: TM, lineHeight: 16 },
+  feTitle: { fontSize: 15, fontWeight: "700", color: TX, marginBottom: 2 },
   footer: { padding: 16, paddingBottom: 24, borderTopWidth: 1, borderTopColor: BD },
-  btn: { backgroundColor: AC, borderRadius: 12, height: 50, alignItems: "center", justifyContent: "center" },
+  btn: { backgroundColor: AC, borderRadius: 12, minHeight: 48, alignItems: "center", justifyContent: "center" },
   btnTx: { color: "#fff", fontWeight: "700", fontSize: 16 },
+  addMedBtn: { backgroundColor: AC, borderRadius: 14, minHeight: 52, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, paddingHorizontal: 20 },
+  addMedBtnTx: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

@@ -13,6 +13,7 @@ export type Features = {
   brand_generic: boolean;
   scanner: boolean;
   max_appointments: number;
+  is_guest?: boolean;
 };
 
 export const FREE_DEFAULTS: Features = {
@@ -28,6 +29,7 @@ export const FREE_DEFAULTS: Features = {
   brand_generic: false,
   scanner: false,
   max_appointments: 2,
+  is_guest: true,
 };
 
 const FEATURES_KEY = "pillcare_features_v1";

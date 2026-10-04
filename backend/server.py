@@ -199,6 +199,7 @@ class User(BaseModel):
 
 class GoogleAuthRequest(BaseModel):
     id_token: str
+    guest_token: Optional[str] = None
     device_model: Optional[str] = None      # e.g. "Samsung Galaxy S23"
     device_os: Optional[str] = None         # e.g. "Android 14"
     app_version: Optional[str] = None       # e.g. "1.0.0"
@@ -374,9 +375,13 @@ class CaregiverAlert(BaseModel):
 
 
 # ---------- Auth helpers ----------
-def _create_session_token(user_id: str) -> str:
+TEST_DEMO_ENABLED = os.environ.get("TEST_DEMO_ENABLED", "false").lower() == "true"
+_revoked_tokens = set()
+
+def _create_session_token(user_id: str, is_guest: bool = False) -> str:
     payload = {
         "sub": user_id,
+        "is_guest": is_guest,
         "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRY_DAYS),
         "iat": datetime.now(timezone.utc),
     }
@@ -387,12 +392,13 @@ async def get_current_user_id(authorization: str = Header(None)) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Missing or invalid Authorization header")
     token = authorization.removeprefix("Bearer ").strip()
-    if token.startswith("demo_token_") or token == "guest":
+    if token in _revoked_tokens:
+        raise HTTPException(401, "Session has been revoked, please sign in again")
+    if TEST_DEMO_ENABLED and (token.startswith("demo_token_") or token == "guest"):
         return "demo_user"
     if not JWT_SECRET:
         raise HTTPException(500, "Server auth is not configured")
     try:
-        # algorithms list must be explicit - prevents alg=none attack
         payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
         if payload.get("alg", "HS256") == "none":
             raise ValueError("alg=none not allowed")
@@ -630,6 +636,41 @@ async def root():
 
 
 # Auth
+@api.post("/auth/guest")
+@limiter.exempt
+async def auth_guest():
+    """Generates an isolated guest account with unique guest_<uuid> and HS256 JWT."""
+    guest_id = f"guest_{uuid.uuid4().hex[:12]}"
+    now = datetime.now(timezone.utc)
+    guest_user = {
+        "id": guest_id,
+        "email": f"{guest_id}@guest.pillcare.app",
+        "name": "PillCare Guest",
+        "is_guest": True,
+        "created_at": now.isoformat(),
+    }
+    if db is not None:
+        await db.users.insert_one(dict(guest_user))
+        await db.profile.insert_one({
+            "id": guest_id,
+            "nickname": "PillCare Guest",
+            "email": guest_user["email"],
+            "user_number": await _get_unique_7digit_user_number(guest_id),
+            "is_guest": True,
+            "created_at": now.isoformat(),
+        })
+    token = _create_session_token(guest_id, is_guest=True)
+    return {
+        "token": token,
+        "user": {
+            "id": guest_id,
+            "email": guest_user["email"],
+            "name": "PillCare Guest",
+            "is_guest": True,
+        }
+    }
+
+
 @api.post("/auth/google")
 @limiter.exempt
 async def auth_google(request: Request, payload: GoogleAuthRequest):
@@ -661,6 +702,25 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
         await db.users.insert_one(user.model_dump())
         if is_first_user_ever:
             await _migrate_legacy_default_data(user_id)
+
+    # Guest-to-Google linking: Reassign guest records if valid guest JWT provided
+    guest_token = payload.guest_token
+    if not guest_token:
+        auth_hdr = request.headers.get("Authorization", "")
+        if auth_hdr.startswith("Bearer "):
+            guest_token = auth_hdr.removeprefix("Bearer ").strip()
+
+    if guest_token and JWT_SECRET and db is not None:
+        try:
+            g_payload = pyjwt.decode(guest_token, JWT_SECRET, algorithms=["HS256"])
+            g_id = g_payload.get("sub", "")
+            if g_id.startswith("guest_") and g_id != user_id:
+                for coll in ["medications", "doses", "measurements", "activities", "mood", "appointments", "caregiver_log", "water_logs"]:
+                    await db[coll].update_many({"user_id": g_id}, {"$set": {"user_id": user_id}})
+                await db.profile.update_one({"id": g_id}, {"$set": {"merged": True, "merged_into": user_id}})
+                logger.info(f"Merged guest {g_id} data into Google user {user_id}")
+        except Exception as e:
+            logger.warning(f"Guest account linking bypassed: {e}")
 
     token = _create_session_token(user_id)
     user_doc = await db.users.find_one({"id": user_id}, PROJECTION)
@@ -723,8 +783,8 @@ async def logout(authorization: str = Header(default="")):
 @app.post("/api/register-push-token")
 @app.post("/register-push-token")
 @api.post("/profile/push-token")
-async def save_push_token_flexible(request: Request, payload: dict = Body(...)):
-    """Flexible push token registration supporting Expo, FCM, and APNs across all mobile app routes."""
+async def save_push_token_flexible(payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Flexible push token registration supporting Expo, FCM, and APNs for authenticated user."""
     token = (
         payload.get("token") or
         payload.get("push_token") or
@@ -734,17 +794,6 @@ async def save_push_token_flexible(request: Request, payload: dict = Body(...)):
         ""
     ).strip()
     
-    user_id = payload.get("user_id") or payload.get("email") or "anonymous_device"
-    
-    auth_header = request.headers.get("Authorization") or ""
-    if auth_header.startswith("Bearer "):
-        try:
-            token_str = auth_header.split(" ")[1]
-            payload_data = jwt.decode(token_str, SECRET_KEY, algorithms=[ALGORITHM])
-            user_id = payload_data.get("sub") or user_id
-        except Exception:
-            pass
-
     if not token or len(token) < 5:
         raise HTTPException(400, "ERR_4002: Invalid or empty push token")
         
@@ -757,13 +806,13 @@ async def save_push_token_flexible(request: Request, payload: dict = Body(...)):
         "push_token_updated": now
     }
     
-    await db.users.update_many(
-        {"$or": [{"id": user_id}, {"_id": user_id}, {"email": user_id}, {"push_token": token}]},
+    await db.users.update_one(
+        {"id": user_id},
         {"$set": update_doc},
         upsert=True
     )
-    await db.profile.update_many(
-        {"$or": [{"id": user_id}, {"user_id": user_id}, {"email": user_id}, {"push_token": token}]},
+    await db.profile.update_one(
+        {"id": user_id},
         {"$set": update_doc},
         upsert=True
     )
@@ -2825,25 +2874,23 @@ async def track_event(event: str, user_id: str, props: dict = {}):
         pass  # analytics must never break the app
 
 # Admin auth - separate secret for dashboard access
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "pillcare_admin_secret_key_2026")
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
 
 def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
-    """Accept either admin secret key OR admin JWT (from Google Sign-In)."""
+    """Accept either configured ADMIN_SECRET key OR admin JWT."""
     if authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
-            # algorithms list must be explicit - prevents alg=none attack
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             if payload.get("alg", "HS256") == "none":
                 raise ValueError("alg=none not allowed")
-            if payload.get("role") == "admin":
+            if payload.get("role") == "admin" or payload.get("is_admin"):
                 return payload
         except Exception:
             pass
-    # Accept valid admin secrets (env or default key)
-    valid_secrets = {ADMIN_SECRET, "pillcare_admin_secret_key_2026"}
-    if x_admin_secret and any(hmac.compare_digest(x_admin_secret.encode(), s.encode()) for s in valid_secrets if s and len(s) >= 16):
-        return {"role": "admin", "sub": "secret_key"}
+    if ADMIN_SECRET and x_admin_secret and len(ADMIN_SECRET) >= 16:
+        if hmac.compare_digest(x_admin_secret.encode(), ADMIN_SECRET.encode()):
+            return {"role": "admin", "sub": "secret_key"}
     raise HTTPException(401, "Admin access required")
 
 
@@ -3271,7 +3318,11 @@ class UserUpgradeRequest(BaseModel):
 
 @api.post("/me/upgrade")
 async def user_upgrade_plan(body: UserUpgradeRequest, user_id: str = Depends(get_current_user_id)):
-    """Allows users to upgrade their subscription plan to Premium or Basic."""
+    """Admin-only endpoint to grant manual plan upgrades or promo extensions."""
+    user_doc = await db.users.find_one({"id": user_id}) or {}
+    if not user_doc.get("is_admin"):
+        raise HTTPException(403, "Admin authorization required for direct manual upgrades. Use /payments/verify for checkout upgrades.")
+    
     plan_key = body.plan.lower()
     if plan_key not in PLAN_FEATURES:
         raise HTTPException(400, f"Invalid plan '{body.plan}'. Available plans: {list(PLAN_FEATURES.keys())}")
@@ -3284,8 +3335,8 @@ async def user_upgrade_plan(body: UserUpgradeRequest, user_id: str = Depends(get
             "status": "active",
             "expires_at": expires,
             "updated_at": datetime.now(timezone.utc),
-            "payment_id": body.payment_id or "DIRECT_PROMO_UPGRADE",
-            "note": f"Upgraded to {plan_key} via PillCare app/web"
+            "payment_id": body.payment_id or "ADMIN_MANUAL_UPGRADE",
+            "note": f"Upgraded to {plan_key} via Admin Override"
         }},
         upsert=True
     )
@@ -3323,7 +3374,20 @@ class PaymentVerifyRequest(BaseModel):
 
 @api.post("/payments/verify")
 async def verify_payment(body: PaymentVerifyRequest, user_id: str = Depends(get_current_user_id)):
-    """Verifies payment transaction and instantly upgrades account to target plan."""
+    """Verifies payment transaction and instantly upgrades account to target plan using HMAC signature."""
+    secret = os.getenv("WEBHOOK_SECRET") or os.getenv("GATEWAY_SIGNATURE_SECRET") or os.getenv("RAZORPAY_KEY_SECRET")
+    if not secret:
+        raise HTTPException(403, "Payment gateway secret is not configured on the server. Activation rejected.")
+    
+    if not body.signature:
+        raise HTTPException(400, "Missing payment gateway signature.")
+    
+    # Verify HMAC SHA256 signature
+    msg = f"{body.order_id}|{body.payment_id}".encode("utf-8")
+    expected_sig = hmac.new(secret.encode("utf-8"), msg, digestmod="sha256").hexdigest()
+    if not hmac.compare_digest(expected_sig, body.signature):
+        raise HTTPException(400, "Invalid payment signature.")
+
     expires = datetime.now(timezone.utc) + timedelta(days=30)
     await db.subscriptions.update_one(
         {"user_id": user_id},
@@ -3334,7 +3398,7 @@ async def verify_payment(body: PaymentVerifyRequest, user_id: str = Depends(get_
             "updated_at": datetime.now(timezone.utc),
             "payment_id": body.payment_id,
             "order_id": body.order_id,
-            "note": f"Paid subscription via Razorpay/Gateway ({body.payment_id})"
+            "note": f"Paid subscription via Gateway ({body.payment_id})"
         }},
         upsert=True
     )
