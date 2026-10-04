@@ -12,7 +12,8 @@ import * as Notifications from "expo-notifications";
 import { get, set } from "@/src/lib/store";
 import { enqueueWrite, flushQueue } from "@/src/lib/sync";
 import { getFeatures } from "@/src/lib/features";
-import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import { getSoundSettings, getChannelIdForCategory, getNotificationSoundParam } from "@/src/lib/soundSettings";
+import { ensureChannels } from "@/src/lib/notifications";
 
 type Appt = {
   id?: string; doctor_name: string; specialty?: string; phone?: string;
@@ -144,13 +145,18 @@ export default function Appointments() {
         const offset = offsets[newAppt.reminder || "1_day"] || 86400000;
         const notifTime = new Date(apptDate.getTime() - offset);
         if (notifTime > new Date()) {
+          await ensureChannels();
+          const soundSet = await getSoundSettings();
+          const apptProfile = soundSet.categorySounds?.appointment || "gentle";
+          const apptChannel = getChannelIdForCategory("appointment", apptProfile, false, soundSet.vibrationEnabled);
+
           await Notifications.scheduleNotificationAsync({
             content: {
               title: t("appointments.reminderTitle", "Appointment reminder"),
               body: `Dr. ${newAppt.doctor_name}${newAppt.specialty ? " — " + newAppt.specialty : ""} at ${newAppt.time}`,
               data: { appointmentId: targetId },
-              sound: "default",
-              channelId: "appointment-reminders",
+              sound: getNotificationSoundParam(apptProfile),
+              channelId: apptChannel,
               categoryIdentifier: "medication-reminder-category",
             } as any,
             trigger: {

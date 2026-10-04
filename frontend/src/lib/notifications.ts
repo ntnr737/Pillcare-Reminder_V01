@@ -239,25 +239,25 @@ export async function ensureChannels(): Promise<void> {
   if (Platform.OS !== "android") return;
   try {
     const soundSet = await getSoundSettings();
-    const isMuted = soundSet.masterMute;
-    const vibrate = soundSet.vibrationEnabled && !isMuted;
+    const isMuted = soundSet.masterMute || false;
+    const vibrate = soundSet.vibrationEnabled;
 
     const categories: SoundCategory[] = ["medication", "water", "appointment", "yoga", "refill", "broadcast"];
 
     for (const cat of categories) {
       try {
         const profile = soundSet.categorySounds[cat] || "default";
-        const channelId = getChannelIdForCategory(cat, profile, isMuted, soundSet.vibrationEnabled);
+        const channelId = getChannelIdForCategory(cat, profile, false, soundSet.vibrationEnabled);
 
         await Notifications.setNotificationChannelAsync(channelId, {
           name: `PillCare ${cat.charAt(0).toUpperCase() + cat.slice(1)} Alerts`,
           description: `Custom sound alert channel for ${cat}`,
-          importance: isMuted ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
-          sound: isMuted || profile === "mute" ? undefined : "default",
+          importance: profile === "mute" ? Notifications.AndroidImportance.LOW : Notifications.AndroidImportance.MAX,
+          sound: profile === "mute" ? undefined : profile,
           enableVibrate: vibrate,
           vibrationPattern: vibrate ? [0, 500, 250, 500] : undefined,
           lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-          bypassDnd: !isMuted,
+          bypassDnd: profile !== "mute",
           showBadge: true,
         });
       } catch (err) {
@@ -295,15 +295,15 @@ export async function sendTestNotificationNow(
   await ensureChannels();
   const soundSet = await getSoundSettings();
   const profile = soundSet.categorySounds[category] || "default";
-  const channelId = getChannelIdForCategory(category, profile, soundSet.masterMute, soundSet.vibrationEnabled);
+  const channelId = getChannelIdForCategory(category, profile, false, soundSet.vibrationEnabled);
 
   await Notifications.scheduleNotificationAsync({
     content: {
       title,
       body,
-      sound: getNotificationSoundParam(profile, soundSet.masterMute),
+      sound: getNotificationSoundParam(profile),
       channelId,
-      priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
+      priority: profile === "mute" ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
       categoryIdentifier: category === "water" ? WATER_CATEGORY : category === "yoga" ? YOGA_CATEGORY : MEDICATION_CATEGORY,
     } as any,
     trigger: null,

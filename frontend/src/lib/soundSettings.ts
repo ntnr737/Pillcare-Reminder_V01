@@ -109,13 +109,13 @@ export async function saveSoundSettings(settings: SoundSettings): Promise<void> 
 
 /**
  * Map sound profile to Expo Notification sound parameter.
- * Always returns "default" or undefined to guarantee Android system compatibility.
+ * Returns the profile sound filename (e.g., "chime", "water_drop") or undefined for mute.
  */
-export function getNotificationSoundParam(profile: SoundProfile, masterMute: boolean): string | boolean | undefined {
+export function getNotificationSoundParam(profile: SoundProfile, masterMute: boolean = false): string | boolean | undefined {
   if (masterMute || profile === "mute") {
     return undefined;
   }
-  return "default";
+  return profile;
 }
 
 /**
@@ -124,7 +124,7 @@ export function getNotificationSoundParam(profile: SoundProfile, masterMute: boo
 export function getChannelIdForCategory(
   category: SoundCategory,
   profile: SoundProfile,
-  masterMute: boolean,
+  masterMute: boolean = false,
   vibrationEnabled = true
 ): string {
   if (masterMute || profile === "mute") {

@@ -67,14 +67,6 @@ export default function NotificationSettingsScreen() {
     }
   };
 
-  const updateMasterMute = async (val: boolean) => {
-    const updated = { ...settings, masterMute: val };
-    setSettings(updated);
-    await saveSoundSettings(updated);
-    await ensureChannels();
-    await resyncReminders();
-  };
-
   const updateVibration = async (val: boolean) => {
     const updated = { ...settings, vibrationEnabled: val };
     setSettings(updated);
@@ -181,33 +173,9 @@ export default function NotificationSettingsScreen() {
           </View>
         </View>
 
-        {/* Master Controls Section */}
-        <Text style={[s.secL, { color: theme.accent }]}>MASTER SOUND CONTROLS</Text>
+        {/* Global Controls Section */}
+        <Text style={[s.secL, { color: theme.accent }]}>GLOBAL ALERT PREFERENCES</Text>
         <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
-          <View style={s.rowBetween}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
-              <Ionicons
-                name={settings.masterMute ? "volume-mute" : "volume-high"}
-                size={20}
-                color={settings.masterMute ? "#f87171" : theme.accent}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={[s.cT, { color: theme.textPrimary }]}>Notification Sound</Text>
-                <Text style={[s.cS, { color: theme.textSecondary }]}>
-                  {settings.masterMute ? "Muted — visual banners only" : "Enabled — playing recall chimes"}
-                </Text>
-              </View>
-            </View>
-            <Switch
-              value={!settings.masterMute}
-              onValueChange={(val) => updateMasterMute(!val)}
-              trackColor={{ false: theme.surfaceBorder, true: theme.accent }}
-              thumbColor="#fff"
-            />
-          </View>
-
-          <View style={[s.divider, { backgroundColor: theme.surfaceBorder }]} />
-
           <View style={s.rowBetween}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
               <Ionicons name="hardware-chip-outline" size={20} color={theme.accent} />
@@ -221,7 +189,6 @@ export default function NotificationSettingsScreen() {
               onValueChange={updateVibration}
               trackColor={{ false: theme.surfaceBorder, true: theme.accent }}
               thumbColor="#fff"
-              disabled={settings.masterMute}
             />
           </View>
         </View>
@@ -239,7 +206,6 @@ export default function NotificationSettingsScreen() {
               style={[
                 s.catCard,
                 { backgroundColor: theme.surface, borderColor: theme.surfaceBorder },
-                settings.masterMute && { opacity: 0.6 },
               ]}
             >
               {/* Category Header */}
@@ -254,7 +220,7 @@ export default function NotificationSettingsScreen() {
                 <TouchableOpacity
                   style={[s.testBtn, { borderColor: theme.surfaceBorder, backgroundColor: theme.bg }]}
                   onPress={() => handleSendTestNotification(cat.key)}
-                  disabled={settings.masterMute || testingCategory === cat.key}
+                  disabled={testingCategory === cat.key}
                 >
                   <Ionicons name="notifications-circle-outline" size={16} color={theme.accent} />
                   <Text style={[s.testBtnText, { color: theme.accent }]}>
@@ -269,7 +235,10 @@ export default function NotificationSettingsScreen() {
                   <Ionicons name={profileInfo.icon as any} size={14} color={theme.accent} />
                   <Text style={[s.activeProfileName, { color: theme.textPrimary }]}>{profileInfo.label}</Text>
                 </View>
-                <TouchableOpacity style={{ flexDirection: "row", alignItems: "center", gap: 4 }} onPress={() => handleTestPreview(currentProfile)} disabled={settings.masterMute}>
+                <TouchableOpacity
+                  style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                  onPress={() => handleTestPreview(currentProfile)}
+                >
                   <Ionicons name="volume-medium-outline" size={14} color={theme.accent} />
                   <Text style={[s.previewBtnText, { color: theme.accent }]}>Play Chime</Text>
                 </TouchableOpacity>
@@ -293,7 +262,6 @@ export default function NotificationSettingsScreen() {
                         updateCategorySound(cat.key, p);
                         handleTestPreview(p);
                       }}
-                      disabled={settings.masterMute}
                     >
                       <Ionicons
                         name={labelObj.icon as any}
