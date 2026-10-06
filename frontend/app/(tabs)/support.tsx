@@ -5,6 +5,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import * as WebBrowser from "expo-web-browser";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { get, set, K } from "@/src/lib/store";
 import { enqueueWrite } from "@/src/lib/sync";
 import { signOut, getStoredUser, getStoredToken, isGuestUser, signInWithGoogle, PillcareUser } from "@/src/lib/auth";
@@ -220,46 +222,43 @@ export default function Support() {
   const handleExportData = async () => {
     setExporting(true);
     try {
-      const token = await getStoredToken();
-      const endpoint = api.exportCsvUrl();
-      const fullUrl = `${endpoint}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-      
-      let opened = false;
+      let csvContent = "";
       try {
-        const result = await WebBrowser.openBrowserAsync(fullUrl);
-        if (result) opened = true;
+        csvContent = await api.exportCsv();
       } catch {
-        opened = false;
+        // Fallback: generate offline CSV content
+        const profileData = (await get<any>(K.profile)) || {};
+        const medsData = (await get<any[]>(K.medications)) || [];
+        csvContent = `PillCare Health Report (CSV Export)\n`;
+        csvContent += `Export Date,${new Date().toLocaleString()}\n`;
+        csvContent += `Patient Name,${profileData?.nickname || user?.name || "Patient"}\n`;
+        csvContent += `Account Email,${profileData?.email || user?.email || "Guest Patient"}\n\n`;
+        csvContent += `Medication Name,Form,Dose,Scheduled Times\n`;
+        medsData.forEach((m: any) => {
+          csvContent += `"${m.name || ""}","${m.form || ""}","${m.dose || ""}","${(m.times || []).join("; ")}"\n`;
+        });
       }
 
-      if (!opened) {
-        // Fallback: try opening with Linking or generate local CSV
-        const canOpen = await Linking.canOpenURL(fullUrl).catch(() => false);
-        if (canOpen) {
-          await Linking.openURL(fullUrl);
-        } else {
-          // Generate local offline CSV report as fail-safe fallback
-          const profileData = (await get<any>(K.profile)) || {};
-          const medsData = (await get<any[]>(K.medications)) || [];
-          
-          let csv = `PillCare Health Report (CSV Export)\n`;
-          csv += `Export Date,${new Date().toLocaleString()}\n`;
-          csv += `Patient Name,${profileData?.nickname || user?.name || "Patient"}\n`;
-          csv += `Account Email,${profileData?.email || user?.email || "Guest Patient"}\n\n`;
-          csv += `Medication Name,Form,Dose,Scheduled Times\n`;
-          medsData.forEach((m: any) => {
-            csv += `"${m.name || ""}","${m.form || ""}","${m.dose || ""}","${(m.times || []).join("; ")}"\n`;
-          });
+      if (!csvContent || csvContent.trim().length === 0) {
+        throw new Error("No report data available to export.");
+      }
 
-          Alert.alert(
-            "CSV Report Ready",
-            `Report generated with ${medsData.length} medications and dose logs. All records synced locally.`
-          );
-        }
+      const fileUri = `${FileSystem.cacheDirectory}PillCare_Health_Report.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/csv",
+          dialogTitle: "Save or Share PillCare Health Report",
+          UTI: "public.comma-separated-values-text",
+        });
+      } else {
+        const fullUrl = await api.exportCsvUrl();
+        await WebBrowser.openBrowserAsync(fullUrl);
       }
       track("export_data_triggered", { format: "csv" });
     } catch (err: any) {
-      Alert.alert("Export Notice", err.message || "Failed to download CSV health report.");
+      Alert.alert("Export Error", err.message || "Failed to download CSV health report.");
     } finally {
       setExporting(false);
     }

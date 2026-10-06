@@ -7,6 +7,8 @@ import { api } from "@/src/lib/api";
 import { getFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 import * as WebBrowser from "expo-web-browser";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 import { get, set, K } from "@/src/lib/store";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed",
@@ -44,16 +46,33 @@ export default function History() {
   const downloadCsv = async () => {
     if (!getFeatures().export_data) { setShowUpgrade(true); return; }
     try {
-      const url = await api.exportCsvUrl();
-      let opened = false;
+      let csvContent = "";
       try {
-        const res = await WebBrowser.openBrowserAsync(url);
-        if (res) opened = true;
+        csvContent = await api.exportCsv();
       } catch {
-        opened = false;
+        const cachedHistory = (await get<any[]>(K.history)) || [];
+        csvContent = `PillCare History Report\nDate,Medication,Status\n`;
+        cachedHistory.forEach((day: any) => {
+          (day.entries || []).forEach((e: any) => {
+            csvContent += `"${day.date || ""}","${e.name || ""}","${e.status || ""}"\n`;
+          });
+        });
       }
-      if (!opened) {
-        Linking.openURL(url).catch(() => {});
+
+      if (!csvContent || csvContent.trim().length === 0) return;
+
+      const fileUri = `${FileSystem.cacheDirectory}PillCare_History_Report.csv`;
+      await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: "text/csv",
+          dialogTitle: "Save or Share PillCare History Report",
+          UTI: "public.comma-separated-values-text",
+        });
+      } else {
+        const url = await api.exportCsvUrl();
+        await WebBrowser.openBrowserAsync(url);
       }
     } catch {
       // Fallback
