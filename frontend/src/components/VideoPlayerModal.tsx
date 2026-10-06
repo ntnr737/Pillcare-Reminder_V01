@@ -79,7 +79,7 @@ export function VideoPlayerModal({
   const [secondsWatched, setSecondsWatched] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isTimerActive, setIsTimerActive] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [modalStep, setModalStep] = useState<"player" | "feedback">("player");
   const [selectedFeeling, setSelectedFeeling] = useState<string>("energized");
@@ -91,7 +91,7 @@ export function VideoPlayerModal({
       setSecondsWatched(0);
       setIsPlaying(true);
       setIsTimerActive(true);
-      setIsMuted(true);
+      setIsMuted(false);
       setIsFullscreen(false);
       setModalStep("player");
       setSelectedFeeling("energized");
@@ -307,7 +307,11 @@ export function VideoPlayerModal({
         }
 
         function onPlayerReady(event) {
-          try { event.target.playVideo(); } catch(e){}
+          try {
+            event.target.unMute();
+            event.target.setVolume(100);
+            event.target.playVideo();
+          } catch(e){}
         }
 
         window.unmuteAudio = function() {
@@ -315,6 +319,7 @@ export function VideoPlayerModal({
             if (player) {
               if (player.unMute) player.unMute();
               if (player.setVolume) player.setVolume(100);
+              if (player.playVideo) player.playVideo();
             }
           } catch(e){}
         };
@@ -451,7 +456,17 @@ export function VideoPlayerModal({
             {modalStep === "player" ? (
               <>
                 {/* Embedded Video Player Container */}
-                <View style={s.playerWrapper}>
+                <View style={[s.playerWrapper, isFullscreen && s.fullscreenPlayerWrapper]}>
+                  {isFullscreen && (
+                    <TouchableOpacity
+                      onPress={toggleFullscreen}
+                      style={s.fullscreenExitOverlayBtn}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="contract-outline" size={16} color="#FFF" />
+                      <Text style={s.fullscreenExitOverlayText}>Exit Fullscreen</Text>
+                    </TouchableOpacity>
+                  )}
                   {hasError ? (
                     <View style={s.fallbackContainer}>
                       <Ionicons name="logo-youtube" size={44} color="#FF0000" />
@@ -769,6 +784,39 @@ const s = StyleSheet.create({
     overflow: "hidden",
     borderWidth: 1,
     borderColor: BD,
+  },
+  fullscreenPlayerWrapper: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    width: "100%",
+    height: "100%",
+    borderRadius: 0,
+    zIndex: 99999,
+    elevation: 99999,
+  },
+  fullscreenExitOverlayBtn: {
+    position: "absolute",
+    top: 16,
+    right: 16,
+    zIndex: 100000,
+    elevation: 100000,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.3)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  fullscreenExitOverlayText: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
   },
   fallbackContainer: {
     flex: 1,
