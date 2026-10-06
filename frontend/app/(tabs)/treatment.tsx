@@ -81,7 +81,7 @@ export default function Treatment() {
   const params = useLocalSearchParams<{ openYoga?: string }>();
   useEffect(() => { if (params?.openYoga) { setTab(0); if (!getFeatures().yoga_full) { setShowUpgrade(true); } else { setYogaOpen(true); } } }, [params?.openYoga]);
   const [tab, setTab] = useState(0);
-  const [filter, setFilter] = useState("all");
+  const [filter, setFilter] = useState("active");
   const [meds, setMeds] = useState<any[]>([]);
   const [catalog, setCatalog] = useState<any>(null);
   const [measurements, setMeasurements] = useState<any[]>([]);
@@ -316,7 +316,31 @@ export default function Treatment() {
     }
   };
 
-  const fm = filter === "refill" ? meds.filter(m => m.stock <= m.refill_threshold && m.active !== false) : filter === "active" ? meds.filter(m => m.active !== false) : filter === "completed" ? meds.filter(m => m.active === false || m.completed === true) : meds;
+  const dedupeMeds = (arr: any[]) => {
+    if (!Array.isArray(arr)) return [];
+    const seen = new Set<string>();
+    return arr.filter((m: any) => {
+      if (!m) return false;
+      const key = m.id ? String(m.id) : `${m.name?.trim().toLowerCase()}_${m.dosage}_${(m.times || []).join(",")}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
+  const activeMedsList = meds.filter(m => m.active !== false && m.completed !== true);
+  const completedMedsList = meds.filter(m => m.active === false || m.completed === true);
+  const refillMedsList = activeMedsList.filter(m => m.stock <= (m.refill_threshold ?? 5) || (m.days_left != null && m.days_left <= 3));
+
+  const fm = dedupeMeds(
+    filter === "active"
+      ? activeMedsList
+      : filter === "completed"
+      ? completedMedsList
+      : filter === "refill"
+      ? refillMedsList
+      : meds
+  );
   const OPTS = [
     { icon: "medical-outline", title: t("actionSheet.addMedication", "Add Medication"), body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"), fn: () => { setSheet(false); setAddMed(true); } },
     { icon: "calendar-outline", title: t("actionSheet.bookAppointment", "Book Appointment"), body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"), fn: () => { setSheet(false); router.push("/appointments"); } },
@@ -382,10 +406,10 @@ export default function Treatment() {
           {/* Filter tags */}
           <View style={s.fRow}>
             {[
-              { id: "all", label: `All (${meds.length})` },
-              { id: "active", label: t("common.active", "Active") },
-              { id: "refill", label: t("today.refillAlert", "Refill Soon") },
-              { id: "completed", label: t("common.completed", "Completed Courses") },
+              { id: "active", label: `Active (${dedupeMeds(activeMedsList).length})` },
+              { id: "refill", label: `Refill Soon (${dedupeMeds(refillMedsList).length})` },
+              { id: "completed", label: `Completed (${dedupeMeds(completedMedsList).length})` },
+              { id: "all", label: `All (${dedupeMeds(meds).length})` },
             ].map(f => (
               <TouchableOpacity
                 key={f.id}
