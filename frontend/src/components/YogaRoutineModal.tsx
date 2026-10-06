@@ -42,11 +42,11 @@ export const DEFAULT_YOGA_ROUTINE = {
   level: "Beginner",
   description: "This sequence gently stimulates the thyroid gland, improves metabolism, and supports overall vitality while complementing the patient's medication regimen. The routine is short, beginner-friendly, and aligns with guidelines from AYUSH, Patanjali, and Isha.",
   steps: [
-    { num: 1, name: "Surya Namaskar (Sun Salutation)", duration: "3 min", benefit: "Activates metabolism and improves circulation, supporting thyroid function.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=OBds5NZ4PRs" },
-    { num: 2, name: "Sarvangasana (Shoulder Stand)", duration: "3 min", benefit: "Increases blood flow to the neck area, stimulating the thyroid gland.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=jBbhE-p9jso" },
-    { num: 3, name: "Matsyasana (Fish Pose)", duration: "3 min", benefit: "Stretches the neck and throat region, relieving neck tension.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
-    { num: 4, name: "Bhujangasana (Cobra Pose)", duration: "3 min", benefit: "Opens the chest and throat, boosting energy and flexibility.", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=xX_QXjHP7Lo" },
-    { num: 5, name: "Ustrasana (Camel Pose)", duration: "3 min", benefit: "Enhances respiratory and endocrine health through gentle back extension.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" }
+    { num: 1, name: "Surya Namaskar (Sun Salutation)", duration: "3 min", benefit: "Activates metabolism and improves circulation, supporting thyroid function.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q" },
+    { num: 2, name: "Sarvangasana (Shoulder Stand)", duration: "3 min", benefit: "Increases blood flow to the neck area, stimulating the thyroid gland.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=hJbRpHZr_d0" },
+    { num: 3, name: "Matsyasana (Fish Pose)", duration: "3 min", benefit: "Stretches the neck and throat region, relieving neck tension.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q" },
+    { num: 4, name: "Bhujangasana (Cobra Pose)", duration: "3 min", benefit: "Opens the chest and throat, boosting energy and flexibility.", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=hJbRpHZr_d0" },
+    { num: 5, name: "Ustrasana (Camel Pose)", duration: "3 min", benefit: "Enhances respiratory and endocrine health through gentle back extension.", channel: "Ministry of AYUSH", youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q" }
   ],
   channels: [
     { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
@@ -63,11 +63,13 @@ export function YogaRoutineModal({
   customTitle,
   customDuration,
   customLevel,
-}: YogaRoutineModalProps) {
+  customRoutine,
+}: YogaRoutineModalProps & { customRoutine?: any }) {
   const insets = useSafeAreaInsets();
   const { theme, isDark } = useTheme();
   const { t } = useTranslation();
   const [completedSteps, setCompletedSteps] = useState<number[]>([]);
+  const [routine, setRoutine] = useState<any>(customRoutine || DEFAULT_YOGA_ROUTINE);
 
   const yogaDoneKey = () => {
     const d = new Date();
@@ -76,13 +78,24 @@ export function YogaRoutineModal({
 
   useEffect(() => {
     if (visible) {
+      if (customRoutine) {
+        setRoutine(customRoutine);
+      } else {
+        get<any>(K.yogaTip).then((tip) => {
+          if (tip && tip.steps && tip.steps.length > 0) {
+            setRoutine(tip);
+          } else {
+            setRoutine(DEFAULT_YOGA_ROUTINE);
+          }
+        });
+      }
       get<any>(yogaDoneKey()).then((d) => {
         if (Array.isArray(d)) setCompletedSteps(d);
         else if (d === true) setCompletedSteps([1, 2, 3, 4, 5]);
         else setCompletedSteps([]);
       });
     }
-  }, [visible]);
+  }, [visible, customRoutine]);
 
   const safeCompletedSteps = Array.isArray(completedSteps) ? completedSteps : [];
   const isStepDone = (num: number) => safeCompletedSteps.includes(num);
@@ -118,10 +131,10 @@ export function YogaRoutineModal({
     await set(K.history, [...historyCache]);
   };
 
-  const routine = DEFAULT_YOGA_ROUTINE;
-  const title = customTitle || routine.title;
-  const duration = customDuration || routine.duration;
-  const level = customLevel || routine.level;
+  const activeRoutine = routine || DEFAULT_YOGA_ROUTINE;
+  const title = customTitle || activeRoutine.title;
+  const duration = customDuration || activeRoutine.duration;
+  const level = customLevel || activeRoutine.level;
 
   if (!visible) return null;
 
@@ -165,14 +178,14 @@ export function YogaRoutineModal({
               </View>
             </View>
 
-            <Text style={[s.cS, { color: theme.textSecondary, lineHeight: 17, marginBottom: 8 }]}>{routine.description}</Text>
+            <Text style={[s.cS, { color: theme.textSecondary, lineHeight: 17, marginBottom: 8 }]}>{activeRoutine.description}</Text>
             
             <Text style={[s.secL, { color: theme.accent }]}>
-              ROUTINE · {safeCompletedSteps.length}/{routine.steps.length} {t("yoga.doneToday", "done today")}
+              ROUTINE · {safeCompletedSteps.length}/{(activeRoutine.steps || []).length} {t("yoga.doneToday", "done today")}
             </Text>
 
             <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1, maxHeight: 380 }}>
-              {routine.steps.map((step) => {
+              {(activeRoutine.steps || []).map((step: YogaStep) => {
                 const stepDone = isStepDone(step.num);
                 return (
                   <View
@@ -277,7 +290,7 @@ export function YogaRoutineModal({
               <Text style={[s.secL, { color: theme.accent, marginTop: 10, marginBottom: 6 }]}>
                 {t("yoga.verifiedChannels", "VERIFIED SOURCES")}
               </Text>
-              {routine.channels.map((ch) => (
+              {(activeRoutine.channels || []).map((ch: any) => (
                 <TouchableOpacity
                   key={ch.url}
                   style={{

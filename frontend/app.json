@@ -3,7 +3,7 @@
     "name": "PillCare Reminder",
     "slug": "pillcare-reminder",
     "version": "1.0.71",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "pillcare",
     "userInterfaceStyle": "automatic",

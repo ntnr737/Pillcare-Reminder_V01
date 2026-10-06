@@ -45,15 +45,17 @@ export interface VideoPlayerModalProps {
 }
 
 export function extractYouTubeId(url?: string): string {
-  if (!url) return "OBds5NZ4PRs";
-  if (url.includes("1W_Q4m0sD78")) return "OBds5NZ4PRs";
-  if (url.includes("L3F4z7t8_2w")) return "jBbhE-p9jso";
+  if (!url) return "sTANio_2E0Q";
+  if (url.includes("OBds5NZ4PRs")) return "sTANio_2E0Q";
+  if (url.includes("1W_Q4m0sD78")) return "sTANio_2E0Q";
+  if (url.includes("L3F4z7t8_2w")) return "hJbRpHZr_d0";
+  if (url.includes("jBbhE-p9jso")) return "hJbRpHZr_d0";
   if (url.includes("QPjwawKxuLw")) return "sTANio_2E0Q";
   if (url.includes("xX_QXjHP7Lo")) return "hJbRpHZr_d0";
-  if (url.includes("lrkW_6vGqvE")) return "OBds5NZ4PRs";
-  if (url.includes("MqeeqXMdZ54")) return "jBbhE-p9jso";
-  if (url.includes("TVHlCr49LNY")) return "OBds5NZ4PRs";
-  if (url.includes("_rlPsepTnzo")) return "jBbhE-p9jso";
+  if (url.includes("lrkW_6vGqvE")) return "sTANio_2E0Q";
+  if (url.includes("MqeeqXMdZ54")) return "hJbRpHZr_d0";
+  if (url.includes("TVHlCr49LNY")) return "sTANio_2E0Q";
+  if (url.includes("_rlPsepTnzo")) return "hJbRpHZr_d0";
   if (url.includes("aqjnv0dZhNc")) return "sTANio_2E0Q";
 
   const watchMatch = url.match(/[?&]v=([^&]+)/);
@@ -62,7 +64,7 @@ export function extractYouTubeId(url?: string): string {
   if (shortMatch && shortMatch[1] && shortMatch[1].length === 11) return shortMatch[1];
   const embedMatch = url.match(/embed\/([^?&]+)/);
   if (embedMatch && embedMatch[1] && embedMatch[1].length === 11) return embedMatch[1];
-  return "OBds5NZ4PRs";
+  return "sTANio_2E0Q";
 }
 
 const FEELING_OPTIONS = [
@@ -219,8 +221,10 @@ export function VideoPlayerModal({
       if (webViewRef.current) {
         webViewRef.current.injectJavaScript(`
           try {
+            var v = document.querySelector('video');
+            if (v) { v.muted = false; v.volume = 1.0; v.play(); }
             if (window.unmuteAudio) { window.unmuteAudio(); }
-            if (player && player.unMute) { player.unMute(); player.setVolume(100); }
+            if (window.player && window.player.unMute) { window.player.unMute(); window.player.setVolume(100); }
           } catch(e) {}
           true;
         `);
@@ -230,8 +234,10 @@ export function VideoPlayerModal({
       if (webViewRef.current) {
         webViewRef.current.injectJavaScript(`
           try {
+            var v = document.querySelector('video');
+            if (v) { v.muted = true; }
             if (window.muteAudio) { window.muteAudio(); }
-            if (player && player.mute) { player.mute(); }
+            if (window.player && window.player.mute) { window.player.mute(); }
           } catch(e) {}
           true;
         `);
@@ -652,39 +658,25 @@ export function VideoPlayerModal({
                   ) : WebView && !hasError ? (
                     <WebView
                       ref={webViewRef}
-                      source={{ html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }}
+                      source={{
+                        uri: `https://m.youtube.com/watch?v=${videoId}`
+                      }}
+                      userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                       style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
-                      allowsInlineMediaPlayback
-                      allowsFullscreenVideo
+                      allowsInlineMediaPlayback={true}
+                      allowsFullscreenVideo={true}
                       mediaPlaybackRequiresUserAction={false}
-                      javaScriptEnabled
-                      domStorageEnabled
+                      javaScriptEnabled={true}
+                      domStorageEnabled={true}
+                      androidLayerType="hardware"
                       originWhitelist={["*"]}
                       mixedContentMode="always"
                       startInLoadingState={true}
-                      onMessage={(event: any) => {
-                        try {
-                          const data = JSON.parse(event.nativeEvent.data);
-                          if (data && data.type === "YT_STATE_CHANGE") {
-                            if (data.state === 1) {
-                              setIsPlaying(true);
-                              setIsTimerActive(true);
-                            } else if (data.state === 2) {
-                              setIsPlaying(false);
-                              setIsTimerActive(false);
-                            }
-                          } else if (data && data.type === "YT_ERROR") {
-                            console.warn("YouTube IFrame API returned error code:", data.code);
-                            setHasError(true);
-                          }
-                        } catch {}
-                      }}
-                      onError={(syntheticEvent: any) => {
-                        console.warn("WebView error: ", syntheticEvent?.nativeEvent);
+                      pointerEvents="auto"
+                      onShouldStartLoadWithRequest={() => true}
+                      onError={() => {
+                        console.warn("WebView error loading mobile youtube player");
                         setHasError(true);
-                      }}
-                      onHttpError={(syntheticEvent: any) => {
-                        console.warn("WebView HTTP error status: ", syntheticEvent?.nativeEvent?.statusCode);
                       }}
                       renderLoading={() => (
                         <View style={s.loadingContainer}>
@@ -695,27 +687,27 @@ export function VideoPlayerModal({
                   ) : (
                     <View style={s.fallbackContainer}>
                       <Ionicons name="logo-youtube" size={44} color="#FF0000" />
-                      <Text style={s.fallbackText}>Video playback notice</Text>
+                      <Text style={s.fallbackText}>Video Player Ready</Text>
                       <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
-                        <Text style={s.playBtnText}>Play Video in Browser / YouTube</Text>
+                        <Text style={s.playBtnText}>Open Full Player in App</Text>
                       </TouchableOpacity>
                     </View>
                   )}
                 </View>
 
-                {/* Video Controls Bar: Unmute & Fullscreen Landscape */}
+                {/* Video Controls Bar: Unmute, Fullscreen Browser & Rotation */}
                 <View style={s.ctrlRow}>
                   <TouchableOpacity onPress={toggleMute} style={[s.ctrlBtn, isMuted && s.ctrlBtnActive]} activeOpacity={0.8}>
                     <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={16} color={isMuted ? "#F59E0B" : "#4ade80"} />
                     <Text style={[s.ctrlBtnText, { color: isMuted ? "#F59E0B" : "#4ade80" }]}>
-                      {isMuted ? "Tap to Unmute Audio" : "Audio On (Unmuted)"}
+                      {isMuted ? "Tap to Unmute" : "Sound ON"}
                     </Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={toggleFullscreen} style={s.ctrlBtn} activeOpacity={0.8}>
-                    <Ionicons name={isFullscreen ? "contract-outline" : "expand-outline"} size={16} color={A3} />
-                    <Text style={[s.ctrlBtnText, { color: A3 }]}>
-                      {isFullscreen ? "Exit Fullscreen" : "Fullscreen Rotate"}
+                  <TouchableOpacity onPress={handleInAppBrowser} style={[s.ctrlBtn, { borderColor: "#8B5CF6", backgroundColor: "rgba(139, 92, 246, 0.15)" }]} activeOpacity={0.8}>
+                    <Ionicons name="expand" size={16} color="#A78BFA" />
+                    <Text style={[s.ctrlBtnText, { color: "#A78BFA" }]}>
+                      Full Player & Rotation
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -730,9 +722,9 @@ export function VideoPlayerModal({
 
                 {/* Footer Controls */}
                 <View style={s.footerRow}>
-                  <TouchableOpacity onPress={handleInAppBrowser} style={s.externalBtn} activeOpacity={0.7}>
-                    <Ionicons name="globe-outline" size={14} color={A3} />
-                    <Text style={[s.externalBtnText, { color: A3 }]}>In-App Browser</Text>
+                  <TouchableOpacity onPress={handleExternalOpen} style={s.externalBtn} activeOpacity={0.7}>
+                    <Ionicons name="logo-youtube" size={14} color="#FF0000" />
+                    <Text style={[s.externalBtnText, { color: A3 }]}>YouTube App</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={handleProceedToFeedback} style={s.completeBtn} activeOpacity={0.8}>

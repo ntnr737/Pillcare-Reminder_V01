@@ -48,7 +48,49 @@ export interface YogaRoutine {
   disclaimer: string;
 }
 
-const YOGA_ROUTINES: YogaRoutine[] = [
+const BUILTIN_YOGA_ROUTINES: YogaRoutine[] = [
+  {
+    id: "diabetes",
+    category: "Diabetes & Sugar",
+    title: "Diabetes & Blood Sugar Control Yoga",
+    duration: "15 min",
+    level: "Beginner",
+    description:
+      "A clinical yoga protocol targeting pancreatic beta-cell stimulation, improving insulin sensitivity and aiding blood glucose management alongside your prescribed diabetic medications.",
+    steps: [
+      { num: 1, name: "Mandukasana (Frog Pose)", duration: "3 min", benefit: "Compresses pancreas and stimulates healthy insulin secretion.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=aqjnv0dZhNc" },
+      { num: 2, name: "Pawanmuktasana (Wind-Relieving Pose)", duration: "3 min", benefit: "Massages abdominal viscera and improves digestion.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=TVHlCr49LNY" },
+      { num: 3, name: "Dhanurasana (Bow Pose)", duration: "3 min", benefit: "Stretches abdominal region and revitalizes endocrine organs.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
+      { num: 4, name: "Ardha Matsyendrasana (Spinal Twist)", duration: "3 min", benefit: "Twists liver and pancreas to enhance glucose metabolism.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=_rlPsepTnzo" },
+      { num: 5, name: "Kapalbhati Pranayama", duration: "3 min", benefit: "Oxygenates blood and supports overall metabolic rate.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=lrkW_6vGqvE" }
+    ],
+    channels: [
+      { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+      { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
+    ],
+    disclaimer: "Monitor your blood glucose regularly and consult your physician for medication adjustments.",
+  },
+  {
+    id: "bp",
+    category: "Hypertension & Heart",
+    title: "Hypertension & Cardiac Care Yoga",
+    duration: "14 min",
+    level: "Beginner",
+    description:
+      "Soothing pranayama and restorative postures proven to lower vascular resistance, calm sympathetic nervous activity, and support healthy blood pressure.",
+    steps: [
+      { num: 1, name: "Anulom Vilom Pranayama", duration: "4 min", benefit: "Balances autonomic nervous system and lowers systolic blood pressure.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=MqeeqXMdZ54" },
+      { num: 2, name: "Shavasana (Corpse Pose)", duration: "4 min", benefit: "Deeply lowers cardiac workload and vascular tension.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw" },
+      { num: 3, name: "Balasana (Child's Pose)", duration: "3 min", benefit: "Relieves mental strain and lowers resting pulse rate.", channel: "Sadhguru", youtube_video: "https://www.youtube.com/watch?v=hJbRpHZr_d0" },
+      { num: 4, name: "Bhramari Pranayama (Humming Bee)", duration: "3 min", benefit: "Releases nitric oxide in nasal passages to dilate blood vessels.", channel: "Swami Ramdev", youtube_video: "https://www.youtube.com/watch?v=lrkW_6vGqvE" }
+    ],
+    channels: [
+      { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
+      { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+      { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true },
+    ],
+    disclaimer: "Avoid headstands (Shirshasana) or rapid breath holding if experiencing high blood pressure.",
+  },
   {
     id: "thyroid",
     category: "Thyroid & Metabolism",
@@ -64,7 +106,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Activates metabolism and improves overall blood circulation.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=OBds5NZ4PRs",
+        youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q",
       },
       {
         num: 2,
@@ -72,7 +114,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Increases blood supply to neck region, stimulating thyroid gland.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=jBbhE-p9jso",
+        youtube_video: "https://www.youtube.com/watch?v=hJbRpHZr_d0",
       },
       {
         num: 3,
@@ -80,7 +122,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Stretches throat and neck, counterbalancing cervical stiffness.",
         channel: "Swami Ramdev",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q",
       },
       {
         num: 4,
@@ -88,7 +130,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Opens chest and abdominal muscles, supporting digestive motility.",
         channel: "Sadhguru",
-        youtube_video: "https://www.youtube.com/watch?v=xX_QXjHP7Lo",
+        youtube_video: "https://www.youtube.com/watch?v=hJbRpHZr_d0",
       },
       {
         num: 5,
@@ -96,7 +138,7 @@ const YOGA_ROUTINES: YogaRoutine[] = [
         duration: "3 min",
         benefit: "Enhances respiratory capacity and endocrine system balance.",
         channel: "Ministry of AYUSH",
-        youtube_video: "https://www.youtube.com/watch?v=QPjwawKxuLw",
+        youtube_video: "https://www.youtube.com/watch?v=sTANio_2E0Q",
       },
     ],
     channels: [
@@ -244,7 +286,16 @@ const YOGA_ROUTINES: YogaRoutine[] = [
   },
 ];
 
-const CATEGORIES = ["All", "Thyroid & Metabolism", "Morning Energy", "Digestive Health", "Stress & Sleep"];
+const CATEGORIES = [
+  "All",
+  "AI Recommended",
+  "Diabetes & Sugar",
+  "Hypertension & Heart",
+  "Thyroid & Metabolism",
+  "Digestive Health",
+  "Stress & Sleep",
+  "Morning Energy",
+];
 
 export default function YogaTabScreen() {
   const { theme, isDark } = useTheme();
@@ -292,7 +343,7 @@ export default function YogaTabScreen() {
   };
 
   const loadProgress = async () => {
-    const currentRoutine = filteredRoutines[activeRoutineIndex] || YOGA_ROUTINES[0];
+    const currentRoutine = filteredRoutines[activeRoutineIndex] || BUILTIN_YOGA_ROUTINES[0];
     const doneData = await get<any>(getYogaDoneKey(currentRoutine.id));
     if (Array.isArray(doneData)) setCompletedSteps(doneData);
     else if (doneData === true) setCompletedSteps(currentRoutine.steps.map((s) => s.num));
@@ -352,12 +403,55 @@ export default function YogaTabScreen() {
     }, [activeRoutineIndex, selectedCategory])
   );
 
+  const [aiRoutine, setAiRoutine] = useState<YogaRoutine | null>(null);
+
+  useEffect(() => {
+    // Load AI medication yoga tip on mount
+    const fetchAiYoga = async () => {
+      try {
+        let cached = await get<any>(K.yogaTip);
+        if (!cached) {
+          cached = await api.yogaTip().catch(() => null);
+          if (cached) await set(K.yogaTip, cached);
+        }
+        if (cached && cached.title && Array.isArray(cached.steps) && cached.steps.length > 0) {
+          const routine: YogaRoutine = {
+            id: "ai_recommended",
+            category: "AI Recommended",
+            title: cached.title,
+            duration: cached.duration || "15 min",
+            level: cached.level || "Beginner",
+            description: cached.description || "AI-generated yoga therapy routine matched to your active medications and health profile.",
+            steps: cached.steps.map((st: any, idx: number) => ({
+              num: st.num || idx + 1,
+              name: st.name || `Pose #${idx + 1}`,
+              duration: st.duration || "3 min",
+              benefit: st.benefit || "Supports wellness and complements medication regimen.",
+              channel: st.channel || "Ministry of AYUSH",
+              youtube_video: st.youtube_video || "https://www.youtube.com/watch?v=QPjwawKxuLw",
+            })),
+            channels: cached.channels || [
+              { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
+              { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+              { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true },
+            ],
+            disclaimer: cached.disclaimer || "Yoga recommendations complement prescribed medication.",
+          };
+          setAiRoutine(routine);
+        }
+      } catch {}
+    };
+    fetchAiYoga();
+  }, []);
+
+  const allRoutines = aiRoutine ? [aiRoutine, ...BUILTIN_YOGA_ROUTINES] : BUILTIN_YOGA_ROUTINES;
+
   const filteredRoutines =
     selectedCategory === "All"
-      ? YOGA_ROUTINES
-      : YOGA_ROUTINES.filter((r) => r.category === selectedCategory);
+      ? allRoutines
+      : allRoutines.filter((r) => r.category === selectedCategory);
 
-  const currentRoutine = filteredRoutines[activeRoutineIndex] || filteredRoutines[0] || YOGA_ROUTINES[0];
+  const currentRoutine = filteredRoutines[activeRoutineIndex] || filteredRoutines[0] || allRoutines[0];
   const safeCompletedSteps = Array.isArray(completedSteps) ? completedSteps : [];
 
   const isStepDone = (num: number) => safeCompletedSteps.includes(num);
