@@ -459,24 +459,7 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
         const medChannel = getChannelIdForCategory("medication", medProfile, soundSet.masterMute, soundSet.vibrationEnabled);
         const medSoundParam = getNotificationSoundParam(medProfile, soundSet.masterMute);
 
-        // Schedule exact DATE trigger for next upcoming dose
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title,
-            body,
-            data,
-            categoryIdentifier: MEDICATION_CATEGORY,
-            sound: medSoundParam,
-            channelId: medChannel,
-            priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
-          } as any,
-          trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.DATE,
-            date: nextOccurrence,
-          },
-        });
-
-        // 2. Schedule DAILY recurring trigger for long-term daily reminders
+        // Schedule 1 clean DAILY recurring trigger for long-term daily reminders
         const dailyTrigger: any = Platform.OS === "android"
           ? {
               type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -554,30 +537,7 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
       }
     }
 
-    // 1. Schedule exact DATE trigger for next upcoming yoga session
-    const nextOccurrence = new Date();
-    nextOccurrence.setHours(parsed.hour, parsed.minute, 0, 0);
-    if (nextOccurrence.getTime() <= Date.now()) {
-      nextOccurrence.setDate(nextOccurrence.getDate() + 1);
-    }
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: "Time for Your AI Yoga Therapy",
-        body: `${title} — Tap to view poses & video guide.`,
-        data: { isYogaReminder: true },
-        categoryIdentifier: YOGA_CATEGORY,
-        sound: yogaSoundParam,
-        channelId: yogaChannel,
-        priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
-      } as any,
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: nextOccurrence,
-      },
-    });
-
-    // 2. Schedule DAILY recurring trigger for long-term daily reminders
+    // Schedule 1 clean DAILY recurring trigger for long-term daily reminders
     const dailyTrigger: any = Platform.OS === "android"
       ? {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -604,7 +564,7 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
       trigger: dailyTrigger,
     });
 
-    console.log(`Scheduled daily yoga reminder at ${time24} (next occurrence: ${nextOccurrence.toISOString()})`);
+    console.log(`Scheduled daily yoga reminder at ${time24}`);
   } catch (e) {
     console.warn("Yoga reminder schedule failed:", e);
   }
@@ -615,6 +575,14 @@ export async function scheduleWaterReminders(): Promise<void> {
     await ensureChannels();
     const granted = await requestNotificationPermission();
     if (!granted) return;
+
+    // Cancel existing water notifications before scheduling new ones to prevent duplicate accumulation
+    const scheduledAll = await Notifications.getAllScheduledNotificationsAsync();
+    for (const notif of scheduledAll) {
+      if (notif.content.categoryIdentifier === WATER_CATEGORY || notif.content.data?.type === "water_reminder") {
+        await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+      }
+    }
 
     const soundSet = await getSoundSettings();
     const waterProfile = soundSet.categorySounds.water || "default";
@@ -630,28 +598,6 @@ export async function scheduleWaterReminders(): Promise<void> {
       { hour: 21, minute: 30 },
     ];
     for (const wt of waterTimes) {
-      const nextOccurrence = new Date();
-      nextOccurrence.setHours(wt.hour, wt.minute, 0, 0);
-      if (nextOccurrence.getTime() <= Date.now()) {
-        nextOccurrence.setDate(nextOccurrence.getDate() + 1);
-      }
-
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "Stay Hydrated! — PillCare Water Reminder",
-          body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
-          data: { type: "water_reminder" },
-          categoryIdentifier: WATER_CATEGORY,
-          sound: waterSoundParam,
-          channelId: waterChannel,
-          priority: soundSet.masterMute ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.HIGH,
-        } as any,
-        trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: nextOccurrence,
-        },
-      });
-
       const dailyTrigger: any = Platform.OS === "android"
         ? {
             type: Notifications.SchedulableTriggerInputTypes.DAILY,

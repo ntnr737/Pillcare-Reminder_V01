@@ -11,6 +11,7 @@ import {
   saveSoundSettings,
   playSoundPreview,
   getChannelIdForCategory,
+  getProfileLabel,
   SoundCategory,
   SoundProfile,
   SoundSettings,

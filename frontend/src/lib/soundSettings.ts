@@ -39,6 +39,8 @@ export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
   },
 };
 
+export const VALID_SOUND_PROFILES: SoundProfile[] = ["chime", "gentle", "urgent", "water_drop", "default", "mute"];
+
 export const SOUND_PROFILE_LABELS: Record<SoundProfile, { label: string; desc: string; icon: string; isSignature?: boolean }> = {
   chime: { label: "🔔 Medical Chime (Default Signature)", desc: "Soft, peaceful 3-tone ascending chime for dose clarity", icon: "sparkles-outline", isSignature: true },
   gentle: { label: "🌿 Gentle Bell", desc: "Soothing acoustic ambient bell tone", icon: "notifications-outline" },
@@ -48,6 +50,13 @@ export const SOUND_PROFILE_LABELS: Record<SoundProfile, { label: string; desc: s
   mute: { label: "🔇 Muted / Silent", desc: "Visual banner only, no sound", icon: "volume-mute-outline" },
 };
 
+export function getProfileLabel(profile: SoundProfile | string): { label: string; desc: string; icon: string; isSignature?: boolean } {
+  if (profile && SOUND_PROFILE_LABELS[profile as SoundProfile]) {
+    return SOUND_PROFILE_LABELS[profile as SoundProfile];
+  }
+  return SOUND_PROFILE_LABELS.chime;
+}
+
 /**
  * Fetch sound settings from AsyncStorage with fallback to defaults.
  */
@@ -56,13 +65,21 @@ export async function getSoundSettings(): Promise<SoundSettings> {
     const raw = await AsyncStorage.getItem(SOUND_SETTINGS_KEY);
     if (!raw) return DEFAULT_SOUND_SETTINGS;
     const parsed = JSON.parse(raw);
+    const catSounds = parsed.categorySounds || {};
+    
+    // Sanitize loaded profiles to prevent undefined lookup crashes
+    const sanitizedCatSounds = { ...DEFAULT_SOUND_SETTINGS.categorySounds };
+    (Object.keys(sanitizedCatSounds) as SoundCategory[]).forEach((cat) => {
+      const val = catSounds[cat];
+      if (val && VALID_SOUND_PROFILES.includes(val as SoundProfile)) {
+        sanitizedCatSounds[cat] = val as SoundProfile;
+      }
+    });
+
     return {
       masterMute: parsed.masterMute ?? DEFAULT_SOUND_SETTINGS.masterMute,
       vibrationEnabled: parsed.vibrationEnabled ?? DEFAULT_SOUND_SETTINGS.vibrationEnabled,
-      categorySounds: {
-        ...DEFAULT_SOUND_SETTINGS.categorySounds,
-        ...(parsed.categorySounds || {}),
-      },
+      categorySounds: sanitizedCatSounds,
     };
   } catch {
     return DEFAULT_SOUND_SETTINGS;
