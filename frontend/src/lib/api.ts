@@ -75,8 +75,14 @@ export const api = {
   scanMedication: (image_base64: string) => req<any>("/scan-medication", { method: "POST", body: JSON.stringify({ image_base64 }) }, 15000),
   caregiverAlert: (message: string, medication_name?: string) => req<any>("/caregiver/alert", { method: "POST", body: JSON.stringify({ message, medication_name }) }),
   caregiverLog: () => req<any[]>("/caregiver/log"),
-  exportCsvUrl: () => `${BASE}/api/export/csv`,
-  exportExcelUrl: () => `${BASE}/api/export/excel`,
+  exportCsvUrl: async () => {
+    const token = await getStoredToken();
+    return `${BASE}/api/export/csv${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  },
+  exportExcelUrl: async () => {
+    const token = await getStoredToken();
+    return `${BASE}/api/export/excel${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  },
   exportCsv: async (): Promise<string> => {
     const token = await getStoredToken();
     const res = await fetch(`${BASE}/api/export/csv`, {

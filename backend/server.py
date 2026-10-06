@@ -388,10 +388,15 @@ def _create_session_token(user_id: str, is_guest: bool = False) -> str:
     return pyjwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
-async def get_current_user_id(authorization: str = Header(None)) -> str:
-    if not authorization or not authorization.startswith("Bearer "):
+async def get_current_user_id(request: Request = None, authorization: str = Header(None)) -> str:
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ").strip()
+    elif request and request.query_params.get("token"):
+        token = request.query_params.get("token").strip()
+
+    if not token:
         raise HTTPException(401, "Missing or invalid Authorization header")
-    token = authorization.removeprefix("Bearer ").strip()
     if token in _revoked_tokens:
         raise HTTPException(401, "Session has been revoked, please sign in again")
     if TEST_DEMO_ENABLED and (token.startswith("demo_token_") or token == "guest"):

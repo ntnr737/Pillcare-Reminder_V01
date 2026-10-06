@@ -6,6 +6,7 @@ import { useRouter } from "expo-router";
 import { api } from "@/src/lib/api";
 import { getFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
+import * as WebBrowser from "expo-web-browser";
 import { get, set, K } from "@/src/lib/store";
 
 const BG = "#161826", SF = "#232532", TX = "#e9e9ed",
@@ -40,9 +41,23 @@ export default function History() {
 
   useEffect(() => { load(); }, []);
 
-  const downloadCsv = () => {
+  const downloadCsv = async () => {
     if (!getFeatures().export_data) { setShowUpgrade(true); return; }
-    Linking.openURL(api.exportCsvUrl());
+    try {
+      const url = await api.exportCsvUrl();
+      let opened = false;
+      try {
+        const res = await WebBrowser.openBrowserAsync(url);
+        if (res) opened = true;
+      } catch {
+        opened = false;
+      }
+      if (!opened) {
+        Linking.openURL(url).catch(() => {});
+      }
+    } catch {
+      // Fallback
+    }
   };
 
   const statusColor = (s: string) =>
