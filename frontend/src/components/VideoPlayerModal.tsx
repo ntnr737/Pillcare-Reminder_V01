@@ -45,18 +45,7 @@ export interface VideoPlayerModalProps {
 }
 
 export function extractYouTubeId(url?: string): string {
-  if (!url) return "sTANio_2E0Q";
-  if (url.includes("OBds5NZ4PRs")) return "sTANio_2E0Q";
-  if (url.includes("1W_Q4m0sD78")) return "sTANio_2E0Q";
-  if (url.includes("L3F4z7t8_2w")) return "hJbRpHZr_d0";
-  if (url.includes("jBbhE-p9jso")) return "hJbRpHZr_d0";
-  if (url.includes("QPjwawKxuLw")) return "sTANio_2E0Q";
-  if (url.includes("xX_QXjHP7Lo")) return "hJbRpHZr_d0";
-  if (url.includes("lrkW_6vGqvE")) return "sTANio_2E0Q";
-  if (url.includes("MqeeqXMdZ54")) return "hJbRpHZr_d0";
-  if (url.includes("TVHlCr49LNY")) return "sTANio_2E0Q";
-  if (url.includes("_rlPsepTnzo")) return "hJbRpHZr_d0";
-  if (url.includes("aqjnv0dZhNc")) return "sTANio_2E0Q";
+  if (!url) return "v7AYKMP6rOE";
 
   const watchMatch = url.match(/[?&]v=([^&]+)/);
   if (watchMatch && watchMatch[1] && watchMatch[1].length === 11) return watchMatch[1];
@@ -64,7 +53,7 @@ export function extractYouTubeId(url?: string): string {
   if (shortMatch && shortMatch[1] && shortMatch[1].length === 11) return shortMatch[1];
   const embedMatch = url.match(/embed\/([^?&]+)/);
   if (embedMatch && embedMatch[1] && embedMatch[1].length === 11) return embedMatch[1];
-  return "sTANio_2E0Q";
+  return "v7AYKMP6rOE";
 }
 
 const FEELING_OPTIONS = [
@@ -704,7 +693,7 @@ export function VideoPlayerModal({
                     </Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity onPress={handleInAppBrowser} style={[s.ctrlBtn, { borderColor: "#8B5CF6", backgroundColor: "rgba(139, 92, 246, 0.15)" }]} activeOpacity={0.8}>
+                  <TouchableOpacity onPress={toggleFullscreen} style={[s.ctrlBtn, { borderColor: "#8B5CF6", backgroundColor: "rgba(139, 92, 246, 0.15)" }]} activeOpacity={0.8}>
                     <Ionicons name="expand" size={16} color="#A78BFA" />
                     <Text style={[s.ctrlBtnText, { color: "#A78BFA" }]}>
                       Full Player & Rotation
