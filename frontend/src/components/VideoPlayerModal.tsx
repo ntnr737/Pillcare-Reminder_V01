@@ -402,6 +402,92 @@ export function VideoPlayerModal({
     }
   };
 
+  if (visible && isFullscreen) {
+    return (
+      <Modal visible={visible} transparent={false} animationType="none" onRequestClose={toggleFullscreen}>
+        <View style={{ flex: 1, backgroundColor: "#000", width: "100%", height: "100%", position: "relative" }}>
+          {/* Top Bar with Title & Exit Fullscreen button */}
+          <View
+            style={{
+              position: "absolute",
+              top: Platform.OS === "ios" ? 44 : 20,
+              left: 16,
+              right: 16,
+              zIndex: 999999,
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.75)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
+              <Ionicons name="sparkles" size={14} color="#A78BFA" />
+              <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>{title || "Yoga Practice"}</Text>
+            </View>
+
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+              <TouchableOpacity
+                onPress={toggleMute}
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.85)",
+                  borderWidth: 1,
+                  borderColor: isMuted ? "rgba(245, 158, 11, 0.4)" : "rgba(74, 222, 128, 0.4)",
+                  paddingHorizontal: 12,
+                  paddingVertical: 7,
+                  borderRadius: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={16} color={isMuted ? "#F59E0B" : "#4ade80"} />
+                <Text style={{ color: isMuted ? "#F59E0B" : "#4ade80", fontSize: 12, fontWeight: "700" }}>
+                  {isMuted ? "Unmute" : "Sound On"}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={toggleFullscreen}
+                style={{
+                  backgroundColor: "rgba(0,0,0,0.85)",
+                  borderWidth: 1,
+                  borderColor: "rgba(255,255,255,0.3)",
+                  paddingHorizontal: 14,
+                  paddingVertical: 7,
+                  borderRadius: 20,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="contract-outline" size={16} color="#FFF" />
+                <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>Exit Fullscreen</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Fullscreen Edge-to-Edge WebView */}
+          {WebView ? (
+            <WebView
+              ref={webViewRef}
+              source={{ html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }}
+              style={{ flex: 1, backgroundColor: "#000" }}
+              allowsInlineMediaPlayback={true}
+              allowsFullscreenVideo={true}
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              originWhitelist={["*"]}
+              mixedContentMode="always"
+              userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            />
+          ) : null}
+        </View>
+      </Modal>
+    );
+  }
+
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCloseModal}>
       <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={handleCloseModal}>
@@ -543,12 +629,7 @@ export function VideoPlayerModal({
                   ) : WebView ? (
                     <WebView
                       ref={webViewRef}
-                      key={useMobileWeb ? "mobile-web" : "embed-html"}
-                      source={
-                        useMobileWeb
-                          ? { uri: mobileWatchUri }
-                          : { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }
-                      }
+                      source={{ html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }}
                       style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
                       allowsInlineMediaPlayback
                       allowsFullscreenVideo
@@ -557,7 +638,7 @@ export function VideoPlayerModal({
                       domStorageEnabled
                       originWhitelist={["*"]}
                       mixedContentMode="always"
-                      userAgent="Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Mobile Safari/537.36"
+                      userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                       startInLoadingState={true}
                       onMessage={(event: any) => {
                         try {
@@ -572,23 +653,14 @@ export function VideoPlayerModal({
                             }
                           } else if (data && data.type === "YT_ERROR") {
                             console.warn("YouTube IFrame API returned error code:", data.code);
-                            if (!useMobileWeb) {
-                              setUseMobileWeb(true);
-                            }
                           }
                         } catch {}
                       }}
                       onError={(syntheticEvent: any) => {
                         console.warn("WebView error: ", syntheticEvent?.nativeEvent);
-                        if (!useMobileWeb) {
-                          setUseMobileWeb(true);
-                        }
                       }}
                       onHttpError={(syntheticEvent: any) => {
                         console.warn("WebView HTTP error status: ", syntheticEvent?.nativeEvent?.statusCode);
-                        if (!useMobileWeb && syntheticEvent?.nativeEvent?.statusCode >= 400) {
-                          setUseMobileWeb(true);
-                        }
                       }}
                       renderLoading={() => (
                         <View style={s.loadingContainer}>
