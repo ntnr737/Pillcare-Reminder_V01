@@ -48,6 +48,14 @@ export function extractYouTubeId(url?: string): string {
   if (!url) return "OBds5NZ4PRs";
   if (url.includes("1W_Q4m0sD78")) return "OBds5NZ4PRs";
   if (url.includes("L3F4z7t8_2w")) return "jBbhE-p9jso";
+  if (url.includes("QPjwawKxuLw")) return "sTANio_2E0Q";
+  if (url.includes("xX_QXjHP7Lo")) return "hJbRpHZr_d0";
+  if (url.includes("lrkW_6vGqvE")) return "OBds5NZ4PRs";
+  if (url.includes("MqeeqXMdZ54")) return "jBbhE-p9jso";
+  if (url.includes("TVHlCr49LNY")) return "OBds5NZ4PRs";
+  if (url.includes("_rlPsepTnzo")) return "jBbhE-p9jso";
+  if (url.includes("aqjnv0dZhNc")) return "sTANio_2E0Q";
+
   const watchMatch = url.match(/[?&]v=([^&]+)/);
   if (watchMatch && watchMatch[1] && watchMatch[1].length === 11) return watchMatch[1];
   const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
@@ -287,13 +295,12 @@ export function VideoPlayerModal({
             height: '100%',
             width: '100%',
             videoId: '${vidId}',
-            host: 'https://www.youtube-nocookie.com',
+            host: 'https://www.youtube.com',
             playerVars: {
               'autoplay': 1,
               'playsinline': 1,
               'enablejsapi': 1,
               'origin': 'https://www.youtube.com',
-              'widget_referrer': 'https://www.youtube.com',
               'rel': 0,
               'modestbranding': 1,
               'controls': 1
@@ -480,7 +487,23 @@ export function VideoPlayerModal({
               domStorageEnabled={true}
               originWhitelist={["*"]}
               mixedContentMode="always"
-              userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+              onMessage={(event: any) => {
+                try {
+                  const data = JSON.parse(event.nativeEvent.data);
+                  if (data && data.type === "YT_STATE_CHANGE") {
+                    if (data.state === 1) {
+                      setIsPlaying(true);
+                      setIsTimerActive(true);
+                    } else if (data.state === 2) {
+                      setIsPlaying(false);
+                      setIsTimerActive(false);
+                    }
+                  } else if (data && data.type === "YT_ERROR") {
+                    console.warn("YouTube IFrame API returned error code:", data.code);
+                    setHasError(true);
+                  }
+                } catch {}
+              }}
             />
           ) : null}
         </View>
@@ -598,7 +621,7 @@ export function VideoPlayerModal({
                                 height: '100%',
                                 width: '100%',
                                 videoId: '${videoId}',
-                                host: 'https://www.youtube-nocookie.com',
+                                host: 'https://www.youtube.com',
                                 playerVars: {
                                   'autoplay': 1,
                                   'playsinline': 1,
@@ -626,7 +649,7 @@ export function VideoPlayerModal({
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       allowFullScreen
                     />
-                  ) : WebView ? (
+                  ) : WebView && !hasError ? (
                     <WebView
                       ref={webViewRef}
                       source={{ html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }}
@@ -638,7 +661,6 @@ export function VideoPlayerModal({
                       domStorageEnabled
                       originWhitelist={["*"]}
                       mixedContentMode="always"
-                      userAgent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                       startInLoadingState={true}
                       onMessage={(event: any) => {
                         try {
@@ -653,11 +675,13 @@ export function VideoPlayerModal({
                             }
                           } else if (data && data.type === "YT_ERROR") {
                             console.warn("YouTube IFrame API returned error code:", data.code);
+                            setHasError(true);
                           }
                         } catch {}
                       }}
                       onError={(syntheticEvent: any) => {
                         console.warn("WebView error: ", syntheticEvent?.nativeEvent);
+                        setHasError(true);
                       }}
                       onHttpError={(syntheticEvent: any) => {
                         console.warn("WebView HTTP error status: ", syntheticEvent?.nativeEvent?.statusCode);
@@ -671,9 +695,9 @@ export function VideoPlayerModal({
                   ) : (
                     <View style={s.fallbackContainer}>
                       <Ionicons name="logo-youtube" size={44} color="#FF0000" />
-                      <Text style={s.fallbackText}>Tap below to play video</Text>
+                      <Text style={s.fallbackText}>Video playback notice</Text>
                       <TouchableOpacity onPress={handleInAppBrowser} style={[s.playBtn, { backgroundColor: "#8B5CF6" }]}>
-                        <Text style={s.playBtnText}>Play In-App Browser</Text>
+                        <Text style={s.playBtnText}>Play Video in Browser / YouTube</Text>
                       </TouchableOpacity>
                     </View>
                   )}
