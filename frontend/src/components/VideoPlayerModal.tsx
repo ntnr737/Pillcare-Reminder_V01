@@ -63,6 +63,8 @@ const FEELING_OPTIONS = [
   { id: "calm", label: "Balanced & Calmer", icon: "heart", color: "#EC4899" },
 ];
 
+const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
+
 export function VideoPlayerModal({
   visible,
   onClose,
@@ -83,11 +85,22 @@ export function VideoPlayerModal({
   const [modalStep, setModalStep] = useState<"player" | "feedback">("player");
   const [selectedFeeling, setSelectedFeeling] = useState<string>("energized");
 
+  // YouTube Full Feature States
+  const [playerMode, setPlayerMode] = useState<"focus" | "youtube_web">("focus");
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [showSpeedMenu, setShowSpeedMenu] = useState(false);
+
   useEffect(() => {
     if (visible) {
       setHasError(false);
-      setUseMobileWeb(false);
+      setPlayerMode("focus");
       setSecondsWatched(0);
+      setCurrentTime(0);
+      setDuration(0);
+      setPlaybackRate(1.0);
+      setShowSpeedMenu(false);
       setIsPlaying(true);
       setIsTimerActive(true);
       setIsMuted(false);
@@ -101,6 +114,30 @@ export function VideoPlayerModal({
       ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
     }
   }, [visible, videoUrl]);
+
+  // Handle messages from WebView JS Bridge
+  const handleWebViewMessage = (event: any) => {
+    try {
+      const data = typeof event.nativeEvent.data === "string" ? JSON.parse(event.nativeEvent.data) : event.nativeEvent.data;
+      if (!data) return;
+
+      if (data.type === "YT_TIME_UPDATE") {
+        if (data.currentTime !== undefined) setCurrentTime(data.currentTime);
+        if (data.duration !== undefined && data.duration > 0) setDuration(data.duration);
+      } else if (data.type === "YT_STATE_CHANGE") {
+        // 1 = PLAYING, 2 = PAUSED, 0 = ENDED, 3 = BUFFERING
+        if (data.state === 1) {
+          setIsPlaying(true);
+          setIsTimerActive(true);
+        } else if (data.state === 2 || data.state === 0) {
+          setIsPlaying(false);
+          setIsTimerActive(false);
+        }
+      } else if (data.type === "YT_ERROR") {
+        console.warn("YouTube player error:", data.code);
+      }
+    } catch (e) {}
+  };
 
   // Web platform YouTube iframe API message listener
   useEffect(() => {
@@ -314,6 +351,23 @@ export function VideoPlayerModal({
             event.target.setVolume(100);
             event.target.playVideo();
           } catch(e){}
+
+          // Poll current time & duration every 500ms
+          setInterval(function() {
+            try {
+              if (player && player.getCurrentTime) {
+                var c = player.getCurrentTime();
+                var d = player.getDuration();
+                if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'YT_TIME_UPDATE',
+                    currentTime: c,
+                    duration: d
+                  }));
+                }
+              }
+            } catch(e){}
+          }, 500);
         }
 
         window.unmuteAudio = function() {
@@ -350,6 +404,62 @@ export function VideoPlayerModal({
     </body>
     </html>
   `;
+
+  const seekRelative = (offsetSecs: number) => {
+    const target = Math.max(0, Math.min(duration || 300, currentTime + offsetSecs));
+    setCurrentTime(target);
+    if (webViewRef.current) {
+      webViewRef.current.injectJavaScript(`
+        try {
+          if (window.player && window.player.seekTo) {
+            window.player.seekTo(${target}, true);
+          }
+        } catch(e) {}
+        true;
+      `);
+    }
+  };
+
+  const setSpeed = (rate: number) => {
+    setPlaybackRate(rate);
+    setShowSpeedMenu(false);
+    if (webViewRef.current) {
+      webViewRef.current.injectJavaScript(`
+        try {
+          if (window.player && window.player.setPlaybackRate) {
+            window.player.setPlaybackRate(${rate});
+          }
+        } catch(e) {}
+        true;
+      `);
+    }
+  };
+
+  const togglePlayPausePlayer = () => {
+    if (isPlaying) {
+      setIsPlaying(false);
+      setIsTimerActive(false);
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          try {
+            if (window.player && window.player.pauseVideo) { window.player.pauseVideo(); }
+          } catch(e) {}
+          true;
+        `);
+      }
+    } else {
+      setIsPlaying(true);
+      setIsTimerActive(true);
+      if (webViewRef.current) {
+        webViewRef.current.injectJavaScript(`
+          try {
+            if (window.player && window.player.playVideo) { window.player.playVideo(); }
+          } catch(e) {}
+          true;
+        `);
+      }
+    }
+  };
 
   const handleExternalOpen = () => {
     const rawUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
@@ -647,10 +757,16 @@ export function VideoPlayerModal({
                   ) : WebView && !hasError ? (
                     <WebView
                       ref={webViewRef}
-                      source={{
-                        uri: `https://m.youtube.com/watch?v=${videoId}`
-                      }}
-                      userAgent="Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                      source={
+                        playerMode === "focus"
+                          ? { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }
+                          : { uri: `https://m.youtube.com/watch?v=${videoId}` }
+                      }
+                      userAgent={
+                        playerMode === "youtube_web"
+                          ? "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                          : undefined
+                      }
                       style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
                       allowsInlineMediaPlayback={true}
                       allowsFullscreenVideo={true}
@@ -662,9 +778,9 @@ export function VideoPlayerModal({
                       mixedContentMode="always"
                       startInLoadingState={true}
                       pointerEvents="auto"
-                      onShouldStartLoadWithRequest={() => true}
+                      onMessage={handleWebViewMessage}
                       onError={() => {
-                        console.warn("WebView error loading mobile youtube player");
+                        console.warn("WebView error loading player");
                         setHasError(true);
                       }}
                       renderLoading={() => (
@@ -684,22 +800,123 @@ export function VideoPlayerModal({
                   )}
                 </View>
 
-                {/* Video Controls Bar: Unmute, Fullscreen Browser & Rotation */}
-                <View style={s.ctrlRow}>
-                  <TouchableOpacity onPress={toggleMute} style={[s.ctrlBtn, isMuted && s.ctrlBtnActive]} activeOpacity={0.8}>
-                    <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={16} color={isMuted ? "#F59E0B" : "#4ade80"} />
-                    <Text style={[s.ctrlBtnText, { color: isMuted ? "#F59E0B" : "#4ade80" }]}>
-                      {isMuted ? "Tap to Unmute" : "Sound ON"}
+                {/* Player Mode Switcher Tabs */}
+                <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 10, padding: 3, marginBottom: 10 }}>
+                  <TouchableOpacity
+                    onPress={() => setPlayerMode("focus")}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 6,
+                      alignItems: "center",
+                      borderRadius: 8,
+                      backgroundColor: playerMode === "focus" ? A3 : "transparent",
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: playerMode === "focus" ? "#FFF" : TM }}>
+                      🎬 Focus Player Controls
                     </Text>
                   </TouchableOpacity>
-
-                  <TouchableOpacity onPress={toggleFullscreen} style={[s.ctrlBtn, { borderColor: "#8B5CF6", backgroundColor: "rgba(139, 92, 246, 0.15)" }]} activeOpacity={0.8}>
-                    <Ionicons name="expand" size={16} color="#A78BFA" />
-                    <Text style={[s.ctrlBtnText, { color: "#A78BFA" }]}>
-                      Full Player & Rotation
+                  <TouchableOpacity
+                    onPress={() => setPlayerMode("youtube_web")}
+                    style={{
+                      flex: 1,
+                      paddingVertical: 6,
+                      alignItems: "center",
+                      borderRadius: 8,
+                      backgroundColor: playerMode === "youtube_web" ? "#FF0000" : "transparent",
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: "700", color: playerMode === "youtube_web" ? "#FFF" : TM }}>
+                      🌐 YouTube Web Page
                     </Text>
                   </TouchableOpacity>
                 </View>
+
+                {/* Focus Controls Bar: Play/Pause, Seek, Speed, Mute, Fullscreen */}
+                {playerMode === "focus" && (
+                  <View style={{ backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", marginBottom: 10 }}>
+                    {/* Time Progress Display */}
+                    {duration > 0 && (
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>
+                          {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, "0")} / {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, "0")}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: TM }}>
+                          {playbackRate !== 1.0 ? `${playbackRate}x Speed` : "Normal Speed"}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Primary Controls Row */}
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around" }}>
+                      {/* Rewind 10s */}
+                      <TouchableOpacity onPress={() => seekRelative(-10)} style={s.ctrlIconBtn} activeOpacity={0.7}>
+                        <Ionicons name="refresh-outline" size={18} color="#A78BFA" />
+                        <Text style={s.ctrlIconBtnText}>-10s</Text>
+                      </TouchableOpacity>
+
+                      {/* Play / Pause Toggle */}
+                      <TouchableOpacity onPress={togglePlayPausePlayer} style={[s.ctrlIconBtn, { backgroundColor: A3, paddingHorizontal: 16 }]} activeOpacity={0.8}>
+                        <Ionicons name={isPlaying ? "pause" : "play"} size={20} color="#FFF" />
+                        <Text style={[s.ctrlIconBtnText, { color: "#FFF", fontWeight: "700" }]}>
+                          {isPlaying ? "Pause" : "Play"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Forward 10s */}
+                      <TouchableOpacity onPress={() => seekRelative(10)} style={s.ctrlIconBtn} activeOpacity={0.7}>
+                        <Ionicons name="reload-outline" size={18} color="#A78BFA" />
+                        <Text style={s.ctrlIconBtnText}>+10s</Text>
+                      </TouchableOpacity>
+
+                      {/* Speed Selector Toggle */}
+                      <TouchableOpacity onPress={() => setShowSpeedMenu((prev) => !prev)} style={[s.ctrlIconBtn, playbackRate !== 1.0 && { borderColor: A3 }]} activeOpacity={0.7}>
+                        <Ionicons name="speedometer-outline" size={18} color={playbackRate !== 1.0 ? A3 : TM} />
+                        <Text style={[s.ctrlIconBtnText, playbackRate !== 1.0 && { color: A3 }]}>
+                          {playbackRate}x
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Sound Toggle */}
+                      <TouchableOpacity onPress={toggleMute} style={s.ctrlIconBtn} activeOpacity={0.7}>
+                        <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={18} color={isMuted ? "#F59E0B" : "#4ade80"} />
+                        <Text style={[s.ctrlIconBtnText, { color: isMuted ? "#F59E0B" : "#4ade80" }]}>
+                          {isMuted ? "Muted" : "Audio"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      {/* Fullscreen & Rotate */}
+                      <TouchableOpacity onPress={toggleFullscreen} style={s.ctrlIconBtn} activeOpacity={0.7}>
+                        <Ionicons name="expand" size={18} color="#A78BFA" />
+                        <Text style={[s.ctrlIconBtnText, { color: "#A78BFA" }]}>Rotate</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Speed Selector Popup Menu */}
+                    {showSpeedMenu && (
+                      <View style={{ flexDirection: "row", justifyContent: "space-around", marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
+                        {SPEED_OPTIONS.map((rate) => (
+                          <TouchableOpacity
+                            key={rate}
+                            onPress={() => setSpeed(rate)}
+                            style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 4,
+                              borderRadius: 6,
+                              backgroundColor: playbackRate === rate ? A3 : "rgba(255,255,255,0.08)",
+                            }}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: playbackRate === rate ? "#FFF" : TM }}>
+                              {rate}x
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                )}
 
                 {/* Clinical Benefit Callout */}
                 {benefit ? (
@@ -983,6 +1200,23 @@ const s = StyleSheet.create({
   ctrlBtnText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  ctrlIconBtn: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.06)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.1)",
+    minWidth: 44,
+  },
+  ctrlIconBtnText: {
+    fontSize: 10,
+    fontWeight: "600",
+    color: TM,
+    marginTop: 2,
   },
   completeBtn: {
     flex: 1,
