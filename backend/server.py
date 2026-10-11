@@ -4825,6 +4825,26 @@ def err(code: int, msg: str, detail: str = ""):
     """Standard error response with error code for frontend debugging."""
     return HTTPException(code, f"ERR_{code}: {msg}" + (f" - {detail}" if detail else ""))
 
+@app.get("/public/feature-config")
+async def public_feature_config(request: Request):
+    """Return only safe pre-auth feature controls needed by the mobile login/bootstrap UI."""
+    platform = request.headers.get("x-app-platform", "").strip().lower()
+    country = request.headers.get("x-app-country", "").strip().upper()
+    app_version = request.headers.get("x-app-version", "").strip()
+
+    saved = await db.feature_flags.find(
+        {},
+        {"_id": 0, "key": 1, "enabled": 1, "rolloutPercentage": 1, "countries": 1, "platforms": 1, "minAppVersion": 1},
+    ).to_list(100)
+    by_key = {item.get("key"): item for item in saved}
+
+    result = {}
+    for key in ("google_login", "apple_login", "maintenance_mode"):
+        default = next(item for item in GLOBAL_FEATURE_DEFAULTS if item["key"] == key)
+        flag = {**default, **(by_key.get(key) or {})}
+        result[key] = _global_flag_allows(flag, "preauth", platform, country, app_version)
+    return result
+
 @app.get("/health")
 @limiter.exempt
 async def health_check(request: Request):
