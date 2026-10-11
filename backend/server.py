@@ -3285,6 +3285,18 @@ async def get_user_features(user_id: str) -> dict:
     features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["free"]))
     if sub and sub.get("overrides") and isinstance(sub["overrides"], dict):
         features.update(sub["overrides"])
+    # Global flags are a server-side kill switch for capabilities exposed by the mobile app.
+    global_flags = await db.feature_flags.find({}, {"_id": 0, "key": 1, "enabled": 1, "rolloutPercentage": 1}).to_list(100)
+    global_by_key = {flag.get("key"): flag for flag in global_flags}
+    mappings = {
+        "yoga_recommendations": "yoga_full",
+        "emergency_contacts": "caregiver_alerts",
+        "ai_assistant": "ai_insights",
+    }
+    for flag_key, feature_key in mappings.items():
+        flag = global_by_key.get(flag_key)
+        if flag and (flag.get("enabled") is False or flag.get("rolloutPercentage", 100) <= 0):
+            features[feature_key] = 0 if feature_key == "caregiver_alerts" else ("" if feature_key == "ai_insights" else False)
     features["plan"] = plan
 
     exp_val = sub.get("expires_at") if sub else None
