@@ -3462,6 +3462,39 @@ async def admin_remove_feature(user_id: str, feature: str, _: None = Depends(req
     await db.subscriptions.update_one({"user_id": user_id}, {"$unset": {f"overrides.{feature}": ""}})
     return {"ok": True}
 
+# Persistent global feature flags, separate from per-user subscription overrides.
+GLOBAL_FEATURE_DEFAULTS = [
+    {"key": "google_login", "name": "Google One-Tap Authentication", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE", "US", "GB"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": False, "description": "Google authentication availability."},
+    {"key": "apple_login", "name": "Sign in with Apple", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE", "US", "GB"], "platforms": ["ios"], "isBetaOnly": False, "requiresConfirmation": False, "description": "Apple authentication availability."},
+    {"key": "ai_assistant", "name": "Groq AI Pill & Health Assistant", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE", "US"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": True, "description": "AI assistant and OCR capability."},
+    {"key": "yoga_recommendations", "name": "AI Yoga & Vitality Recommendations", "enabled": True, "rolloutPercentage": 80, "countries": ["IN"], "platforms": ["android", "ios"], "isBetaOnly": True, "requiresConfirmation": False, "description": "Yoga recommendations."},
+    {"key": "emergency_contacts", "name": "Caregiver Emergency Alert System", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": True, "description": "Caregiver alerts."},
+    {"key": "maintenance_mode", "name": "System Maintenance Mode Lockout", "enabled": False, "rolloutPercentage": 0, "countries": ["IN", "AE", "US", "GB"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": True, "description": "Maintenance mode."},
+]
+
+@app.get("/admin/feature-flags")
+async def admin_list_feature_flags(_: None = Depends(require_admin)):
+    saved = await db.feature_flags.find({}, {"_id": 0}).to_list(500)
+    by_key = {item.get("key"): item for item in saved}
+    return [{**item, **by_key.get(item["key"], {})} for item in GLOBAL_FEATURE_DEFAULTS]
+
+@app.put("/admin/feature-flags/{key}")
+async def admin_update_feature_flag(key: str, body: dict = Body(...), _: None = Depends(require_admin)):
+    allowed = {"enabled", "rolloutPercentage", "countries", "platforms", "minAppVersion"}
+    patch = {k: v for k, v in body.items() if k in allowed}
+    if not patch:
+        raise HTTPException(400, "No supported feature flag fields supplied.")
+    if "enabled" in patch and not isinstance(patch["enabled"], bool):
+        raise HTTPException(422, "enabled must be a boolean.")
+    if "rolloutPercentage" in patch and (not isinstance(patch["rolloutPercentage"], (int, float)) or not 0 <= patch["rolloutPercentage"] <= 100):
+        raise HTTPException(422, "rolloutPercentage must be between 0 and 100.")
+    known = next((item for item in GLOBAL_FEATURE_DEFAULTS if item["key"] == key), None)
+    if not known:
+        raise HTTPException(404, "Unknown feature flag.")
+    await db.feature_flags.update_one({"key": key}, {"$set": {**patch, "key": key, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
+    saved = await db.feature_flags.find_one({"key": key}, {"_id": 0})
+    return {**known, **(saved or {})}
+
 @app.get("/admin/revenue")
 async def admin_revenue(_: None = Depends(require_admin)):
     import asyncio
