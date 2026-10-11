@@ -8,9 +8,11 @@ import {
   MedicationRecord,
   GroqTelemetry,
   NotificationCampaign,
+  CMSContentRecord,
   InfrastructureItem,
   AuditLogRecord,
 } from '@/types/admin';
+import { INITIAL_CMS_CONTENT } from '@/lib/data/mockData';
 
 const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'https://pillcare-backend-1082668880575.europe-west1.run.app';
 
@@ -337,7 +339,24 @@ export async function updateUserSubscription(userId: string, plan: string, billi
   }
 }
 
-export async function sendBroadcastPushNotification(title: string, body: string, targetPlan?: string): Promise<boolean> {
+export interface BroadcastResult {
+  ok: boolean;
+  campaign_id?: string;
+  sent?: number;
+  failed?: number;
+  total_tokens?: number;
+  cohort?: string;
+  in_app?: boolean;
+  message?: string;
+  error?: string;
+}
+
+export async function sendBroadcastPushNotification(
+  title: string,
+  body: string,
+  targetPlan?: string,
+  extra?: { routeKey?: string; channels?: string[] }
+): Promise<BroadcastResult> {
   try {
     const res = await fetch(`${BACKEND_URL}/admin/notify`, {
       method: 'POST',
@@ -351,11 +370,96 @@ export async function sendBroadcastPushNotification(title: string, body: string,
         target_plan: targetPlan || 'all',
         target: targetPlan || 'all',
         plan: targetPlan || 'all',
+        targetAudience: targetPlan || 'all',
+        route_key: extra?.routeKey,
+        channels: extra?.channels || ['push', 'in_app'],
       }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, error: `HTTP ${res.status}: ${errText || res.statusText}` };
+    }
+    const json = await res.json();
+    return {
+      ok: true,
+      campaign_id: json.campaign_id,
+      sent: json.sent ?? 0,
+      failed: json.failed ?? 0,
+      total_tokens: json.total_tokens ?? 0,
+      cohort: json.cohort,
+      in_app: json.in_app,
+      message: json.message,
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error connecting to backend' };
+  }
+}
+
+export async function fetchCMSContent(): Promise<CMSContentRecord[]> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/announcements`, {
+      headers: { 'x-admin-secret': 'pillcare_admin_secret_key_2026' },
+      cache: 'no-store',
+    });
+    if (res.ok) {
+      const json = await res.json();
+      if (Array.isArray(json) && json.length > 0) {
+        return json.map((item: any) => ({
+          id: item.id || String(item._id),
+          title: item.title,
+          type: (item.type || 'announcement') as any,
+          status: item.status || (item.active ? 'Published' : 'Unpublished'),
+          version: item.version || 1,
+          author: item.author || 'PillCare Medical Admin',
+          targetPlan: item.target_plan || item.target || 'all',
+          updatedAt: item.created_at || item.updated_at || new Date().toISOString(),
+          content: item.body || item.content || '',
+        }));
+      }
+    }
+  } catch (e) {}
+  return INITIAL_CMS_CONTENT;
+}
+
+export async function updateCMSStatus(id: string, status: 'Published' | 'Unpublished'): Promise<boolean> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/announcements/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-secret': 'pillcare_admin_secret_key_2026',
+      },
+      body: JSON.stringify({ status }),
     });
     return res.ok;
   } catch (e) {
-    return true;
+    return false;
+  }
+}
+
+export async function createCMSAnnouncement(payload: {
+  title: string;
+  body: string;
+  type?: string;
+  target_plan?: string;
+  action_link?: string;
+}): Promise<{ ok: boolean; id?: string; error?: string }> {
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/announcements`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-admin-secret': 'pillcare_admin_secret_key_2026',
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      return { ok: false, error: await res.text() };
+    }
+    const json = await res.json();
+    return { ok: true, id: json.id };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || 'Network error' };
   }
 }
 

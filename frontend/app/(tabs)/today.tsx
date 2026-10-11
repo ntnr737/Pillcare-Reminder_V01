@@ -150,6 +150,7 @@ export default function Today() {
   const [date, setDate] = useState(ds());
   const [doses, setDoses] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
+  const [cachedStreak, setCachedStreak] = useState<number>(0);
   const [authUser, setAuthUser] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
@@ -165,6 +166,12 @@ export default function Today() {
   const [attemptedAmount, setAttemptedAmount] = useState<number>(250);
   const [pacingLockReason, setPacingLockReason] = useState<"SPACING_COOLDOWN" | "HOURLY_LIMIT">("SPACING_COOLDOWN");
   const [nowTs, setNowTs] = useState<number>(Date.now());
+
+  useEffect(() => {
+    get<number>(K.streak).then((val) => {
+      if (typeof val === "number") setCachedStreak(val);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -229,8 +236,15 @@ export default function Today() {
       if (prof) {
         setProfile(prof);
         await set(K.profile, prof).catch(() => {});
+        if (typeof prof.streak_days === "number") {
+          setCachedStreak(prof.streak_days);
+          await set(K.streak, prof.streak_days).catch(() => {});
+        }
       } else if (cachedProf) {
         setProfile(cachedProf);
+        if (typeof cachedProf.streak_days === "number") {
+          setCachedStreak(cachedProf.streak_days);
+        }
       }
 
       const localMeds = (cachedMeds && Array.isArray(cachedMeds)) ? cachedMeds : [];
@@ -246,7 +260,14 @@ export default function Today() {
       await set(K.doses(date), finalDoses).catch(() => {});
 
       api.adherence(30).then((data: any) => {
-        if (data && typeof data === "object") setAdherenceMap(data);
+        if (data && typeof data === "object") {
+          setAdherenceMap(data);
+          if (typeof data.streak === "number") {
+            setCachedStreak(data.streak);
+            set(K.streak, data.streak).catch(() => {});
+            setProfile((p: any) => p ? { ...p, streak_days: data.streak } : { streak_days: data.streak });
+          }
+        }
       }).catch(() => {});
 
       api.getDrugFoodGuide().then((guide: any) => {
@@ -317,6 +338,17 @@ export default function Today() {
     set(`water_logs_${date}`, updatedLogs);
 
     scheduleHydrationPacingReminder(15);
+
+    // Sync water activity to backend and refresh streak
+    api.createActivity({ type: "water", value: amount, date, timestamp: new Date(timestamp).toISOString() }).then(() => {
+      api.adherence(30).then((data: any) => {
+        if (data && typeof data.streak === "number") {
+          setCachedStreak(data.streak);
+          set(K.streak, data.streak).catch(() => {});
+          setProfile((p: any) => p ? { ...p, streak_days: data.streak } : { streak_days: data.streak });
+        }
+      }).catch(() => {});
+    }).catch(() => {});
   };
 
   const addWater = (amount: number) => {
@@ -400,6 +432,14 @@ export default function Today() {
       } else {
         await api.setDoseStatus(doseId, newStatus, taken_at);
       }
+      // Re-evaluate and sync streak immediately after dose status change
+      api.adherence(30).then((data: any) => {
+        if (data && typeof data.streak === "number") {
+          setCachedStreak(data.streak);
+          set(K.streak, data.streak).catch(() => {});
+          setProfile((p: any) => p ? { ...p, streak_days: data.streak } : { streak_days: data.streak });
+        }
+      }).catch(() => {});
     } catch (err) {
       console.warn("API setDoseStatus failed, queueing offline write:", err);
       await enqueueWrite("doseStatus", { id: doseId, status: newStatus, taken_at });
@@ -409,7 +449,9 @@ export default function Today() {
   const days = getWD(date);
   const total = doses.length;
   const taken = doses.filter(d => d.status === "taken").length;
-  const streak = profile?.streak_days ?? 0;
+  const streak = (typeof profile?.streak_days === "number")
+    ? profile.streak_days
+    : (typeof (adherenceMap as any)?.streak === "number" ? (adherenceMap as any).streak : cachedStreak);
   const pct = total === 0 ? 0 : Math.round((taken / total) * 100);
   const secs: Record<string, any[]> = { morning: [], afternoon: [], evening: [], night: [] };
   doses.forEach(d => { const s = gs(d.scheduled_time || "08:00"); secs[s]?.push(d); });

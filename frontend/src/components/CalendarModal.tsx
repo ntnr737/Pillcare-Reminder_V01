@@ -58,7 +58,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   onClose,
   onSelectDate,
   initialTab = "leaderboard",
-  streakDays = 14,
+  streakDays = 0,
 }) => {
   const { theme, isDark } = useTheme();
   const { t } = useTranslation();
@@ -160,30 +160,55 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
     Alert.alert("Daily Streak Saver Unlocked!", "Daily Streak Bonus unlocked! Keep logging mandatory water and doses to climb the PillCare Champions Leaderboard.");
   };
 
+  const effectiveStreak = (typeof leaderboardData?.current_streak === "number")
+    ? leaderboardData.current_streak
+    : (typeof streakDays === "number" ? streakDays : 0);
+
+  const fallbackChampionsRaw = [
+    { nickname: `${userName} (You)`, streak: effectiveStreak, points: effectiveStreak * 100 + 250, adherence: (leaderboardData?.adherence_rate ?? 98.5), badge: "Active", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", is_user: true },
+    { nickname: "Dr. Priya Sharma", streak: 28, points: 3050, adherence: 99.2, badge: "Grand Master", avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Rajesh Kumar", streak: 24, points: 2680, adherence: 97.5, badge: "Legend", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Anita Verma", streak: 21, points: 2340, adherence: 96.0, badge: "Legend", avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Amit Patel", streak: 18, points: 2010, adherence: 94.8, badge: "Master", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Sunita Rao", streak: 15, points: 1720, adherence: 93.1, badge: "Warrior", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Vikram Singh", streak: 12, points: 1450, adherence: 91.5, badge: "Warrior", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Meera Joshi", streak: 10, points: 1240, adherence: 89.8, badge: "Guardian", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Karan Malhotra", streak: 8, points: 1020, adherence: 88.0, badge: "Guardian", avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80", is_user: false },
+    { nickname: "Sanjay Gupta", streak: 6, points: 850, adherence: 86.5, badge: "Starter", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80", is_user: false },
+  ];
+
+  const baseChampions = (leaderboardData?.champions && Array.isArray(leaderboardData.champions))
+    ? leaderboardData.champions.map((c: any) => c.is_user ? { ...c, streak: effectiveStreak } : c)
+    : fallbackChampionsRaw;
+
+  const champions = [...baseChampions]
+    .sort((a: any, b: any) => (b.streak - a.streak) || ((b.points || 0) - (a.points || 0)))
+    .map((c: any, idx: number) => ({ ...c, rank: idx + 1 }));
+
+  const userEntry = champions.find((c: any) => c.is_user);
+  const userRank = userEntry ? userEntry.rank : (leaderboardData?.user_rank || champions.length);
+
+  const defaultRankTier = effectiveStreak >= 30
+    ? "Grand Master Champion"
+    : effectiveStreak >= 14
+    ? "Adherence Legend"
+    : effectiveStreak >= 7
+    ? "Streak Warrior"
+    : "Health Starter";
+
+  const rankTier = leaderboardData?.rank_tier || defaultRankTier;
+
   const handleShareStreak = () => {
-    const currentStrk = leaderboardData?.current_streak || streakDays || 14;
-    const rank = leaderboardData?.user_rank ? `#${leaderboardData.user_rank}` : "#1";
+    const currentStrk = effectiveStreak;
+    const rank = `#${userRank}`;
     const msg = encodeURIComponent(`I am on a ${currentStrk}-day Health Streak on PillCare (Rank ${rank} Champion)! Join me in maintaining daily hydration & health habits!`);
     Linking.openURL(`https://wa.me/?text=${msg}`);
   };
 
-  const champions = (leaderboardData?.champions || [
-    { rank: 1, nickname: `${userName} (You)`, streak: Math.max(14, streakDays), adherence: 98.5, badge: "Active", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", is_user: true },
-    { rank: 2, nickname: "Dr. Priya Sharma", streak: 28, adherence: 99.2, badge: "Grand Master", avatar: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 3, nickname: "Rajesh Kumar", streak: 24, adherence: 97.5, badge: "Legend", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 4, nickname: "Anita Verma", streak: 21, adherence: 96.0, badge: "Legend", avatar: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 5, nickname: "Amit Patel", streak: 18, adherence: 94.8, badge: "Master", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 6, nickname: "Sunita Rao", streak: 15, adherence: 93.1, badge: "Warrior", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 7, nickname: "Vikram Singh", streak: 12, adherence: 91.5, badge: "Warrior", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 8, nickname: "Meera Joshi", streak: 10, adherence: 89.8, badge: "Guardian", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 9, nickname: "Karan Malhotra", streak: 8, adherence: 88.0, badge: "Guardian", avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80", is_user: false },
-    { rank: 10, nickname: "Sanjay Gupta", streak: 6, adherence: 86.5, badge: "Starter", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&auto=format&fit=crop&q=80", is_user: false },
-  ]).sort((a: any, b: any) => b.streak - a.streak);
-
   const badges = leaderboardData?.badges || [
-    { id: "b1", title: "7-Day Warrior", desc: "Maintain 7 consecutive days of hydration & adherence", icon: "flash", unlocked: streakDays >= 7 },
-    { id: "b2", title: "14-Day Champion", desc: "Complete 14 days without breaking streak", icon: "trophy", unlocked: streakDays >= 14 },
-    { id: "b3", title: "30-Day Master Legend", desc: "Reach 1 month perfect health streak", icon: "ribbon", unlocked: streakDays >= 30 },
+    { id: "b1", title: "7-Day Warrior", desc: "Maintain 7 consecutive days of hydration & adherence", icon: "flash", unlocked: effectiveStreak >= 7 },
+    { id: "b2", title: "14-Day Champion", desc: "Complete 14 days without breaking streak", icon: "trophy", unlocked: effectiveStreak >= 14 },
+    { id: "b3", title: "30-Day Master Legend", desc: "Reach 1 month perfect health streak", icon: "ribbon", unlocked: effectiveStreak >= 30 },
     { id: "b4", title: "Yoga & Mind Guru", desc: "Log 5 clinical yoga sessions in a week", icon: "body", unlocked: true },
     { id: "b5", title: "Hydration Hero", desc: "Achieve mandatory daily water goal 3 days in a row", icon: "water", unlocked: true },
   ];
@@ -239,11 +264,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                           YOUR STREAK RANK & TIER
                         </Text>
                         <Text style={{ fontSize: 18, fontWeight: "800", color: theme.textPrimary }}>
-                          {leaderboardData?.rank_tier || "Adherence Champion"}
+                          {rankTier}
                         </Text>
                       </View>
                       <View style={s.rankBadge}>
-                        <Text style={s.rankBadgeText}>{leaderboardData?.user_rank ? `#${leaderboardData.user_rank}` : "#1"}</Text>
+                        <Text style={s.rankBadgeText}>{`#${userRank}`}</Text>
                       </View>
                     </View>
 
@@ -251,14 +276,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                       <View style={s.statBox}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                           <Ionicons name="flame" size={16} color="#F59E0B" />
-                          <Text style={s.statVal}>{streakDays} Days</Text>
+                          <Text style={s.statVal}>{effectiveStreak} {effectiveStreak === 1 ? "Day" : "Days"}</Text>
                         </View>
                         <Text style={s.statLbl}>Active Streak</Text>
                       </View>
                       <View style={s.statBox}>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                           <Ionicons name="trending-up" size={16} color="#F59E0B" />
-                          <Text style={s.statVal}>{leaderboardData?.adherence_rate || 98.5}%</Text>
+                          <Text style={s.statVal}>{leaderboardData?.adherence_rate ?? 98.5}%</Text>
                         </View>
                         <Text style={s.statLbl}>Consistency Rate</Text>
                       </View>
@@ -318,7 +343,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
 
                       return (
                         <View
-                          key={c.rank}
+                          key={c.is_user ? "current_user_champ" : (c.nickname || String(c.rank))}
                           style={[
                             s.championRow,
                             { backgroundColor: theme.surface, borderColor: c.is_user ? "#F59E0B" : theme.surfaceBorder },
@@ -340,14 +365,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                                 {c.nickname}
                               </Text>
                               <Text style={{ fontSize: 10, color: theme.textSecondary }}>
-                                {c.adherence}% adherence • {c.streak} day streak
+                                {c.adherence}% adherence • {c.streak} {c.streak === 1 ? "day" : "days"} streak
                               </Text>
                             </View>
                           </View>
                           <View style={{ alignItems: "flex-end" }}>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
                               <Ionicons name="flame" size={14} color="#F59E0B" />
-                              <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} Days</Text>
+                              <Text style={{ fontSize: 13, fontWeight: "800", color: "#F59E0B" }}>{c.streak} {c.streak === 1 ? "Day" : "Days"}</Text>
                             </View>
                             <Text style={{ fontSize: 10, color: theme.textSecondary }}>{c.badge}</Text>
                           </View>

@@ -310,7 +310,7 @@ export default function YogaTabScreen() {
   const [activeVideo, setActiveVideo] = useState<any>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [streakDays, setStreakDays] = useState(7);
+  const [streakDays, setStreakDays] = useState(0);
   const [mindfulMins, setMindfulMins] = useState(105);
   const [savedReminderTime, setSavedReminderTime] = useState<string | null>(null);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
@@ -351,18 +351,19 @@ export default function YogaTabScreen() {
 
     // Sync Universal PillCare Health Streak across app
     try {
-      const adh = await api.adherence(30).catch(() => null);
-      if (adh && typeof adh.streak === "number" && adh.streak > 0) {
-        setStreakDays(adh.streak);
+      const storedStreak = await get<number>(K.streak).catch(() => null);
+      if (typeof storedStreak === "number") {
+        setStreakDays(storedStreak);
+      }
+      const profile = await api.getProfile().catch(() => null);
+      if (profile && typeof profile.streak_days === "number") {
+        setStreakDays(profile.streak_days);
+        set(K.streak, profile.streak_days).catch(() => {});
       } else {
-        const profile = await api.getProfile().catch(() => null);
-        if (profile && typeof profile.streak_days === "number" && profile.streak_days > 0) {
-          setStreakDays(profile.streak_days);
-        } else {
-          const storedStreak = await get<number>(K.streak).catch(() => null);
-          if (typeof storedStreak === "number" && storedStreak > 0) {
-            setStreakDays(storedStreak);
-          }
+        const adh = await api.adherence(30).catch(() => null);
+        if (adh && typeof adh.streak === "number") {
+          setStreakDays(adh.streak);
+          set(K.streak, adh.streak).catch(() => {});
         }
       }
 

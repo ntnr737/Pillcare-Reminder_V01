@@ -12,26 +12,40 @@ import {
   Tag,
   Eye,
 } from 'lucide-react';
-import { INITIAL_CMS_CONTENT } from '@/lib/data/mockData';
+import { fetchCMSContent, updateCMSStatus } from '@/lib/api/client';
 import { CMSContentRecord } from '@/types/admin';
 import { useAuth } from '@/context/AuthContext';
 
 export default function CMSPage() {
   const { hasPermission } = useAuth();
-  const [contents, setContents] = useState<CMSContentRecord[]>(INITIAL_CMS_CONTENT);
+  const [contents, setContents] = useState<CMSContentRecord[]>([]);
   const [toastMsg, setToastMsg] = useState('');
 
   const canEdit = hasPermission('settings.edit');
 
-  const handleStatusChange = (id: string, newStatus: 'Draft' | 'InReview' | 'Published' | 'Unpublished') => {
+  useEffect(() => {
+    fetchCMSContent().then(setContents);
+  }, []);
+
+  const handleStatusChange = async (id: string, newStatus: 'Draft' | 'InReview' | 'Published' | 'Unpublished') => {
     if (!canEdit) {
       setToastMsg('Permission Denied: settings.edit authorization required.');
       return;
     }
-    setContents((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, status: newStatus, updatedAt: new Date().toISOString() } : c))
-    );
-    setToastMsg(`Content item status updated to ${newStatus}.`);
+    const targetStatus = newStatus === 'Published' ? 'Published' : 'Unpublished';
+    try {
+      const ok = await updateCMSStatus(id, targetStatus);
+      if (ok) {
+        setContents((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, status: targetStatus, updatedAt: new Date().toISOString() } : c))
+        );
+        setToastMsg(`Content status updated to ${targetStatus} and persisted to database.`);
+      } else {
+        setToastMsg('Failed to update status on backend server.');
+      }
+    } catch (e: any) {
+      setToastMsg(`Error updating status: ${e?.message || 'Server error'}`);
+    }
   };
 
   return (

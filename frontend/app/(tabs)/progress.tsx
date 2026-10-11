@@ -414,9 +414,9 @@ export default function Progress() {
           </View>
           <View style={s.grid}>
             <View style={[s.card, { flex: 1, gap: 4, backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
-              <Ionicons name="flame" size={16} color={theme.accentLight} />
-              <Text style={[s.stat, { color: theme.textPrimary }]}>{streak} <Text style={{ fontSize: 12, fontWeight: "400", color: theme.textSecondary }}>{t("progress.days", "days")}</Text></Text>
-              <Text style={[s.statL, { color: theme.textSecondary }]}>{t("progress.currentStreak", "Current streak")}</Text>
+              <Ionicons name="trending-up" size={16} color={theme.accentLight} />
+              <Text style={[s.stat, { color: theme.textPrimary }]}>{avg}%</Text>
+              <Text style={[s.statL, { color: theme.textSecondary }]}>{t("progress.consistencyRate", "Consistency rate")}</Text>
             </View>
             <View style={[s.card, { flex: 1, gap: 4, backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
               <Ionicons name="checkmark-circle" size={16} color={theme.accentLight} />

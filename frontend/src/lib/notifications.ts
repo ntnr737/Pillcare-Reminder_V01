@@ -6,7 +6,7 @@
  */
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
-import { api } from "./api";
+import { api, localDateStr } from "./api";
 import { get, set, K } from "./store";
 import { recordTaken } from "./sync";
 import Constants from "expo-constants";
@@ -31,7 +31,24 @@ export const WATER_CATEGORY = "water-reminder-category";
 export const YOGA_CATEGORY = "yoga-reminder-category";
 
 /**
- * Setup interactive action buttons for device notification bar alerts
+ * Cancel one-shot no-action fallback reminders when user performs any action
+ */
+export async function cancelFallbackForTag(tag: string): Promise<void> {
+  if (!tag) return;
+  try {
+    const all = await Notifications.getAllScheduledNotificationsAsync();
+    for (const item of all) {
+      if (item.identifier === tag || item.identifier.startsWith(tag) || item.content.data?.fallbackTag === tag) {
+        await Notifications.cancelScheduledNotificationAsync(item.identifier);
+      }
+    }
+  } catch (err) {
+    console.warn("Cancel fallback error:", err);
+  }
+}
+
+/**
+ * Setup interactive action buttons for device notification bar alerts (NTF-01, NTF-04)
  */
 export async function ensureCategories(): Promise<void> {
   try {
@@ -43,12 +60,7 @@ export async function ensureCategories(): Promise<void> {
       },
       {
         identifier: "SNOOZE_10",
-        buttonTitle: "Snooze 10m",
-        options: { opensAppToForeground: false },
-      },
-      {
-        identifier: "SNOOZE_30",
-        buttonTitle: "Snooze 30m",
+        buttonTitle: "Remind me in 10 minutes",
         options: { opensAppToForeground: false },
       },
     ]);
@@ -60,13 +72,8 @@ export async function ensureCategories(): Promise<void> {
         options: { opensAppToForeground: false },
       },
       {
-        identifier: "LOG_500ML",
-        buttonTitle: "+ Log 500 mL",
-        options: { opensAppToForeground: false },
-      },
-      {
-        identifier: "SNOOZE_WATER_15",
-        buttonTitle: "Remind 15m",
+        identifier: "SNOOZE_WATER_10",
+        buttonTitle: "Remind me in 10 minutes",
         options: { opensAppToForeground: false },
       },
     ]);
@@ -79,7 +86,7 @@ export async function ensureCategories(): Promise<void> {
       },
       {
         identifier: "OPEN_YOGA",
-        buttonTitle: "Watch Video",
+        buttonTitle: "Open Yoga Flow",
         options: { opensAppToForeground: true },
       },
     ]);
@@ -89,11 +96,14 @@ export async function ensureCategories(): Promise<void> {
 }
 
 /**
- * Helper to log water intake directly from notification bar actions
+ * Helper to log water intake directly from notification bar actions using local date (NTF-08)
  */
-async function handleLogWaterFromNotification(amount: number): Promise<void> {
+async function handleLogWaterFromNotification(amount: number, fallbackTag?: string): Promise<void> {
   try {
-    const todayDate = new Date().toISOString().split("T")[0];
+    if (fallbackTag) {
+      await cancelFallbackForTag(fallbackTag);
+    }
+    const todayDate = localDateStr();
     const wKey = `water_${todayDate}`;
     const wLoggedKey = `water_logged_${todayDate}`;
     const wLogsKey = `water_logs_${todayDate}`;
@@ -108,11 +118,12 @@ async function handleLogWaterFromNotification(amount: number): Promise<void> {
     await set(wLoggedKey, newAmount);
     await set(wLogsKey, newLogs);
 
-    // Sync to backend activity API
+    // Sync to backend activity API with local date
     api.createActivity({
       type: "water",
       value: amount,
       unit: "ml",
+      date: todayDate,
       note: "Logged from OS notification bar",
     }).catch(() => {});
   } catch (err) {
@@ -121,50 +132,86 @@ async function handleLogWaterFromNotification(amount: number): Promise<void> {
 }
 
 /**
- * Global listener for interactive notification action buttons tapped from OS notification bar
+ * Global listener for interactive notification action buttons tapped from OS notification bar (NTF-01..05)
  */
 export function setupNotificationListeners(onNavigate?: (path: string) => void): () => void {
   ensureCategories().catch(() => {});
+  let lastHandledResponseId: string | null = null;
 
-  const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
+  async function processNotificationResponse(
+    response: Notifications.NotificationResponse,
+    navCallback?: (path: string) => void
+  ) {
     try {
+      const notifId = response.notification.request.identifier;
       const actionId = response.actionIdentifier;
-      const data = response.notification.request.content.data || {};
+      const data = (response.notification.request.content.data || {}) as Record<string, any>;
+      const fallbackTag = data.fallbackTag || data.reminderInstanceId;
 
+      // Cancel pending no-action fallback whenever any action (or body tap) occurs
+      if (fallbackTag) {
+        cancelFallbackForTag(fallbackTag).catch(() => {});
+      }
+
+      // NTF-03: Type-aware notification body tap routing
       if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
-        if (onNavigate) {
-          onNavigate("/(tabs)/today");
+        if (!navCallback) return;
+
+        if (data.type === "yoga" || data.isYogaReminder) {
+          navCallback("/(tabs)/treatment?openYoga=true");
+          return;
         }
+
+        if (data.type === "water_reminder" || data.type === "water_pacing_reminder") {
+          navCallback("/(tabs)/today?focus=water");
+          return;
+        }
+
+        if (data.medicationId) {
+          navCallback(`/(tabs)/today?focus=medication&medId=${data.medicationId}`);
+          return;
+        }
+
+        const rawPath = data.path || data.routeKey || data.link_url;
+        if (typeof rawPath === "string" && rawPath.startsWith("/")) {
+          const basePath = rawPath.split("?")[0];
+          const allowlist = ["/(tabs)/today", "/(tabs)/treatment", "/(tabs)/progress", "/(tabs)/profile", "/(tabs)/yoga"];
+          if (allowlist.includes(basePath)) {
+            navCallback(rawPath);
+            return;
+          }
+        }
+
+        navCallback("/(tabs)/today");
         return;
       }
 
+      // NTF-02: Idempotent mark dose as taken
       if (actionId === "MARK_TAKEN") {
         if (data.medicationId) {
           const medId = String(data.medicationId);
           const schedTime = data.scheduledTime ? String(data.scheduledTime) : undefined;
           const nowStr = new Date().toISOString();
-          const todayDate = nowStr.split("T")[0];
+          const todayDate = localDateStr();
+          const canonicalDoseKey = data.doseId ? String(data.doseId) : `med_${medId}_${todayDate}_${schedTime || "default"}`;
 
-          // 1. Mark local persistent taken registry immediately
-          if (data.doseId) {
-            await recordTaken(String(data.doseId), todayDate, nowStr);
-          }
-          await recordTaken(medId, todayDate, nowStr);
+          // 1. Mark local persistent taken registry ONCE under canonical key
+          await recordTaken(canonicalDoseKey, todayDate, nowStr);
 
           // 2. Call backend endpoint to mark dose as taken
           try {
             await api.markTakenByMedication(medId, schedTime, nowStr);
           } catch (err) {
             const { enqueueWrite } = require("./sync");
-            await enqueueWrite("doseStatus", { medication_id: medId, scheduled_time: schedTime, taken_at: nowStr }).catch(() => {});
+            await enqueueWrite("doseStatus", { medication_id: medId, scheduled_time: schedTime, taken_at: nowStr, dose_id: canonicalDoseKey }).catch(() => {});
           }
 
-          // 3. Update cached doses array specifically for medId AND scheduledTime
+          // 3. Update cached doses array idempotently
           const key = K.doses(todayDate);
           const cached = (await get<any[]>(key)) || [];
           if (cached.length) {
             const updated = cached.map((d: any) =>
-              (d.medication_id === medId || d.id === medId) && (!schedTime || d.scheduled_time === schedTime)
+              (d.id === canonicalDoseKey || (d.medication_id === medId && (!schedTime || d.scheduled_time === schedTime)))
                 ? { ...d, status: "taken", taken_at: nowStr }
                 : d
             );
@@ -172,13 +219,16 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           }
         }
       } else if (actionId === "SNOOZE_10" || actionId === "SNOOZE_15" || actionId === "SNOOZE_30") {
-        const snoozeSecs = actionId === "SNOOZE_10" ? 600 : actionId === "SNOOZE_30" ? 1800 : 900;
-        const snoozeMins = snoozeSecs / 60;
+        // NTF-01: Explicit snooze arms exactly one 10-minute reminder
+        const snoozeSecs = 600; // Standard 10 minutes
+        const snoozeMins = 10;
+        const medId = data.medicationId ? String(data.medicationId) : "general";
         await Notifications.scheduleNotificationAsync({
+          identifier: `snooze_med_${medId}_${Date.now()}`,
           content: {
             title: response.notification.request.content.title,
             body: `[Snoozed ${snoozeMins}m] ${response.notification.request.content.body}`,
-            data: data,
+            data: { ...data, isSnooze: true },
             categoryIdentifier: MEDICATION_CATEGORY,
             sound: "default",
             channelId: "medication-reminders",
@@ -190,15 +240,17 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           },
         });
       } else if (actionId === "LOG_250ML") {
-        await handleLogWaterFromNotification(250);
+        await handleLogWaterFromNotification(250, fallbackTag);
       } else if (actionId === "LOG_500ML") {
-        await handleLogWaterFromNotification(500);
-      } else if (actionId === "SNOOZE_WATER_15") {
+        await handleLogWaterFromNotification(500, fallbackTag);
+      } else if (actionId === "SNOOZE_WATER_10" || actionId === "SNOOZE_WATER_15") {
+        // NTF-04: Explicit water snooze arms exactly one 10-minute reminder
         await Notifications.scheduleNotificationAsync({
+          identifier: `snooze_water_${Date.now()}`,
           content: {
             title: "Stay Hydrated! — PillCare Water Reminder",
-            body: "[Snoozed 15m] Drink a glass of water (250ml) for optimal cellular hydration.",
-            data: { type: "water_reminder" },
+            body: "[Snoozed 10m] Drink a glass of water (250ml) for optimal cellular hydration.",
+            data: { type: "water_reminder", isSnooze: true },
             categoryIdentifier: WATER_CATEGORY,
             sound: "default",
             channelId: "hydration-reminders",
@@ -206,11 +258,11 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           } as any,
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-            seconds: 900,
+            seconds: 600,
           },
         });
       } else if (actionId === "MARK_YOGA_DONE") {
-        const todayStr = new Date().toISOString().split("T")[0];
+        const todayStr = localDateStr();
         const yogaDoneKey = `yoga_done_${todayStr}`;
         const steps = [1, 2, 3, 4, 5];
         await set(yogaDoneKey, steps);
@@ -218,12 +270,29 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           api.yogaComplete(s, `Yoga Pose #${s}`, "https://www.youtube.com/watch?v=QPjwawKxuLw").catch(() => {});
         }
       } else if (actionId === "OPEN_YOGA") {
-        onNavigate?.("/(tabs)/treatment?openYoga=true");
+        navCallback?.("/(tabs)/treatment?openYoga=true");
       }
     } catch (e) {
       console.warn("Notification listener response error:", e);
     }
+  }
+
+  const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
+    const notifId = response.notification.request.identifier;
+    lastHandledResponseId = notifId;
+    await processNotificationResponse(response, onNavigate);
   });
+
+  // Check cold start: if launched by tapping a notification while killed
+  Notifications.getLastNotificationResponseAsync().then(async (initialResponse) => {
+    if (initialResponse) {
+      const notifId = initialResponse.notification.request.identifier;
+      if (lastHandledResponseId !== notifId) {
+        lastHandledResponseId = notifId;
+        await processNotificationResponse(initialResponse, onNavigate);
+      }
+    }
+  }).catch(() => {});
 
   return () => sub.remove();
 }
@@ -404,7 +473,14 @@ export function parseTime(t: string): { hour: number; minute: number } | null {
   return null;
 }
 
+let isResyncingReminders = false;
+let lastPacingScheduledTs = 0;
+
 export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
+  if (isResyncingReminders) {
+    return;
+  }
+  isResyncingReminders = true;
   try {
     await ensureChannels();
     const granted = await requestNotificationPermission();
@@ -420,13 +496,11 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
       }
     }
 
-    // Cancel ONLY medication reminders, preserving appointments, water, snooze & streak-saver timers
+    // NTF-07: Cancel ONLY recurring daily medication schedules, preserving active snoozes and per-event timers
     try {
       const allScheduled = await Notifications.getAllScheduledNotificationsAsync();
       for (const item of allScheduled) {
-        const cat = item.content.categoryIdentifier;
-        const data = item.content.data;
-        if (cat === MEDICATION_CATEGORY || (data && data.medicationId) || item.identifier.startsWith("med_")) {
+        if (item.identifier.startsWith("med_daily_") || (item.content.data?.isDailyRecurring && item.content.data?.medicationId)) {
           await Notifications.cancelScheduledNotificationAsync(item.identifier);
         }
       }
@@ -445,7 +519,9 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
         const label = med.dosage ? `${med.dosage} ${med.unit || ""}`.trim() : "";
         const title = `PillCare Reminder: ${med.name}`;
         const body = label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`;
-        const data = { medicationId: med.id, scheduledTime: t };
+        const timeClean = t.replace(/[^a-zA-Z0-9]/g, "_");
+        const fallbackTag = `fallback_med_${med.id}_${timeClean}`;
+        const data = { medicationId: med.id, scheduledTime: t, isDailyRecurring: true, fallbackTag };
 
         // 1. Calculate next upcoming occurrence (today if upcoming, or tomorrow if target time passed today)
         const nextOccurrence = new Date();
@@ -459,7 +535,7 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
         const medChannel = getChannelIdForCategory("medication", medProfile, soundSet.masterMute, soundSet.vibrationEnabled);
         const medSoundParam = getNotificationSoundParam(medProfile, soundSet.masterMute);
 
-        // Schedule 1 clean DAILY recurring trigger for long-term daily reminders
+        // Schedule 1 clean DAILY recurring trigger for long-term daily reminders with stable ID
         const dailyTrigger: any = Platform.OS === "android"
           ? {
               type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -474,6 +550,7 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             };
 
         await Notifications.scheduleNotificationAsync({
+          identifier: `med_daily_${med.id}_${parsed.hour}_${parsed.minute}`,
           content: {
             title,
             body,
@@ -485,6 +562,29 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
           } as any,
           trigger: dailyTrigger,
         });
+
+        // NTF-01: Schedule one-shot +5-minute no-action fallback for the next upcoming dose
+        const fallbackSecs = Math.max(10, Math.floor((nextOccurrence.getTime() - now.getTime()) / 1000) + 300);
+        if (fallbackSecs < 86400) {
+          await Notifications.scheduleNotificationAsync({
+            identifier: fallbackTag,
+            content: {
+              title: `Dose Reminder: ${med.name}`,
+              body: `[Follow-up] Have you taken ${med.name}? Tap to mark as taken or snooze.`,
+              data: { medicationId: med.id, scheduledTime: t, isFallback: true, fallbackTag },
+              categoryIdentifier: MEDICATION_CATEGORY,
+              sound: medSoundParam,
+              channelId: medChannel,
+              priority: Notifications.AndroidNotificationPriority.HIGH,
+            } as any,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+              seconds: fallbackSecs,
+              repeats: false,
+            },
+          }).catch(() => {});
+        }
+
         scheduled++;
       }
     }
@@ -493,6 +593,8 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
     await scheduleYogaReminderFromStore().catch(() => {});
   } catch (e) {
     console.warn("Reminder resync failed:", e);
+  } finally {
+    isResyncingReminders = false;
   }
 }
 
@@ -532,12 +634,12 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
     // Cancel existing yoga reminders before scheduling new one
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
     for (const notif of scheduled) {
-      if (notif.content.categoryIdentifier === YOGA_CATEGORY || notif.content.data?.isYogaReminder) {
+      if (notif.identifier.startsWith("yoga_daily_") || notif.content.categoryIdentifier === YOGA_CATEGORY || notif.content.data?.isYogaReminder) {
         await Notifications.cancelScheduledNotificationAsync(notif.identifier);
       }
     }
 
-    // Schedule 1 clean DAILY recurring trigger for long-term daily reminders
+    // Schedule 1 clean DAILY recurring trigger for long-term daily reminders with stable ID
     const dailyTrigger: any = Platform.OS === "android"
       ? {
           type: Notifications.SchedulableTriggerInputTypes.DAILY,
@@ -552,10 +654,11 @@ export async function scheduleYogaReminderFromStore(overrideTime?: Date | string
         };
 
     await Notifications.scheduleNotificationAsync({
+      identifier: `yoga_daily_${parsed.hour}_${parsed.minute}`,
       content: {
         title: "Time for Your AI Yoga Therapy",
         body: `${title} — Tap to view poses & video guide.`,
-        data: { isYogaReminder: true },
+        data: { isYogaReminder: true, type: "yoga" },
         categoryIdentifier: YOGA_CATEGORY,
         sound: yogaSoundParam,
         channelId: yogaChannel,
@@ -576,10 +679,10 @@ export async function scheduleWaterReminders(): Promise<void> {
     const granted = await requestNotificationPermission();
     if (!granted) return;
 
-    // Cancel existing water notifications before scheduling new ones to prevent duplicate accumulation
+    // NTF-07: Cancel ONLY recurring daily water schedules, preserving snoozes and pacing follow-ups
     const scheduledAll = await Notifications.getAllScheduledNotificationsAsync();
     for (const notif of scheduledAll) {
-      if (notif.content.categoryIdentifier === WATER_CATEGORY || notif.content.data?.type === "water_reminder") {
+      if (notif.identifier.startsWith("water_daily_")) {
         await Notifications.cancelScheduledNotificationAsync(notif.identifier);
       }
     }
@@ -597,6 +700,7 @@ export async function scheduleWaterReminders(): Promise<void> {
       { hour: 19, minute: 0 },
       { hour: 21, minute: 30 },
     ];
+    const now = new Date();
     for (const wt of waterTimes) {
       const dailyTrigger: any = Platform.OS === "android"
         ? {
@@ -611,11 +715,13 @@ export async function scheduleWaterReminders(): Promise<void> {
             repeats: true,
           };
 
+      const fallbackTag = `fallback_water_${wt.hour}_${wt.minute}`;
       await Notifications.scheduleNotificationAsync({
+        identifier: `water_daily_${wt.hour}_${wt.minute}`,
         content: {
           title: "Stay Hydrated! — PillCare Water Reminder",
           body: "Drink a glass of water (250ml) to assist medicine digestion & maintain healthy hydration.",
-          data: { type: "water_reminder" },
+          data: { type: "water_reminder", isDailyRecurring: true, fallbackTag },
           categoryIdentifier: WATER_CATEGORY,
           sound: waterSoundParam,
           channelId: waterChannel,
@@ -623,18 +729,58 @@ export async function scheduleWaterReminders(): Promise<void> {
         } as any,
         trigger: dailyTrigger,
       });
+
+      // NTF-05: Schedule one-shot +10-minute fallback for next upcoming occurrence
+      const nextOccurrence = new Date();
+      nextOccurrence.setHours(wt.hour, wt.minute, 0, 0);
+      if (nextOccurrence.getTime() <= now.getTime()) {
+        nextOccurrence.setDate(nextOccurrence.getDate() + 1);
+      }
+      const fallbackSecs = Math.max(10, Math.floor((nextOccurrence.getTime() - now.getTime()) / 1000) + 600);
+      if (fallbackSecs < 86400) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: fallbackTag,
+          content: {
+            title: "Hydration Follow-up",
+            body: "[Follow-up] Remember to drink your 250ml glass of water to support medication digestion.",
+            data: { type: "water_reminder", isFallback: true, fallbackTag },
+            categoryIdentifier: WATER_CATEGORY,
+            sound: waterSoundParam,
+            channelId: waterChannel,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+          } as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: fallbackSecs,
+            repeats: false,
+          },
+        }).catch(() => {});
+      }
     }
-    console.log("Scheduled 6 daily hydration reminders");
+    console.log("Scheduled 6 daily hydration reminders with +10m follow-ups");
   } catch (e) {
     console.warn("Water reminder schedule failed:", e);
   }
 }
 
-export async function scheduleHydrationPacingReminder(minutesFromNow: number = 15): Promise<void> {
+/**
+ * NTF-06: Schedule hydration pacing reminder with stable singleton ID and cooldown deduplication
+ */
+export async function scheduleHydrationPacingReminder(minutesFromNow: number = 10): Promise<void> {
   try {
+    const now = Date.now();
+    // 15-second debounce cooldown to eliminate rapid-tap duplicate scheduling
+    if (now - lastPacingScheduledTs < 15000) {
+      return;
+    }
+    lastPacingScheduledTs = now;
+
     await ensureChannels();
     const granted = await requestNotificationPermission();
     if (!granted) return;
+
+    // Cancel existing singleton pacing reminder first
+    await Notifications.cancelScheduledNotificationAsync("water_pacing_singleton").catch(() => {});
 
     const soundSet = await getSoundSettings();
     const waterProfile = soundSet.categorySounds.water || "default";
@@ -642,10 +788,11 @@ export async function scheduleHydrationPacingReminder(minutesFromNow: number = 1
     const waterSoundParam = getNotificationSoundParam(waterProfile, soundSet.masterMute);
 
     await Notifications.scheduleNotificationAsync({
+      identifier: "water_pacing_singleton",
       content: {
         title: "Hydration Pacing Reminder",
-        body: `15 minutes have passed since your last glass! Time to drink your next 250mL for optimal WHO cellular absorption.`,
-        data: { type: "water_pacing_reminder" },
+        body: `${minutesFromNow} minutes have passed since your last glass! Time to drink your next 250mL for optimal cellular absorption.`,
+        data: { type: "water_pacing_reminder", fallbackTag: "water_pacing_singleton" },
         categoryIdentifier: WATER_CATEGORY,
         sound: waterSoundParam,
         channelId: waterChannel,
@@ -658,7 +805,7 @@ export async function scheduleHydrationPacingReminder(minutesFromNow: number = 1
         channelId: waterChannel,
       },
     });
-    console.log(`Scheduled hydration pacing reminder in ${minutesFromNow} minutes`);
+    console.log(`Scheduled deduplicated hydration pacing reminder in ${minutesFromNow} minutes`);
   } catch (e) {
     console.warn("Hydration pacing reminder failed:", e);
   }

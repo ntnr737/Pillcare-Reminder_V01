@@ -33,34 +33,47 @@ export default function NotificationsPage() {
     fetchNotifications().then(setCampaigns);
   }, []);
 
-  const handleTriggerSend = () => {
+  const handleTriggerSend = async () => {
     if (!canSend) {
       setToastMsg('Permission Denied: notifications.send authorization required.');
       return;
     }
     setSending(true);
-    setTimeout(async () => {
-      await sendBroadcastPushNotification(title, body, targetAudience);
+    try {
+      const res = await sendBroadcastPushNotification(title, body, targetAudience);
       setSending(false);
       setConfirmSendModal(false);
-      const newCamp: NotificationCampaign = {
-        id: `notif_${Date.now()}`,
-        title,
-        body,
-        channels: ['push'],
-        targetAudience,
-        sentAt: new Date().toISOString(),
-        status: 'sent',
-        sentCount: targetAudience === 'all' ? 168400 : 142000,
-        openRatePercent: 0.0,
-        clickRatePercent: 0.0,
-        createdBy: 'admin@pillcare.in',
-      };
-      setCampaigns([newCamp, ...campaigns]);
-      setTitle('');
-      setBody('');
-      setToastMsg(`Push notification broadcast dispatched to target audience (${newCamp.sentCount.toLocaleString()} devices).`);
-    }, 1000);
+      if (res.ok) {
+        const actualSent = res.sent ?? 0;
+        const newCamp: NotificationCampaign = {
+          id: res.campaign_id || `cmp_${Date.now()}`,
+          title,
+          body,
+          channels: ['push'],
+          targetAudience,
+          sentAt: new Date().toISOString(),
+          status: 'sent',
+          sentCount: actualSent,
+          openRatePercent: 0.0,
+          clickRatePercent: 0.0,
+          createdBy: 'admin@pillcare.in',
+        };
+        setCampaigns([newCamp, ...campaigns]);
+        setTitle('');
+        setBody('');
+        setToastMsg(
+          res.message ||
+            `Broadcast dispatched: ${actualSent} device(s) reached in cohort '${targetAudience}'.`
+        );
+      } else {
+        // FL-03: On failure, keep the form values, show error reason, and allow safe retry
+        setToastMsg(`Broadcast Error: ${res.error || 'Failed to dispatch push notifications'}. Form preserved.`);
+      }
+    } catch (e: any) {
+      setSending(false);
+      setConfirmSendModal(false);
+      setToastMsg(`Broadcast Error: ${e?.message || 'Network error'}. Form preserved.`);
+    }
   };
 
   return (
@@ -114,10 +127,10 @@ export default function NotificationsPage() {
               disabled={!canCreate}
               className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none"
             >
-              <option value="all">All Active Users (168,400 Devices)</option>
-              <option value="free_users">Free Tier Users (142,000 Devices)</option>
-              <option value="premium_users">Premium Subscribers (2,480 Devices)</option>
-              <option value="inactive_7d">Inactive for 7 Days (12,400 Devices)</option>
+              <option value="all">All Active App Users</option>
+              <option value="free_users">Free Tier Patients</option>
+              <option value="premium_users">Premium Subscribers</option>
+              <option value="inactive_7d">Inactive Users (Last 7 Days)</option>
             </select>
           </div>
         </div>
