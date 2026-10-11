@@ -3269,6 +3269,21 @@ PLAN_FEATURES = {
     }
 }
 
+def _global_flag_allows(flag: dict, user_id: str) -> bool:
+    """Deterministically evaluate a global feature flag for one user."""
+    if not flag:
+        return True
+    if flag.get("enabled") is False:
+        return False
+    rollout = float(flag.get("rolloutPercentage", 100))
+    if rollout <= 0:
+        return False
+    if rollout >= 100:
+        return True
+    bucket = int(hashlib.sha256(f"{flag.get('key', '')}:{user_id}".encode("utf-8")).hexdigest()[:8], 16) % 100
+    return bucket < rollout
+
+
 async def get_user_features(user_id: str) -> dict:
     sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
     plan = sub.get("plan", "free") if sub else "free"
@@ -3295,7 +3310,7 @@ async def get_user_features(user_id: str) -> dict:
     }
     for flag_key, feature_key in mappings.items():
         flag = global_by_key.get(flag_key)
-        if flag and (flag.get("enabled") is False or flag.get("rolloutPercentage", 100) <= 0):
+        if flag and not _global_flag_allows(flag, user_id):
             features[feature_key] = 0 if feature_key == "caregiver_alerts" else ("" if feature_key == "ai_insights" else False)
     features["plan"] = plan
 
