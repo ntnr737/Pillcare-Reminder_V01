@@ -3355,12 +3355,38 @@ PLAN_FEATURES = {
     }
 }
 
-def _global_flag_allows(flag: dict, user_id: str) -> bool:
-    """Deterministically evaluate a global feature flag for one user."""
+def _version_tuple(value: str) -> tuple:
+    """Parse dotted app versions without allowing malformed values to bypass a minimum."""
+    import re
+    parts = re.findall(r"\d+", str(value or ""))
+    return tuple(int(p) for p in parts[:4]) if parts else (0,)
+
+
+def _global_flag_allows(
+    flag: dict,
+    user_id: str,
+    platform: str = "",
+    country: str = "",
+    app_version: str = "",
+) -> bool:
+    """Evaluate a global flag for one user plus optional client targeting constraints."""
     if not flag:
         return True
     if flag.get("enabled") is False:
         return False
+
+    allowed_platforms = [str(v).lower() for v in (flag.get("platforms") or [])]
+    if platform and allowed_platforms and platform.lower() not in allowed_platforms:
+        return False
+
+    allowed_countries = [str(v).upper() for v in (flag.get("countries") or [])]
+    if country and allowed_countries and country.upper() not in allowed_countries:
+        return False
+
+    min_version = str(flag.get("minAppVersion") or "").strip()
+    if min_version and app_version and _version_tuple(app_version) < _version_tuple(min_version):
+        return False
+
     rollout = float(flag.get("rolloutPercentage", 100))
     if rollout <= 0:
         return False
@@ -3370,7 +3396,12 @@ def _global_flag_allows(flag: dict, user_id: str) -> bool:
     return bucket < rollout
 
 
-async def get_user_features(user_id: str) -> dict:
+async def get_user_features(
+    user_id: str,
+    platform: str = "",
+    country: str = "",
+    app_version: str = "",
+) -> dict:
     sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
     plan = sub.get("plan", "free") if sub else "free"
     
@@ -3387,17 +3418,28 @@ async def get_user_features(user_id: str) -> dict:
     if sub and sub.get("overrides") and isinstance(sub["overrides"], dict):
         features.update(sub["overrides"])
     # Global flags are a server-side kill switch for capabilities exposed by the mobile app.
-    global_flags = await db.feature_flags.find({}, {"_id": 0, "key": 1, "enabled": 1, "rolloutPercentage": 1}).to_list(100)
+    global_flags = await db.feature_flags.find(
+        {},
+        {"_id": 0, "key": 1, "enabled": 1, "rolloutPercentage": 1, "countries": 1, "platforms": 1, "minAppVersion": 1},
+    ).to_list(100)
     global_by_key = {flag.get("key"): flag for flag in global_flags}
     mappings = {
         "yoga_recommendations": "yoga_full",
         "emergency_contacts": "caregiver_alerts",
         "ai_assistant": "ai_insights",
+        "google_login": "google_login",
+        "apple_login": "apple_login",
+        "maintenance_mode": "maintenance_mode",
     }
     for flag_key, feature_key in mappings.items():
         flag = global_by_key.get(flag_key)
-        if flag and not _global_flag_allows(flag, user_id):
-            features[feature_key] = 0 if feature_key == "caregiver_alerts" else ("" if feature_key == "ai_insights" else False)
+        if flag and not _global_flag_allows(flag, user_id, platform, country, app_version):
+            if feature_key == "caregiver_alerts":
+                features[feature_key] = 0
+            elif feature_key == "ai_insights":
+                features[feature_key] = ""
+            else:
+                features[feature_key] = False
     features["plan"] = plan
 
     exp_val = sub.get("expires_at") if sub else None
@@ -3411,8 +3453,16 @@ async def get_user_features(user_id: str) -> dict:
     return features
 
 @api.get("/me/features")
-async def my_features(user_id: str = Depends(get_current_user_id)):
-    return await get_user_features(user_id)
+async def my_features(
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+):
+    return await get_user_features(
+        user_id,
+        platform=request.headers.get("x-app-platform", "").strip().lower(),
+        country=request.headers.get("x-app-country", "").strip().upper(),
+        app_version=request.headers.get("x-app-version", "").strip(),
+    )
 
 @api.get("/me/subscription")
 async def my_subscription(user_id: str = Depends(get_current_user_id)):
