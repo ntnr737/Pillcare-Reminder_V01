@@ -642,6 +642,56 @@ async def root():
 
 
 # Auth
+@api.post("/admin/auth/login")
+@limiter.limit("5/minute")
+async def admin_auth_login(payload: AdminCredentialsRequest, request: Request):
+    """Authenticate the static admin portal without exposing ADMIN_SECRET."""
+    if not ADMIN_PANEL_EMAIL or not (ADMIN_PANEL_PASSWORD or ADMIN_PANEL_PASSWORD_HASH) or not ADMIN_PANEL_TOTP_SECRET or not JWT_SECRET:
+        raise HTTPException(503, "Admin authentication is not configured on the server")
+
+    if payload.stage == "credentials":
+        email = (payload.email or "").strip().lower()
+        if not hmac.compare_digest(email, ADMIN_PANEL_EMAIL) or not _verify_admin_password(payload.password or ""):
+            raise HTTPException(401, "Invalid administrator credentials")
+        challenge_payload = {
+            "sub": email, "role": "admin", "purpose": "admin_totp_challenge",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "iat": datetime.now(timezone.utc),
+        }
+        challenge = pyjwt.encode(challenge_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        return {"challenge": challenge, "requires_totp": True}
+
+    if not payload.challenge:
+        raise HTTPException(400, "Missing authentication challenge")
+    try:
+        challenge_payload = pyjwt.decode(payload.challenge, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if challenge_payload.get("purpose") != "admin_totp_challenge" or challenge_payload.get("sub") != ADMIN_PANEL_EMAIL:
+            raise ValueError("Invalid challenge")
+    except Exception:
+        raise HTTPException(401, "Authentication challenge expired or invalid")
+
+    if not _verify_totp(payload.code or "", ADMIN_PANEL_TOTP_SECRET):
+        raise HTTPException(401, "Invalid authenticator code")
+
+    now = datetime.now(timezone.utc)
+    token = pyjwt.encode({
+        "sub": ADMIN_PANEL_EMAIL, "role": "admin", "is_admin": True,
+        "purpose": "admin_session", "iat": now,
+        "exp": now + timedelta(minutes=ADMIN_JWT_EXPIRY_MINUTES),
+    }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {
+        "token": token, "expires_in": ADMIN_JWT_EXPIRY_MINUTES * 60,
+        "user": {"id": "admin_super_01", "email": ADMIN_PANEL_EMAIL,
+                 "name": "Operations Director", "role": "SUPER_ADMIN", "twoFactorEnabled": True},
+    }
+
+@api.get("/admin/auth/session")
+async def admin_auth_session(_: dict = Depends(require_admin)):
+    return {"authenticated": True, "user": {
+        "id": "admin_super_01", "email": ADMIN_PANEL_EMAIL,
+        "name": "Operations Director", "role": "SUPER_ADMIN", "twoFactorEnabled": True,
+    }}
+
 @api.post("/auth/guest")
 @limiter.exempt
 async def auth_guest():
@@ -2879,18 +2929,53 @@ async def track_event(event: str, user_id: str, props: dict = {}):
     except Exception:
         pass  # analytics must never break the app
 
-# Admin auth - separate secret for dashboard access
+# Admin auth
+# ADMIN_SECRET remains backend-only for existing internal callers; the public admin UI
+# uses short-lived admin JWTs issued by /api/admin/auth/login.
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+ADMIN_PANEL_EMAIL = os.environ.get("ADMIN_PANEL_EMAIL", "").strip().lower()
+ADMIN_PANEL_PASSWORD = os.environ.get("ADMIN_PANEL_PASSWORD", "")
+ADMIN_PANEL_PASSWORD_HASH = os.environ.get("ADMIN_PANEL_PASSWORD_HASH", "")
+ADMIN_PANEL_TOTP_SECRET = os.environ.get("ADMIN_PANEL_TOTP_SECRET", "").replace(" ", "").upper()
+ADMIN_JWT_EXPIRY_MINUTES = int(os.environ.get("ADMIN_JWT_EXPIRY_MINUTES", "120"))
+
+def _verify_admin_password(password: str) -> bool:
+    if ADMIN_PANEL_PASSWORD_HASH:
+        try:
+            import bcrypt
+            return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PANEL_PASSWORD_HASH.encode("utf-8"))
+        except Exception:
+            return False
+    return bool(ADMIN_PANEL_PASSWORD) and hmac.compare_digest(password, ADMIN_PANEL_PASSWORD)
+
+def _totp_code(secret: str, counter: int) -> str:
+    import base64, struct
+    key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8), casefold=True)
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1000000
+    return f"{value:06d}"
+
+def _verify_totp(code: str, secret: str, window: int = 1) -> bool:
+    if not secret or not code or len(code) != 6 or not code.isdigit():
+        return False
+    counter = int(time.time()) // 30
+    return any(hmac.compare_digest(_totp_code(secret, counter + offset), code) for offset in range(-window, window + 1))
+
+class AdminCredentialsRequest(BaseModel):
+    stage: Literal["credentials", "totp"]
+    email: Optional[str] = None
+    password: Optional[str] = None
+    challenge: Optional[str] = None
+    code: Optional[str] = None
 
 def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
-    """Accept either configured ADMIN_SECRET key OR admin JWT."""
+    """Accept backend-only emergency secret or a signed short-lived admin JWT."""
     if authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
-            payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-            if payload.get("alg", "HS256") == "none":
-                raise ValueError("alg=none not allowed")
-            if payload.get("role") == "admin" or payload.get("is_admin"):
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            if payload.get("role") == "admin" and payload.get("purpose") == "admin_session":
                 return payload
         except Exception:
             pass
