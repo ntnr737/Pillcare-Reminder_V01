@@ -667,6 +667,61 @@ async def root():
     return {"message": "PillCare API ready"}
 
 
+# Admin auth
+# ADMIN_SECRET remains backend-only for existing internal callers; the public admin UI
+# uses short-lived admin JWTs issued by /api/admin/auth/login.
+ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "pillcare_admin_secret_key_2026")
+ADMIN_PANEL_EMAIL = os.environ.get("ADMIN_PANEL_EMAIL", "").strip().lower()
+ADMIN_PANEL_PASSWORD = os.environ.get("ADMIN_PANEL_PASSWORD", "")
+ADMIN_PANEL_PASSWORD_HASH = os.environ.get("ADMIN_PANEL_PASSWORD_HASH", "")
+ADMIN_PANEL_TOTP_SECRET = os.environ.get("ADMIN_PANEL_TOTP_SECRET", "").replace(" ", "").upper()
+ADMIN_JWT_EXPIRY_MINUTES = int(os.environ.get("ADMIN_JWT_EXPIRY_MINUTES", "120"))
+
+def _verify_admin_password(password: str) -> bool:
+    if ADMIN_PANEL_PASSWORD_HASH:
+        try:
+            import bcrypt
+            return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PANEL_PASSWORD_HASH.encode("utf-8"))
+        except Exception:
+            return False
+    return bool(ADMIN_PANEL_PASSWORD) and hmac.compare_digest(password, ADMIN_PANEL_PASSWORD)
+
+def _totp_code(secret: str, counter: int) -> str:
+    import base64, struct
+    key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8), casefold=True)
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1000000
+    return f"{value:06d}"
+
+def _verify_totp(code: str, secret: str, window: int = 1) -> bool:
+    if not secret or not code or len(code) != 6 or not code.isdigit():
+        return False
+    counter = int(time.time()) // 30
+    return any(hmac.compare_digest(_totp_code(secret, counter + offset), code) for offset in range(-window, window + 1))
+
+class AdminCredentialsRequest(BaseModel):
+    stage: Literal["credentials", "totp"]
+    email: Optional[str] = None
+    password: Optional[str] = None
+    challenge: Optional[str] = None
+    code: Optional[str] = None
+
+def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
+    """Accept backend-only emergency secret or a signed short-lived admin JWT."""
+    if authorization.startswith("Bearer "):
+        try:
+            token = authorization.removeprefix("Bearer ").strip()
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            if payload.get("role") == "admin" and payload.get("purpose") == "admin_session":
+                return payload
+        except Exception:
+            pass
+    if ADMIN_SECRET and x_admin_secret and len(ADMIN_SECRET) >= 16:
+        if hmac.compare_digest(x_admin_secret.encode(), ADMIN_SECRET.encode()):
+            return {"role": "admin", "sub": "secret_key"}
+    raise HTTPException(401, "Admin access required")
+
 # Auth
 @api.post("/admin/auth/login")
 @limiter.limit("5/minute")
@@ -2957,62 +3012,6 @@ async def track_event(event: str, user_id: str, props: dict = {}):
         })
     except Exception:
         pass  # analytics must never break the app
-
-# Admin auth
-# ADMIN_SECRET remains backend-only for existing internal callers; the public admin UI
-# uses short-lived admin JWTs issued by /api/admin/auth/login.
-ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "pillcare_admin_secret_key_2026")
-ADMIN_PANEL_EMAIL = os.environ.get("ADMIN_PANEL_EMAIL", "").strip().lower()
-ADMIN_PANEL_PASSWORD = os.environ.get("ADMIN_PANEL_PASSWORD", "")
-ADMIN_PANEL_PASSWORD_HASH = os.environ.get("ADMIN_PANEL_PASSWORD_HASH", "")
-ADMIN_PANEL_TOTP_SECRET = os.environ.get("ADMIN_PANEL_TOTP_SECRET", "").replace(" ", "").upper()
-ADMIN_JWT_EXPIRY_MINUTES = int(os.environ.get("ADMIN_JWT_EXPIRY_MINUTES", "120"))
-
-def _verify_admin_password(password: str) -> bool:
-    if ADMIN_PANEL_PASSWORD_HASH:
-        try:
-            import bcrypt
-            return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PANEL_PASSWORD_HASH.encode("utf-8"))
-        except Exception:
-            return False
-    return bool(ADMIN_PANEL_PASSWORD) and hmac.compare_digest(password, ADMIN_PANEL_PASSWORD)
-
-def _totp_code(secret: str, counter: int) -> str:
-    import base64, struct
-    key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8), casefold=True)
-    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
-    offset = digest[-1] & 0x0F
-    value = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1000000
-    return f"{value:06d}"
-
-def _verify_totp(code: str, secret: str, window: int = 1) -> bool:
-    if not secret or not code or len(code) != 6 or not code.isdigit():
-        return False
-    counter = int(time.time()) // 30
-    return any(hmac.compare_digest(_totp_code(secret, counter + offset), code) for offset in range(-window, window + 1))
-
-class AdminCredentialsRequest(BaseModel):
-    stage: Literal["credentials", "totp"]
-    email: Optional[str] = None
-    password: Optional[str] = None
-    challenge: Optional[str] = None
-    code: Optional[str] = None
-
-def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
-    """Accept backend-only emergency secret or a signed short-lived admin JWT."""
-    if authorization.startswith("Bearer "):
-        try:
-            token = authorization.removeprefix("Bearer ").strip()
-            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            if payload.get("role") == "admin" and payload.get("purpose") == "admin_session":
-                return payload
-        except Exception:
-            pass
-    if ADMIN_SECRET and x_admin_secret and len(ADMIN_SECRET) >= 16:
-        if hmac.compare_digest(x_admin_secret.encode(), ADMIN_SECRET.encode()):
-            return {"role": "admin", "sub": "secret_key"}
-    raise HTTPException(401, "Admin access required")
-
 
 ADMIN_PANEL_HTML = """<!DOCTYPE html>
 <html>
