@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 export type Features = {
   plan: "free" | "premium" | "enterprise";
@@ -14,6 +16,9 @@ export type Features = {
   scanner: boolean;
   max_appointments: number;
   is_guest?: boolean;
+  google_login?: boolean;
+  apple_login?: boolean;
+  maintenance_mode?: boolean;
 };
 
 export const FREE_DEFAULTS: Features = {
@@ -22,7 +27,7 @@ export const FREE_DEFAULTS: Features = {
   max_medications: 3,
   history_days: 7,
   ai_insights: "weekly",
-  caregiver_alerts: 5,
+  caregiver_alerts: 0,
   nearby_results: 5,
   yoga_full: false,
   export_data: false,
@@ -30,6 +35,9 @@ export const FREE_DEFAULTS: Features = {
   scanner: false,
   max_appointments: 2,
   is_guest: true,
+  google_login: true,
+  apple_login: true,
+  maintenance_mode: false,
 };
 
 const FEATURES_KEY = "pillcare_features_v1";
@@ -55,7 +63,14 @@ export async function loadCachedFeatures(): Promise<void> {
 export async function fetchFeatures(token?: string): Promise<void> {
   try {
     const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-App-Platform": Platform.OS,
+      "X-App-Version": Constants.expoConfig?.version || "0.0.0",
+    };
+    const locale = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().locale : "";
+    const countryMatch = locale.match(/[-_]([A-Za-z]{2})$/);
+    if (countryMatch?.[1]) headers["X-App-Country"] = countryMatch[1].toUpperCase();
     if (token) headers["Authorization"] = `Bearer ${token}`;
     const res = await fetch(`${BASE}/api/me/features`, { headers });
     if (!res.ok) return;

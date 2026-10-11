@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Res
 import io
 import hmac
 import time
+import hashlib
 try:
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -641,6 +642,56 @@ async def root():
 
 
 # Auth
+@api.post("/admin/auth/login")
+@limiter.limit("5/minute")
+async def admin_auth_login(payload: AdminCredentialsRequest, request: Request):
+    """Authenticate the static admin portal without exposing ADMIN_SECRET."""
+    if not ADMIN_PANEL_EMAIL or not (ADMIN_PANEL_PASSWORD or ADMIN_PANEL_PASSWORD_HASH) or not ADMIN_PANEL_TOTP_SECRET or not JWT_SECRET:
+        raise HTTPException(503, "Admin authentication is not configured on the server")
+
+    if payload.stage == "credentials":
+        email = (payload.email or "").strip().lower()
+        if not hmac.compare_digest(email, ADMIN_PANEL_EMAIL) or not _verify_admin_password(payload.password or ""):
+            raise HTTPException(401, "Invalid administrator credentials")
+        challenge_payload = {
+            "sub": email, "role": "admin", "purpose": "admin_totp_challenge",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "iat": datetime.now(timezone.utc),
+        }
+        challenge = pyjwt.encode(challenge_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        return {"challenge": challenge, "requires_totp": True}
+
+    if not payload.challenge:
+        raise HTTPException(400, "Missing authentication challenge")
+    try:
+        challenge_payload = pyjwt.decode(payload.challenge, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if challenge_payload.get("purpose") != "admin_totp_challenge" or challenge_payload.get("sub") != ADMIN_PANEL_EMAIL:
+            raise ValueError("Invalid challenge")
+    except Exception:
+        raise HTTPException(401, "Authentication challenge expired or invalid")
+
+    if not _verify_totp(payload.code or "", ADMIN_PANEL_TOTP_SECRET):
+        raise HTTPException(401, "Invalid authenticator code")
+
+    now = datetime.now(timezone.utc)
+    token = pyjwt.encode({
+        "sub": ADMIN_PANEL_EMAIL, "role": "admin", "is_admin": True,
+        "purpose": "admin_session", "iat": now,
+        "exp": now + timedelta(minutes=ADMIN_JWT_EXPIRY_MINUTES),
+    }, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return {
+        "token": token, "expires_in": ADMIN_JWT_EXPIRY_MINUTES * 60,
+        "user": {"id": "admin_super_01", "email": ADMIN_PANEL_EMAIL,
+                 "name": "Operations Director", "role": "SUPER_ADMIN", "twoFactorEnabled": True},
+    }
+
+@api.get("/admin/auth/session")
+async def admin_auth_session(_: dict = Depends(require_admin)):
+    return {"authenticated": True, "user": {
+        "id": "admin_super_01", "email": ADMIN_PANEL_EMAIL,
+        "name": "Operations Director", "role": "SUPER_ADMIN", "twoFactorEnabled": True,
+    }}
+
 @api.post("/auth/guest")
 @limiter.exempt
 async def auth_guest():
@@ -2878,18 +2929,53 @@ async def track_event(event: str, user_id: str, props: dict = {}):
     except Exception:
         pass  # analytics must never break the app
 
-# Admin auth - separate secret for dashboard access
+# Admin auth
+# ADMIN_SECRET remains backend-only for existing internal callers; the public admin UI
+# uses short-lived admin JWTs issued by /api/admin/auth/login.
 ADMIN_SECRET = os.environ.get("ADMIN_SECRET", "")
+ADMIN_PANEL_EMAIL = os.environ.get("ADMIN_PANEL_EMAIL", "").strip().lower()
+ADMIN_PANEL_PASSWORD = os.environ.get("ADMIN_PANEL_PASSWORD", "")
+ADMIN_PANEL_PASSWORD_HASH = os.environ.get("ADMIN_PANEL_PASSWORD_HASH", "")
+ADMIN_PANEL_TOTP_SECRET = os.environ.get("ADMIN_PANEL_TOTP_SECRET", "").replace(" ", "").upper()
+ADMIN_JWT_EXPIRY_MINUTES = int(os.environ.get("ADMIN_JWT_EXPIRY_MINUTES", "120"))
+
+def _verify_admin_password(password: str) -> bool:
+    if ADMIN_PANEL_PASSWORD_HASH:
+        try:
+            import bcrypt
+            return bcrypt.checkpw(password.encode("utf-8"), ADMIN_PANEL_PASSWORD_HASH.encode("utf-8"))
+        except Exception:
+            return False
+    return bool(ADMIN_PANEL_PASSWORD) and hmac.compare_digest(password, ADMIN_PANEL_PASSWORD)
+
+def _totp_code(secret: str, counter: int) -> str:
+    import base64, struct
+    key = base64.b32decode(secret + "=" * ((8 - len(secret) % 8) % 8), casefold=True)
+    digest = hmac.new(key, struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = (struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF) % 1000000
+    return f"{value:06d}"
+
+def _verify_totp(code: str, secret: str, window: int = 1) -> bool:
+    if not secret or not code or len(code) != 6 or not code.isdigit():
+        return False
+    counter = int(time.time()) // 30
+    return any(hmac.compare_digest(_totp_code(secret, counter + offset), code) for offset in range(-window, window + 1))
+
+class AdminCredentialsRequest(BaseModel):
+    stage: Literal["credentials", "totp"]
+    email: Optional[str] = None
+    password: Optional[str] = None
+    challenge: Optional[str] = None
+    code: Optional[str] = None
 
 def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
-    """Accept either configured ADMIN_SECRET key OR admin JWT."""
+    """Accept backend-only emergency secret or a signed short-lived admin JWT."""
     if authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
-            payload = pyjwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-            if payload.get("alg", "HS256") == "none":
-                raise ValueError("alg=none not allowed")
-            if payload.get("role") == "admin" or payload.get("is_admin"):
+            payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+            if payload.get("role") == "admin" and payload.get("purpose") == "admin_session":
                 return payload
         except Exception:
             pass
@@ -3269,7 +3355,53 @@ PLAN_FEATURES = {
     }
 }
 
-async def get_user_features(user_id: str) -> dict:
+def _version_tuple(value: str) -> tuple:
+    """Parse dotted app versions without allowing malformed values to bypass a minimum."""
+    import re
+    parts = re.findall(r"\d+", str(value or ""))
+    return tuple(int(p) for p in parts[:4]) if parts else (0,)
+
+
+def _global_flag_allows(
+    flag: dict,
+    user_id: str,
+    platform: str = "",
+    country: str = "",
+    app_version: str = "",
+) -> bool:
+    """Evaluate a global flag for one user plus optional client targeting constraints."""
+    if not flag:
+        return True
+    if flag.get("enabled") is False:
+        return False
+
+    allowed_platforms = [str(v).lower() for v in (flag.get("platforms") or [])]
+    if platform and allowed_platforms and platform.lower() not in allowed_platforms:
+        return False
+
+    allowed_countries = [str(v).upper() for v in (flag.get("countries") or [])]
+    if country and allowed_countries and country.upper() not in allowed_countries:
+        return False
+
+    min_version = str(flag.get("minAppVersion") or "").strip()
+    if min_version and app_version and _version_tuple(app_version) < _version_tuple(min_version):
+        return False
+
+    rollout = float(flag.get("rolloutPercentage", 100))
+    if rollout <= 0:
+        return False
+    if rollout >= 100:
+        return True
+    bucket = int(hashlib.sha256(f"{flag.get('key', '')}:{user_id}".encode("utf-8")).hexdigest()[:8], 16) % 100
+    return bucket < rollout
+
+
+async def get_user_features(
+    user_id: str,
+    platform: str = "",
+    country: str = "",
+    app_version: str = "",
+) -> dict:
     sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
     plan = sub.get("plan", "free") if sub else "free"
     
@@ -3285,6 +3417,29 @@ async def get_user_features(user_id: str) -> dict:
     features = dict(PLAN_FEATURES.get(plan, PLAN_FEATURES["free"]))
     if sub and sub.get("overrides") and isinstance(sub["overrides"], dict):
         features.update(sub["overrides"])
+    # Global flags are a server-side kill switch for capabilities exposed by the mobile app.
+    global_flags = await db.feature_flags.find(
+        {},
+        {"_id": 0, "key": 1, "enabled": 1, "rolloutPercentage": 1, "countries": 1, "platforms": 1, "minAppVersion": 1},
+    ).to_list(100)
+    global_by_key = {flag.get("key"): flag for flag in global_flags}
+    mappings = {
+        "yoga_recommendations": "yoga_full",
+        "emergency_contacts": "caregiver_alerts",
+        "ai_assistant": "ai_insights",
+        "google_login": "google_login",
+        "apple_login": "apple_login",
+        "maintenance_mode": "maintenance_mode",
+    }
+    for flag_key, feature_key in mappings.items():
+        flag = global_by_key.get(flag_key)
+        if flag and not _global_flag_allows(flag, user_id, platform, country, app_version):
+            if feature_key == "caregiver_alerts":
+                features[feature_key] = 0
+            elif feature_key == "ai_insights":
+                features[feature_key] = ""
+            else:
+                features[feature_key] = False
     features["plan"] = plan
 
     exp_val = sub.get("expires_at") if sub else None
@@ -3298,8 +3453,16 @@ async def get_user_features(user_id: str) -> dict:
     return features
 
 @api.get("/me/features")
-async def my_features(user_id: str = Depends(get_current_user_id)):
-    return await get_user_features(user_id)
+async def my_features(
+    request: Request,
+    user_id: str = Depends(get_current_user_id),
+):
+    return await get_user_features(
+        user_id,
+        platform=request.headers.get("x-app-platform", "").strip().lower(),
+        country=request.headers.get("x-app-country", "").strip().upper(),
+        app_version=request.headers.get("x-app-version", "").strip(),
+    )
 
 @api.get("/me/subscription")
 async def my_subscription(user_id: str = Depends(get_current_user_id)):
@@ -3461,6 +3624,39 @@ async def admin_set_feature(user_id: str, body: FeatureOverride, _: None = Depen
 async def admin_remove_feature(user_id: str, feature: str, _: None = Depends(require_admin)):
     await db.subscriptions.update_one({"user_id": user_id}, {"$unset": {f"overrides.{feature}": ""}})
     return {"ok": True}
+
+# Persistent global feature flags, separate from per-user subscription overrides.
+GLOBAL_FEATURE_DEFAULTS = [
+    {"key": "google_login", "name": "Google One-Tap Authentication", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE", "US", "GB"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": False, "description": "Google authentication availability."},
+    {"key": "apple_login", "name": "Sign in with Apple", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE", "US", "GB"], "platforms": ["ios"], "isBetaOnly": False, "requiresConfirmation": False, "description": "Apple authentication availability."},
+    {"key": "ai_assistant", "name": "Groq AI Pill & Health Assistant", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE", "US"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": True, "description": "AI assistant and OCR capability."},
+    {"key": "yoga_recommendations", "name": "AI Yoga & Vitality Recommendations", "enabled": True, "rolloutPercentage": 80, "countries": ["IN"], "platforms": ["android", "ios"], "isBetaOnly": True, "requiresConfirmation": False, "description": "Yoga recommendations."},
+    {"key": "emergency_contacts", "name": "Caregiver Emergency Alert System", "enabled": True, "rolloutPercentage": 100, "countries": ["IN", "AE"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": True, "description": "Caregiver alerts."},
+    {"key": "maintenance_mode", "name": "System Maintenance Mode Lockout", "enabled": False, "rolloutPercentage": 0, "countries": ["IN", "AE", "US", "GB"], "platforms": ["android", "ios"], "isBetaOnly": False, "requiresConfirmation": True, "description": "Maintenance mode."},
+]
+
+@app.get("/admin/feature-flags")
+async def admin_list_feature_flags(_: None = Depends(require_admin)):
+    saved = await db.feature_flags.find({}, {"_id": 0}).to_list(500)
+    by_key = {item.get("key"): item for item in saved}
+    return [{**item, **by_key.get(item["key"], {})} for item in GLOBAL_FEATURE_DEFAULTS]
+
+@app.put("/admin/feature-flags/{key}")
+async def admin_update_feature_flag(key: str, body: dict = Body(...), _: None = Depends(require_admin)):
+    allowed = {"enabled", "rolloutPercentage", "countries", "platforms", "minAppVersion"}
+    patch = {k: v for k, v in body.items() if k in allowed}
+    if not patch:
+        raise HTTPException(400, "No supported feature flag fields supplied.")
+    if "enabled" in patch and not isinstance(patch["enabled"], bool):
+        raise HTTPException(422, "enabled must be a boolean.")
+    if "rolloutPercentage" in patch and (not isinstance(patch["rolloutPercentage"], (int, float)) or not 0 <= patch["rolloutPercentage"] <= 100):
+        raise HTTPException(422, "rolloutPercentage must be between 0 and 100.")
+    known = next((item for item in GLOBAL_FEATURE_DEFAULTS if item["key"] == key), None)
+    if not known:
+        raise HTTPException(404, "Unknown feature flag.")
+    await db.feature_flags.update_one({"key": key}, {"$set": {**patch, "key": key, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
+    saved = await db.feature_flags.find_one({"key": key}, {"_id": 0})
+    return {**known, **(saved or {})}
 
 @app.get("/admin/revenue")
 async def admin_revenue(_: None = Depends(require_admin)):
@@ -4628,6 +4824,26 @@ async def admin_export_users(_: None = Depends(require_admin)):
 def err(code: int, msg: str, detail: str = ""):
     """Standard error response with error code for frontend debugging."""
     return HTTPException(code, f"ERR_{code}: {msg}" + (f" - {detail}" if detail else ""))
+
+@app.get("/public/feature-config")
+async def public_feature_config(request: Request):
+    """Return only safe pre-auth feature controls needed by the mobile login/bootstrap UI."""
+    platform = request.headers.get("x-app-platform", "").strip().lower()
+    country = request.headers.get("x-app-country", "").strip().upper()
+    app_version = request.headers.get("x-app-version", "").strip()
+
+    saved = await db.feature_flags.find(
+        {},
+        {"_id": 0, "key": 1, "enabled": 1, "rolloutPercentage": 1, "countries": 1, "platforms": 1, "minAppVersion": 1},
+    ).to_list(100)
+    by_key = {item.get("key"): item for item in saved}
+
+    result = {}
+    for key in ("google_login", "apple_login", "maintenance_mode"):
+        default = next(item for item in GLOBAL_FEATURE_DEFAULTS if item["key"] == key)
+        flag = {**default, **(by_key.get(key) or {})}
+        result[key] = _global_flag_allows(flag, "preauth", platform, country, app_version)
+    return result
 
 @app.get("/health")
 @limiter.exempt

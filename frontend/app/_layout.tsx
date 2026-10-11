@@ -13,7 +13,7 @@ import {
   setupNotificationListeners,
   addForegroundNotificationReceivedListener,
 } from "@/src/lib/notifications";
-import { loadCachedFeatures, fetchFeatures } from "@/src/lib/features";
+import { loadCachedFeatures, fetchFeatures, getFeatures, onFeaturesChange } from "@/src/lib/features";
 import { getStoredToken } from "@/src/lib/auth";
 import { api } from "@/src/lib/api";
 
@@ -72,6 +72,11 @@ function RootStack() {
   const { theme } = useTheme();
   const router = useRouter();
   const [inAppNotif, setInAppNotif] = useState<InAppNotificationPayload | null>(null);
+  const [maintenanceMode, setMaintenanceMode] = useState(() => getFeatures().maintenance_mode === true);
+
+  useEffect(() => {
+    return onFeaturesChange((features) => setMaintenanceMode(features.maintenance_mode === true));
+  }, []);
 
   useEffect(() => {
     const unsub = addForegroundNotificationReceivedListener((notif) => {
@@ -84,6 +89,17 @@ function RootStack() {
     });
     return () => unsub();
   }, []);
+
+  if (maintenanceMode) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg, justifyContent: "center", alignItems: "center", padding: 28 }}>
+        <Text style={{ color: "#fff", fontSize: 24, fontWeight: "800", textAlign: "center", marginBottom: 10 }}>PillCare is temporarily unavailable</Text>
+        <Text style={{ color: "#94a3b8", fontSize: 14, lineHeight: 21, textAlign: "center" }}>
+          We’re performing maintenance. Please try again shortly.
+        </Text>
+      </GestureHandlerRootView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: theme.bg }}>
