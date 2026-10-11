@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { View, Text, StyleSheet, Image, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { signInWithGoogle, signInAsGuest } from "@/src/lib/auth";
 import { trackEvent } from "@/src/lib/analytics";
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 const BG = "#0B0D14", SF = "#161926", TX = "#F9FAFB",
   TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
@@ -26,6 +28,25 @@ const BADGES = [
 export default function SignIn() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [googleEnabled, setGoogleEnabled] = useState(true);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+
+  useEffect(() => {
+    const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      "X-App-Platform": Platform.OS,
+      "X-App-Version": Constants.expoConfig?.version || "0.0.0",
+    };
+    fetch(`${BASE}/api/public/feature-config`, { headers })
+      .then((res) => res.ok ? res.json() : null)
+      .then((config) => {
+        if (!config) return;
+        setGoogleEnabled(config.google_login !== false);
+        setMaintenanceMode(config.maintenance_mode === true);
+      })
+      .catch(() => {});
+  }, []);
 
   const handleSignIn = async () => {
     setLoading(true);
@@ -56,6 +77,15 @@ export default function SignIn() {
       setLoading(false);
     }
   };
+
+  if (maintenanceMode) {
+    return (
+      <SafeAreaView style={[s.safe, { justifyContent: "center", padding: 28 }]}>
+        <Text style={s.h1}>PillCare is temporarily unavailable</Text>
+        <Text style={[s.sub, { textAlign: "center", marginTop: 8 }]}>We’re performing maintenance. Please try again shortly.</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={s.safe} edges={["top", "bottom"]}>
@@ -108,7 +138,7 @@ export default function SignIn() {
 
         {/* Sign-In options */}
         <View style={{ gap: 12, marginTop: 8 }}>
-          <TouchableOpacity
+          {googleEnabled && <TouchableOpacity
             style={[s.gBtn, loading && { opacity: 0.7 }]}
             onPress={handleSignIn}
             disabled={loading}
@@ -118,7 +148,7 @@ export default function SignIn() {
           >
             <Ionicons name="logo-google" size={18} color="#fff" />
             <Text style={s.gBtnTx}>{loading ? "Signing in…" : "Sign In with Google Account"}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity>}
 
           <TouchableOpacity
             style={[s.guestBtn, loading && { opacity: 0.7 }]}
