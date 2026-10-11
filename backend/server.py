@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Res
 import io
 import hmac
 import time
+import hashlib
 try:
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
