@@ -69,7 +69,7 @@ const s = StyleSheet.create({
     justifyContent: "flex-end",
   },
   backdrop: {
-    ...StyleSheet.absoluteFill,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: "rgba(0,0,0,0.55)",
   },
   sheetBox: {

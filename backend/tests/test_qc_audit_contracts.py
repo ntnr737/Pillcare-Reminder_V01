@@ -10,9 +10,18 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 from datetime import datetime, timezone
 import httpx
+import server
 from server import app
+import mongomock_motor
 
 ADMIN_HEADERS = {"x-admin-secret": "pillcare_admin_secret_key_2026"}
+
+@pytest.fixture(autouse=True)
+def setup_mock_db():
+    mock_client = mongomock_motor.AsyncMongoMockClient()
+    server.db = mock_client["pillcare"]
+    server.client = mock_client
+    yield
 
 @pytest.fixture
 def anyio_backend():
@@ -23,6 +32,30 @@ async def test_qc_audit_acceptance_pipeline():
     """Verify all QC acceptance criteria end-to-end within one async event loop."""
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
         
+        # 0. Health endpoints (/health & /api/health)
+        r_h1 = await ac.get("/health")
+        assert r_h1.status_code == 200
+        assert r_h1.json().get("status") in ["ok", "degraded"]
+        r_h2 = await ac.get("/api/health")
+        assert r_h2.status_code == 200
+        assert r_h2.json().get("status") in ["ok", "degraded"]
+
+        # Dual-route admin endpoint compatibility (/admin/* and /api/admin/*)
+        r_stats_app = await ac.get("/admin/stats", headers=ADMIN_HEADERS)
+        assert r_stats_app.status_code == 200
+        r_stats_api = await ac.get("/api/admin/stats", headers=ADMIN_HEADERS)
+        assert r_stats_api.status_code == 200
+
+        r_ff_app = await ac.get("/admin/feature-flags", headers=ADMIN_HEADERS)
+        assert r_ff_app.status_code == 200
+        r_ff_api = await ac.get("/api/admin/feature-flags", headers=ADMIN_HEADERS)
+        assert r_ff_api.status_code == 200
+
+        r_rev_app = await ac.get("/admin/revenue", headers=ADMIN_HEADERS)
+        assert r_rev_app.status_code == 200
+        r_rev_api = await ac.get("/api/admin/revenue", headers=ADMIN_HEADERS)
+        assert r_rev_api.status_code == 200
+
         # 1. NTF-02: Mark taken by medication endpoint is registered and requires session
         med_id = f"med_qc_{uuid.uuid4().hex[:8]}"
         sched_time = "09:00"

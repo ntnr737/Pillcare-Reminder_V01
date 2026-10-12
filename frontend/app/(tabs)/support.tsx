@@ -211,7 +211,7 @@ export default function Support() {
       } else {
         Alert.alert("No doctor number saved", "Add a doctor's phone number to an appointment to call them directly.", [
           { text: t("common.cancel", "Cancel"), style: "cancel" },
-          { text: "Add Appointment", onPress: () => router.push("/appointments") },
+          { text: "Add Appointment", onPress: () => router.push("/appointments" as any) },
         ]);
       }
     } catch {
@@ -343,7 +343,7 @@ export default function Support() {
 
           <TouchableOpacity
             style={[styles.qCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
-            onPress={() => router.push("/appointments")}
+            onPress={() => router.push("/appointments" as any)}
           >
             <View style={[styles.qIco, { backgroundColor: theme.accentBg }]}>
               <Ionicons name="calendar-outline" size={16} color={theme.accent} />
@@ -363,7 +363,7 @@ export default function Support() {
 
           <TouchableOpacity
             style={[styles.qCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
-            onPress={() => router.push("/profile")}
+            onPress={() => router.push("/profile" as any)}
           >
             <View style={[styles.qIco, { backgroundColor: theme.accentBg }]}>
               <Ionicons name="person-outline" size={16} color={theme.accent} />

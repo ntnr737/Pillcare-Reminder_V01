@@ -38,7 +38,26 @@ export async function cancelFallbackForTag(tag: string): Promise<void> {
   try {
     const all = await Notifications.getAllScheduledNotificationsAsync();
     for (const item of all) {
-      if (item.identifier === tag || item.identifier.startsWith(tag) || item.content.data?.fallbackTag === tag) {
+      // CRITICAL: NEVER cancel recurring daily notifications
+      const isDaily =
+        item.content.data?.isDailyRecurring === true ||
+        item.identifier.startsWith("med_daily_") ||
+        item.identifier.startsWith("water_daily_") ||
+        item.identifier.startsWith("yoga_daily_") ||
+        (item.trigger as any)?.repeats === true ||
+        (item.trigger as any)?.type === Notifications.SchedulableTriggerInputTypes.DAILY;
+
+      if (isDaily) {
+        continue;
+      }
+
+      // Only cancel fallback or snoozed items matching this tag
+      const isMatchingFallback =
+        item.identifier === tag ||
+        item.identifier.startsWith(tag) ||
+        (item.content.data?.isFallback === true && item.content.data?.fallbackTag === tag);
+
+      if (isMatchingFallback) {
         await Notifications.cancelScheduledNotificationAsync(item.identifier);
       }
     }
@@ -55,7 +74,7 @@ export async function ensureCategories(): Promise<void> {
     await Notifications.setNotificationCategoryAsync(MEDICATION_CATEGORY, [
       {
         identifier: "MARK_TAKEN",
-        buttonTitle: "✓ Mark as Taken",
+        buttonTitle: "✓ Mark as Done",
         options: { opensAppToForeground: false },
       },
       {
@@ -97,8 +116,16 @@ export async function ensureCategories(): Promise<void> {
 
 /**
  * Helper to log water intake directly from notification bar actions using local date (NTF-08)
+ * Debounced with 5-second threshold to guarantee idempotency against rapid double taps
  */
+let lastWaterLogTime = 0;
 async function handleLogWaterFromNotification(amount: number, fallbackTag?: string): Promise<void> {
+  const now = Date.now();
+  if (now - lastWaterLogTime < 5000) {
+    console.log("Debouncing rapid duplicate water log from notification bar");
+    return;
+  }
+  lastWaterLogTime = now;
   try {
     if (fallbackTag) {
       await cancelFallbackForTag(fallbackTag);
@@ -112,7 +139,7 @@ async function handleLogWaterFromNotification(amount: number, fallbackTag?: stri
     const currentLogs = (await get<Array<{ amount: number; ts: number }>>(wLogsKey)) || [];
 
     const newAmount = currentLogged + amount;
-    const newLogs = [...currentLogs, { amount, ts: Date.now() }];
+    const newLogs = [...currentLogs, { amount, ts: now }];
 
     await set(wKey, newAmount);
     await set(wLoggedKey, newAmount);
@@ -158,7 +185,7 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
         if (!navCallback) return;
 
         if (data.type === "yoga" || data.isYogaReminder) {
-          navCallback("/(tabs)/treatment?openYoga=true");
+          navCallback("/(tabs)/yoga");
           return;
         }
 
@@ -187,7 +214,7 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
       }
 
       // NTF-02: Idempotent mark dose as taken
-      if (actionId === "MARK_TAKEN") {
+      if (actionId === "MARK_TAKEN" || actionId === "MARK_DONE") {
         if (data.medicationId) {
           const medId = String(data.medicationId);
           const schedTime = data.scheduledTime ? String(data.scheduledTime) : undefined;
@@ -270,7 +297,7 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           api.yogaComplete(s, `Yoga Pose #${s}`, "https://www.youtube.com/watch?v=QPjwawKxuLw").catch(() => {});
         }
       } else if (actionId === "OPEN_YOGA") {
-        navCallback?.("/(tabs)/treatment?openYoga=true");
+        navCallback?.("/(tabs)/yoga");
       }
     } catch (e) {
       console.warn("Notification listener response error:", e);

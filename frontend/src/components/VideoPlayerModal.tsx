@@ -110,8 +110,14 @@ export function VideoPlayerModal({
     } else {
       setIsPlaying(false);
       setIsTimerActive(false);
-      setIsFullscreen(false);
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      if (isFullscreen) {
+        setIsFullscreen(false);
+        try {
+          if (ScreenOrientation?.OrientationLock?.PORTRAIT_UP) {
+            ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+          }
+        } catch {}
+      }
     }
   }, [visible, videoUrl]);
 
@@ -233,7 +239,11 @@ export function VideoPlayerModal({
 
   const handleCloseModal = () => {
     if (isFullscreen) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+      try {
+        if (ScreenOrientation?.OrientationLock?.PORTRAIT_UP) {
+          ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+        }
+      } catch {}
     }
     if (secondsWatched > 3) {
       saveVideoLogToHistory(secondsWatched, selectedFeeling);
@@ -275,14 +285,18 @@ export function VideoPlayerModal({
     if (!isFullscreen) {
       setIsFullscreen(true);
       try {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        if (ScreenOrientation?.OrientationLock?.LANDSCAPE) {
+          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+        }
       } catch (e) {
         console.warn("Screen orientation landscape lock failed:", e);
       }
     } else {
       setIsFullscreen(false);
       try {
-        await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        if (ScreenOrientation?.OrientationLock?.PORTRAIT_UP) {
+          await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
+        }
       } catch (e) {
         console.warn("Screen orientation portrait lock failed:", e);
       }

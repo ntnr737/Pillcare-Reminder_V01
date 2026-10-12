@@ -4969,6 +4969,7 @@ async def public_feature_config(request: Request):
     return result
 
 @app.get("/health")
+@app.get("/api/health")
 @limiter.exempt
 async def health_check(request: Request):
     try:
@@ -4990,6 +4991,35 @@ async def health_check(request: Request):
 
 
 app.include_router(api)
+
+# Alias /admin <-> /api/admin routes bidirectionally for universal frontend & admin client compatibility
+_existing_route_paths = {getattr(r, "path", None) for r in app.routes}
+for _r in list(app.routes):
+    _path = getattr(_r, "path", "")
+    if _path.startswith("/admin") and not _path.startswith("/api/admin"):
+        _alias = f"/api{_path}"
+        if _alias not in _existing_route_paths:
+            app.add_api_route(
+                _alias,
+                _r.endpoint,
+                methods=_r.methods,
+                response_model=getattr(_r, "response_model", None),
+                status_code=getattr(_r, "status_code", 200),
+                dependencies=getattr(_r, "dependencies", None),
+            )
+            _existing_route_paths.add(_alias)
+    elif _path.startswith("/api/admin"):
+        _alias = _path.replace("/api/admin", "/admin", 1)
+        if _alias not in _existing_route_paths:
+            app.add_api_route(
+                _alias,
+                _r.endpoint,
+                methods=_r.methods,
+                response_model=getattr(_r, "response_model", None),
+                status_code=getattr(_r, "status_code", 200),
+                dependencies=getattr(_r, "dependencies", None),
+            )
+            _existing_route_paths.add(_alias)
 
 @app.middleware("http")
 async def request_size_limit(request: Request, call_next):
@@ -5037,12 +5067,13 @@ app.add_middleware(
     allow_origins=[
         "https://admin.pillcare.in",
         "https://pillcare.in",
+        "https://pillcare.nitinrai264.workers.dev",
         "http://localhost:8000",
         "http://localhost:3000",
         "http://127.0.0.1:8000",
         "http://127.0.0.1:3000",
     ],
-    allow_origin_regex=r"https://.*\.pillcare\.in",
+    allow_origin_regex=r"https://.*(\.pillcare\.in|\.workers\.dev)",
     allow_methods=["*"],
     allow_headers=["*"],
 )

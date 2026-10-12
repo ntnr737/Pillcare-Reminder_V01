@@ -199,7 +199,7 @@ export default function Today() {
       icon: "calendar-outline",
       title: t("actionSheet.bookAppointment", "Book Appointment"),
       body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"),
-      fn: () => { setActionSheetOpen(false); router.push("/appointments"); },
+      fn: () => { setActionSheetOpen(false); router.push("/appointments" as any); },
     },
     {
       icon: "pulse-outline",

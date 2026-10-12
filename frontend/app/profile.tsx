@@ -417,7 +417,7 @@ export default function Profile() {
 
           <TouchableOpacity
             style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}
-            onPress={() => router.push("/notification-settings")}
+            onPress={() => router.push("/notification-settings" as any)}
           >
             <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
               <Ionicons name="volume-high-outline" size={18} color={theme.accent} />

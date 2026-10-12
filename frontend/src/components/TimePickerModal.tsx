@@ -225,7 +225,7 @@ const s = StyleSheet.create({
     padding: 16,
   },
   backdrop: {
-    ...StyleSheet.absoluteFill,
+    ...(StyleSheet.absoluteFill as any),
   },
   card: {
     width: "100%",

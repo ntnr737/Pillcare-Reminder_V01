@@ -294,7 +294,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)" },
+  backdrop: { ...(StyleSheet.absoluteFill as any), backgroundColor: "rgba(0,0,0,0.55)" },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingBottom: 24, maxHeight: "92%", width: "100%", zIndex: 10, elevation: 10, borderTopWidth: 1 },
   handle: { width: 48, height: 4, borderRadius: 2, alignSelf: "center", marginTop: 12 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 16 },

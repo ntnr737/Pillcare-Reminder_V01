@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   iconsOverlay: {
-    ...StyleSheet.absoluteFill,
+    ...(StyleSheet.absoluteFill as any),
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

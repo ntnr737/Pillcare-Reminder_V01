@@ -343,7 +343,7 @@ export default function Treatment() {
   );
   const OPTS = [
     { icon: "medical-outline", title: t("actionSheet.addMedication", "Add Medication"), body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"), fn: () => { setSheet(false); setAddMed(true); } },
-    { icon: "calendar-outline", title: t("actionSheet.bookAppointment", "Book Appointment"), body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"), fn: () => { setSheet(false); router.push("/appointments"); } },
+    { icon: "calendar-outline", title: t("actionSheet.bookAppointment", "Book Appointment"), body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"), fn: () => { setSheet(false); router.push("/appointments" as any); } },
     { icon: "pulse-outline", title: t("actionSheet.logMeasurement", "Log Measurement"), body: t("actionSheet.logMeasurementDesc", "Blood pressure, glucose, weight..."), fn: () => { setSheet(false); const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS; openMeasurementModal(mTypes[0]); } },
     { icon: "body-outline", title: t("actionSheet.logActivity", "Log Activity"), body: t("actionSheet.logActivityDesc", "Steps, exercise, walking..."), fn: () => { setSheet(false); const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES; openActivityModal(aTypes[0]); } },
     { icon: "heart-outline", title: t("actionSheet.logMood", "Log Mood"), body: t("actionSheet.logMoodDesc", "Track how you're feeling today"), fn: () => { setSheet(false); setTab(3); } },
