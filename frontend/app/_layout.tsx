@@ -24,27 +24,40 @@ import {
   InAppNotificationPayload,
 } from "@/src/components/InAppBottomNotification";
 
-LogBox.ignoreAllLogs(true);
+if (!__DEV__) {
+  LogBox.ignoreAllLogs(true);
+}
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 interface ErrorBoundaryState {
   hasError: boolean;
   error: Error | null;
+  resetKey: number;
 }
 
 class PillCareErrorBoundary extends Component<{ children: React.ReactNode }, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false, error: null };
+  state: ErrorBoundaryState = { hasError: false, error: null, resetKey: 0 };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
     return { hasError: true, error };
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.warn("PillCare ErrorBoundary Caught Error:", error, errorInfo);
+    try {
+      const { set } = require("@/src/lib/store");
+      const crashData = {
+        timestamp: new Date().toISOString(),
+        errorName: error?.name || "Error",
+        errorMessage: error?.message || "Unknown runtime exception",
+        componentStack: errorInfo?.componentStack || "",
+      };
+      set("last_crash_diagnostic", crashData).catch(() => {});
+    } catch {}
   }
 
   handleReset = () => {
-    this.setState({ hasError: false, error: null });
+    this.setState((prev) => ({ hasError: false, error: null, resetKey: prev.resetKey + 1 }));
   };
 
   render() {
@@ -52,9 +65,14 @@ class PillCareErrorBoundary extends Component<{ children: React.ReactNode }, Err
       return (
         <View style={{ flex: 1, backgroundColor: "#0b0f19", justifyContent: "center", alignItems: "center", padding: 24 }}>
           <Text style={{ fontSize: 22, fontWeight: "bold", color: "#f87171", marginBottom: 12 }}>PillCare Alert</Text>
-          <Text style={{ fontSize: 14, color: "#94a3b8", textAlign: "center", marginBottom: 24 }}>
-            An unexpected error occurred. Tap below to reload app.
+          <Text style={{ fontSize: 14, color: "#94a3b8", textAlign: "center", marginBottom: 8 }}>
+            An unexpected error occurred. Tap below to reload application.
           </Text>
+          {this.state.error?.message ? (
+            <Text style={{ fontSize: 12, color: "#64748b", textAlign: "center", marginBottom: 20 }}>
+              {this.state.error.message.slice(0, 120)}
+            </Text>
+          ) : null}
           <TouchableOpacity
             onPress={this.handleReset}
             style={{ backgroundColor: "#9184d9", paddingVertical: 12, paddingHorizontal: 24, borderRadius: 10 }}
@@ -64,7 +82,7 @@ class PillCareErrorBoundary extends Component<{ children: React.ReactNode }, Err
         </View>
       );
     }
-    return this.props.children;
+    return <React.Fragment key={this.state.resetKey}>{this.props.children}</React.Fragment>;
   }
 }
 

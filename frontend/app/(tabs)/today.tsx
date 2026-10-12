@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -221,7 +221,35 @@ export default function Today() {
     },
   ];
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const hydrateFromLocalCache = async (targetDate: string) => {
+    try {
+      const [cachedProf, cachedMeds, cachedDoses, cachedW, cachedWLogs, cachedStrk] = await Promise.all([
+        get<any>(K.profile).catch(() => null),
+        get<any[]>(K.medications).catch(() => []),
+        get<any[]>(K.doses(targetDate)).catch(() => []),
+        get<number>(`water_${targetDate}`).catch(() => 0),
+        get<any[]>(`water_logs_${targetDate}`).catch(() => []),
+        get<number>(K.streak).catch(() => null),
+      ]);
+
+      if (cachedProf) setProfile(cachedProf);
+      if (typeof cachedStrk === "number") setCachedStreak(cachedStrk);
+      if (typeof cachedW === "number") setWaterLogged(cachedW);
+      if (Array.isArray(cachedWLogs)) setWaterLogs(cachedWLogs);
+
+      const medsArr = Array.isArray(cachedMeds) ? cachedMeds : [];
+      const dosesArr = Array.isArray(cachedDoses) ? cachedDoses : [];
+      if (medsArr.length > 0 || dosesArr.length > 0) {
+        const localSynth = synthesizeDosesForDate(medsArr, targetDate, dosesArr);
+        setDoses(localSynth);
+      }
+    } catch {}
+  };
+
   const fetchServer = async () => {
+    setIsSyncing(true);
     try {
       await flushQueue().catch(() => {});
       const [dos, prof, user, cachedProf, cachedMeds] = await Promise.all([
@@ -283,6 +311,8 @@ export default function Today() {
     } catch {
       const stored = ((await get(K.doses(date))) as any[]) || [];
       setDoses(stored.filter((d: any) => d.scheduled_time?.startsWith(date)));
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -293,6 +323,7 @@ export default function Today() {
   };
 
   useFocusEffect(useCallback(() => {
+    hydrateFromLocalCache(date);
     fetchServer();
     trackScreenView("today");
   }, [date]));
@@ -337,7 +368,7 @@ export default function Today() {
     set(`water_logged_${date}`, next);
     set(`water_logs_${date}`, updatedLogs);
 
-    scheduleHydrationPacingReminder(15);
+    scheduleHydrationPacingReminder(10);
 
     // Sync water activity to backend and refresh streak
     api.createActivity({ type: "water", value: amount, date, timestamp: new Date(timestamp).toISOString() }).then(() => {
@@ -393,9 +424,9 @@ export default function Today() {
   };
 
   const handleScheduleReminderOnly = () => {
-    scheduleHydrationPacingReminder(15);
+    scheduleHydrationPacingReminder(10);
     setPacingModalOpen(false);
-    Alert.alert("Hydration Reminder Set", "We will remind you in 15 minutes to drink your next glass of water!");
+    Alert.alert("Hydration Reminder Set", "We will remind you in 10 minutes to drink your next glass of water!");
   };
 
   const resetWater = () => {
@@ -452,6 +483,12 @@ export default function Today() {
   const streak = (typeof profile?.streak_days === "number")
     ? profile.streak_days
     : (typeof (adherenceMap as any)?.streak === "number" ? (adherenceMap as any).streak : cachedStreak);
+  const todayStreak = useMemo(() => {
+    return evaluateTodayStreakStatus(waterLogged, waterGoal, doses);
+  }, [waterLogged, waterGoal, doses]);
+  const displayStreak = (date === ds() && todayStreak.isStreakSecuredToday)
+    ? Math.max(streak, 1)
+    : streak;
   const pct = total === 0 ? 0 : Math.round((taken / total) * 100);
   const secs: Record<string, any[]> = { morning: [], afternoon: [], evening: [], night: [] };
   doses.forEach(d => { const s = gs(d.scheduled_time || "08:00"); secs[s]?.push(d); });
@@ -514,10 +551,17 @@ export default function Today() {
           </TouchableOpacity>
           <TouchableOpacity style={[s.sTag, { backgroundColor: theme.accentBg, borderColor: theme.surfaceBorder }]} onPress={() => { setModalTab("leaderboard"); setCalOpen(true); }}>
             <Ionicons name="flame" size={13} color={theme.accent} />
-            <Text style={[s.sTx, { color: theme.accent }]}>{streak}</Text>
+            <Text style={[s.sTx, { color: theme.accent }]}>{displayStreak}</Text>
           </TouchableOpacity>
         </View>
       </View>
+
+      {isSyncing && (
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4, backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", gap: 6 }}>
+          <ActivityIndicator size="small" color={theme.accent} />
+          <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "500" }}>Updating latest data...</Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}>
@@ -530,7 +574,20 @@ export default function Today() {
             <Text style={[s.ovSub, { color: theme.textSecondary }]}>{total === 0 ? t("today.firstMed", "Add your first medication.") : taken === total ? t("today.allDone", "All done for today!") : `${total - taken} ${t("today.medsLeft", "medication(s) left.")}`}</Text>
             <View style={{ gap: 4, marginTop: 4 }}>
               {next && <View style={s.mRow}><Ionicons name="time-outline" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Next: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{next.medication?.name}</Text>{` at ${next.scheduled_time}`}</Text></View>}
-              <View style={s.mRow}><Ionicons name="flame" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Streak: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{`${streak} ${t("today.streakDays", "Days")}`}</Text></Text></View>
+              <View style={s.mRow}><Ionicons name="flame" size={12} color={theme.accent} /><Text style={[s.mTx, { color: theme.textSecondary }]}>Streak: <Text style={{ color: theme.textPrimary, fontWeight: "700" }}>{`${displayStreak} ${t("today.streakDays", "Days")}`}</Text></Text></View>
+              {date === ds() && (
+                <View style={[s.mRow, { marginTop: 2, alignItems: "flex-start" }]}>
+                  <Ionicons
+                    name={todayStreak.isStreakSecuredToday ? "checkmark-circle" : "information-circle-outline"}
+                    size={13}
+                    color={todayStreak.isStreakSecuredToday ? "#10B981" : theme.accent}
+                    style={{ marginTop: 1 }}
+                  />
+                  <Text style={[s.mTx, { color: todayStreak.isStreakSecuredToday ? "#10B981" : theme.textSecondary, fontSize: 11, flex: 1 }]}>
+                    {todayStreak.streakStatusMessage}
+                  </Text>
+                </View>
+              )}
             </View>
           </View>
           <Ring pct={pct} textPrimary={theme.textPrimary} accent={theme.accent} isDark={isDark} />

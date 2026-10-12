@@ -36,9 +36,9 @@ export function evaluateTodayStreakStatus(
   const totalDosesCount = activeDoses.length;
   const takenDosesCount = activeDoses.filter((d) => d.status === "taken").length;
 
-  // If doses exist, user should take at least 1 dose or all doses
+  // If doses exist, user must take all scheduled doses (100% adherence)
   // If no doses exist for today, water qualification alone earns the daily streak!
-  const isMedsQualified = totalDosesCount === 0 || takenDosesCount > 0;
+  const isMedsQualified = totalDosesCount === 0 || (totalDosesCount > 0 && takenDosesCount >= totalDosesCount);
 
   const isStreakSecuredToday = isWaterQualified && isMedsQualified;
 

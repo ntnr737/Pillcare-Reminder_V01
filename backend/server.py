@@ -489,12 +489,16 @@ async def _ensure_doses_for_date(user_id: str, target_date: str):
 
 
 async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = None):
-    today = datetime.now(timezone.utc).date()
+    # Retrieve user's timezone if available
+    profile = await db.profile.find_one({"id": user_id}) or {}
+    user_tz = get_user_timezone(profile.get("timezone", ""))
+
+    today = datetime.now(user_tz).date()
     if local_date:
         try:
             today = datetime.strptime(local_date, "%Y-%m-%d").date()
         except ValueError:
-            today = datetime.now(timezone.utc).date()
+            today = datetime.now(user_tz).date()
     start = today - timedelta(days=days - 1)
     start_str = start.isoformat()
     end_str = today.isoformat()
@@ -539,9 +543,6 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
     for d in streak_doses:
         streak_doses_by_date.setdefault(d["date"], []).append(d)
 
-    streak_yoga_dates = set(await db.yoga_log.distinct("date", {"user_id": user_id, "date": {"$gte": streak_start_str, "$lte": end_str}}))
-    streak_act_dates = set(await db.activities.distinct("date", {"user_id": user_id, "date": {"$gte": streak_start_str, "$lte": end_str}}))
-
     water_activities = await db.activities.find(
         {"user_id": user_id, "type": "water", "date": {"$gte": streak_start_str, "$lte": end_str}},
         {"date": 1, "value": 1}
@@ -560,19 +561,20 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
         taken_doses = sum(1 for x in d_list if x["status"] == "taken")
 
         water_ml = water_by_date.get(e_date, 0)
-        is_water_ok = water_ml >= 1500 or water_ml > 0
-        is_meds_ok = (taken_doses > 0) if total_doses > 0 else True
-        is_bonus_ok = (e_date in streak_yoga_dates) or (e_date in streak_act_dates)
+        is_water_ok = water_ml >= 1500
 
         if total_doses > 0:
-            is_active = is_meds_ok or is_water_ok or is_bonus_ok
+            # Scheduled doses present: all doses must be taken, AND mandatory hydration (>= 1500ml) met
+            is_meds_ok = (taken_doses >= total_doses)
+            is_active = is_meds_ok and is_water_ok
         else:
-            is_active = is_water_ok or is_bonus_ok
+            # No doses scheduled on this day: mandatory hydration alone qualifies the day
+            is_active = is_water_ok
 
         if is_active:
             streak += 1
         elif e_date == today_str:
-            # Grace period for today: keep streak active if user hasn't finished today's tasks yet
+            # Grace period for today: keep past active streak alive while user works through today's goals
             pass
         else:
             # Missed a past day, streak breaks
@@ -2345,23 +2347,37 @@ async def scan_medication(payload: ScanRequest, user_id: str = Depends(get_curre
 # Caregiver alert (ad hoc, from the app)
 @api.post("/caregiver/alert")
 async def caregiver_alert(payload: CaregiverAlert, user_id: str = Depends(get_current_user_id)):
-    profile = await db.profile.find_one({"id": user_id}, PROJECTION)
+    profile = await db.profile.find_one({"id": user_id}, PROJECTION) or await db.profile.find_one({"user_id": user_id}, PROJECTION)
     phones = (profile or {}).get("caregivers") or ([(profile or {}).get("caregiver_phone")] if (profile or {}).get("caregiver_phone") else [])
     sent = []
-    for phone in phones:
-        delivered_via = await _send_whatsapp(phone, payload.message)
+    if not phones:
         log_entry = {
             "id": str(uuid.uuid4()),
             "user_id": user_id,
-            "phone": phone,
+            "phone": "mock",
             "message": payload.message,
             "medication_name": payload.medication_name,
-            "delivered_via": delivered_via,
+            "delivered_via": "mock",
             "sent_at": datetime.now(timezone.utc),
         }
         await db.caregiver_log.insert_one(log_entry.copy())
         sent.append(_clean(log_entry))
-    return {"sent": sent}
+    else:
+        for phone in phones:
+            delivered_via = await _send_whatsapp(phone, payload.message)
+            log_entry = {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "phone": phone,
+                "message": payload.message,
+                "medication_name": payload.medication_name,
+                "delivered_via": delivered_via,
+                "sent_at": datetime.now(timezone.utc),
+            }
+            await db.caregiver_log.insert_one(log_entry.copy())
+            sent.append(_clean(log_entry))
+    delivered_via = sent[0].get("delivered_via", "mock") if sent else "mock"
+    return {"sent": sent, "delivered_via": delivered_via}
 
 
 @api.get("/caregiver/log")
@@ -2850,6 +2866,37 @@ async def export_csv_report(request: Request, user_id: str = Depends(get_current
             y.get("step_name", ""),
             y.get("video_url", ""),
             y_str
+        ])
+    w.writerow([])
+
+    # 7. Activities & Lifestyle Logs
+    w.writerow(["=== ACTIVITIES & LIFESTYLE LOGS ==="])
+    w.writerow(["Date", "Activity Type", "Value", "Unit", "Action Timestamp"])
+    activities = await db.activities.find({"user_id": user_id}, PROJECTION).sort("created_at", -1).to_list(1000)
+    for act in activities:
+        act_ts = act.get("created_at")
+        act_str = act_ts.strftime("%Y-%m-%d %H:%M") if isinstance(act_ts, datetime) else str(act_ts or "")
+        w.writerow([
+            act.get("date", ""),
+            act.get("type", ""),
+            act.get("value", ""),
+            act.get("unit", ""),
+            act_str
+        ])
+    w.writerow([])
+
+    # 8. Mood Tracker Logs
+    w.writerow(["=== MOOD TRACKER LOGS ==="])
+    w.writerow(["Date", "Score", "Note", "Action Timestamp"])
+    moods = await db.mood.find({"user_id": user_id}, PROJECTION).sort("created_at", -1).to_list(1000)
+    for md in moods:
+        md_ts = md.get("created_at")
+        md_str = md_ts.strftime("%Y-%m-%d %H:%M") if isinstance(md_ts, datetime) else str(md_ts or "")
+        w.writerow([
+            md.get("date", ""),
+            md.get("score", ""),
+            md.get("note", ""),
+            md_str
         ])
 
     filename = f"PillCare_Health_Data_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"

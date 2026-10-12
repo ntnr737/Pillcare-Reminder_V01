@@ -8,7 +8,7 @@ import sys
 import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import httpx
 import server
 from server import app
@@ -144,3 +144,65 @@ async def test_qc_audit_acceptance_pipeline():
         r_active_after = await ac.get("/announcements/active?plan=free")
         assert r_active_after.status_code == 200
         assert not any(it.get("id") == ann_id for it in r_active_after.json())
+
+
+@pytest.mark.anyio
+async def test_qc_streak_calculation_contract():
+    """Verify strict adherence contracts for streak calculation:
+    1. Mandatory water >= 1500ml (1400ml fails).
+    2. 100% medication adherence (partial taken fails).
+    3. Mandatory both meds AND water when meds exist.
+    4. Water alone qualifies when total doses == 0.
+    """
+    user_id = f"user_streak_qc_{uuid.uuid4().hex[:8]}"
+    today_dt = datetime.now(timezone.utc).date()
+    yesterday_dt = today_dt - timedelta(days=1)
+    day_before_dt = today_dt - timedelta(days=2)
+
+    today_str = today_dt.isoformat()
+    yesterday_str = yesterday_dt.isoformat()
+    day_before_str = day_before_dt.isoformat()
+
+    # Case 1: Yesterday had 2 doses scheduled, but only 1 taken, and 2000ml water logged.
+    # Result must be FAIL (streak 0) because medication adherence is not 100%.
+    await server.db.doses.insert_many([
+        {"id": "d1", "user_id": user_id, "date": yesterday_str, "scheduled_time": "08:00", "status": "taken"},
+        {"id": "d2", "user_id": user_id, "date": yesterday_str, "scheduled_time": "20:00", "status": "missed"},
+    ])
+    await server.db.activities.insert_one(
+        {"user_id": user_id, "type": "water", "value": 2000, "date": yesterday_str}
+    )
+
+    res = await server._adherence_for_user(user_id, days=7, local_date=today_str)
+    assert res["streak"] == 0, f"Expected streak 0 for incomplete doses, got {res['streak']}"
+
+    # Case 2: Update second dose to taken, but water is only 1400ml (< 1500ml).
+    # Result must be FAIL (streak 0) because water threshold is not met.
+    await server.db.doses.update_one({"id": "d2"}, {"$set": {"status": "taken"}})
+    await server.db.activities.delete_many({"user_id": user_id})
+    await server.db.activities.insert_one(
+        {"user_id": user_id, "type": "water", "value": 1400, "date": yesterday_str}
+    )
+
+    res2 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
+    assert res2["streak"] == 0, f"Expected streak 0 for water < 1500ml, got {res2['streak']}"
+
+    # Case 3: Update water to 1500ml. Both conditions met for yesterday!
+    # Result must be streak 1!
+    await server.db.activities.delete_many({"user_id": user_id})
+    await server.db.activities.insert_one(
+        {"user_id": user_id, "type": "water", "value": 1500, "date": yesterday_str}
+    )
+
+    res3 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
+    assert res3["streak"] == 1, f"Expected streak 1 when 100% doses and >=1500ml water, got {res3['streak']}"
+
+    # Case 4: Day before yesterday had 0 doses, but user logged 1600ml water.
+    # Result should extend streak to 2 days!
+    await server.db.activities.insert_one(
+        {"user_id": user_id, "type": "water", "value": 1600, "date": day_before_str}
+    )
+
+    res4 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
+    assert res4["streak"] == 2, f"Expected streak 2 when prior zero-med day had water, got {res4['streak']}"
+

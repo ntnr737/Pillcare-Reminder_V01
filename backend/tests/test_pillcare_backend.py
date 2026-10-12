@@ -219,12 +219,12 @@ def test_csv_export(s):
     assert r.status_code == 200
     assert "text/csv" in r.headers.get("content-type", "")
     body = r.text
-    assert "section,timestamp,type,value,unit,status,note" in body
-    # Should have dose/measurement/activity/mood rows
-    assert "dose" in body or "measurement" in body
-    assert "measurement" in body
-    assert "activity" in body
-    assert "mood" in body
+    assert "=== PILLCARE HEALTH DATA REPORT ===" in body
+    assert "=== MEDICATIONS CATALOG" in body
+    assert "=== DOSE LOGS & HISTORY ===" in body
+    assert "MEASUREMENTS & VITALS" in body
+    assert "ACTIVITIES & LIFESTYLE LOGS" in body
+    assert "MOOD TRACKER LOGS" in body
 
 
 # ---------- AI Scanner ----------
