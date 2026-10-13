@@ -7,6 +7,7 @@ import { useTranslation } from "@/src/context/LanguageContext";
 interface DrugFoodGuideProps {
   visible: boolean;
   onClose: () => void;
+  targetMedicationName?: string;
   guide: {
     dos?: string[];
     donts?: string[];
@@ -19,9 +20,18 @@ interface DrugFoodGuideProps {
   } | null;
 }
 
-export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuideProps) {
+export function DrugFoodGuideModal({ visible, onClose, guide, targetMedicationName }: DrugFoodGuideProps) {
   const { theme, isDark } = useTheme();
   const { t } = useTranslation();
+
+  const trimmedTarget = targetMedicationName?.trim() || "";
+  const matchedGuide = trimmedTarget && guide?.guides
+    ? guide.guides.find(
+        (g) =>
+          g.medication.toLowerCase().includes(trimmedTarget.toLowerCase()) ||
+          trimmedTarget.toLowerCase().includes(g.medication.toLowerCase())
+      )
+    : null;
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -30,7 +40,9 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
           <View style={s.headerRow}>
             <View style={s.headerTitle}>
               <Ionicons name="restaurant-outline" size={20} color="#10B981" />
-              <Text style={[s.title, { color: theme.textPrimary }]}>{t("drugFoodModal.title", "Drug-Food Do's & Don'ts Guide")}</Text>
+              <Text style={[s.title, { color: theme.textPrimary }]}>
+                {trimmedTarget ? `Interactions: ${trimmedTarget}` : t("drugFoodModal.title", "Drug-Food Do's & Don'ts Guide")}
+              </Text>
             </View>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Ionicons name="close" size={22} color={theme.textSecondary} />
@@ -38,6 +50,39 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+            {/* Target Medication Specific Match or Safe Unknown Notice */}
+            {trimmedTarget ? (
+              matchedGuide ? (
+                <View style={[s.medGuideCard, { backgroundColor: isDark ? "rgba(16,185,129,0.08)" : "#f0fdf4", borderColor: "#10B981" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                    <Text style={[s.medName, { color: "#10B981", fontWeight: "800" }]}>
+                      {matchedGuide.medication} {matchedGuide.category ? `(${matchedGuide.category})` : ""}
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 6 }}>Clinical Drug-Food Rules:</Text>
+                  {matchedGuide.dos?.map((d, i) => (
+                    <Text key={i} style={s.doCheck}>✓ {d}</Text>
+                  ))}
+                  {matchedGuide.donts?.map((d, i) => (
+                    <Text key={i} style={s.dontCross}>✗ {d}</Text>
+                  ))}
+                </View>
+              ) : (
+                <View style={[s.medGuideCard, { backgroundColor: isDark ? "rgba(245,158,11,0.08)" : "#fffbeb", borderColor: "rgba(245,158,11,0.3)" }]}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
+                    <Text style={{ fontSize: 13, fontWeight: "700", color: "#F59E0B" }}>
+                      No Specific Interaction Data Found
+                    </Text>
+                  </View>
+                  <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 17 }}>
+                    No critical food or beverage interactions are specifically cataloged for &quot;{trimmedTarget}&quot;. Follow standard prescribing directions or consult your doctor/pharmacist.
+                  </Text>
+                </View>
+              )
+            ) : null}
+
             {/* DO's List */}
             <View style={s.dosCard}>
               <View style={s.cardTitleRow}>
@@ -67,7 +112,7 @@ export function DrugFoodGuideModal({ visible, onClose, guide }: DrugFoodGuidePro
             </View>
 
             {/* Per-Medication Guides */}
-            {guide?.guides && guide.guides.length > 0 && (
+            {guide?.guides && guide.guides.length > 0 && !matchedGuide && (
               <>
                 <Text style={[s.sectionHeader, { color: theme.textSecondary }]}>{t("drugFoodModal.medSpecific", "Medication-Specific Guidance:")}</Text>
                 {guide.guides.map((g, idx) => (

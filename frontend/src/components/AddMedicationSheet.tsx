@@ -7,6 +7,7 @@ import { useTranslation } from "@/src/context/LanguageContext";
 import { PrimaryButton } from "./PrimaryButton";
 import { UnitDropdownModal } from "./UnitDropdownModal";
 import { TimePickerModal } from "./TimePickerModal";
+import { DrugFoodGuideModal } from "./DrugFoodGuideModal";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { enqueueWrite, flushQueue } from "@/src/lib/sync";
@@ -46,11 +47,14 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   const [showUnitModal, setShowUnitModal] = useState(false);
   const [showDate, setShowDate] = useState(false);
   const [showTimeIdx, setShowTimeIdx] = useState<number | null>(null);
+  const [foodGuideOpen, setFoodGuideOpen] = useState(false);
+  const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
       api.units().then((r) => setUnits(r.units)).catch(() => setUnits(["tablet", "capsule", "mg", "ml"]));
+      api.getDrugFoodGuide().then((g) => { if (g) setDrugFoodGuide(g); }).catch(() => {});
     }
   }, [visible]);
 
@@ -237,6 +241,28 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
               ))}
             </View>
 
+            <TouchableOpacity
+              onPress={() => setFoodGuideOpen(true)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 10,
+                backgroundColor: isDark ? "rgba(16,185,129,0.12)" : "rgba(16,185,129,0.08)",
+                borderWidth: 1,
+                borderColor: "rgba(16,185,129,0.25)",
+                marginTop: 6,
+                marginBottom: 4,
+              }}
+            >
+              <Feather name="info" size={13} color="#10B981" />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: "#10B981" }}>
+                {name.trim() ? `Check Food Interactions for "${name.trim()}"` : "View Drug-Food Interaction Guide"}
+              </Text>
+            </TouchableOpacity>
+
             <Text style={[styles.label, { color: theme.textSecondary }]}>{t("addMed.notes", "Special Notes / Instructions")}</Text>
             <TextInput
               testID="notes-input"
@@ -285,6 +311,13 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             selectedUnit={unit}
             onSelect={setUnit}
             onClose={() => setShowUnitModal(false)}
+          />
+
+          <DrugFoodGuideModal
+            visible={foodGuideOpen}
+            onClose={() => setFoodGuideOpen(false)}
+            guide={drugFoodGuide}
+            targetMedicationName={name}
           />
         </KeyboardAvoidingView>
       </View>

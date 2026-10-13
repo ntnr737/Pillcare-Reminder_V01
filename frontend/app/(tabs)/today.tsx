@@ -185,6 +185,7 @@ export default function Today() {
   const [adherenceMap, setAdherenceMap] = useState<Record<string, number>>({});
   const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
   const [foodGuideOpen, setFoodGuideOpen] = useState(false);
+  const [selectedMedForGuide, setSelectedMedForGuide] = useState<string>("");
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [modalTab, setModalTab] = useState<"leaderboard" | "calendar">("leaderboard");
 
@@ -194,6 +195,12 @@ export default function Today() {
       title: t("actionSheet.addMedication", "Add Medication"),
       body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"),
       fn: () => { setActionSheetOpen(false); setAddMed(true); },
+    },
+    {
+      icon: "restaurant-outline",
+      title: t("actionSheet.drugFoodGuide", "Drug-Food Interaction Guide"),
+      body: t("actionSheet.drugFoodGuideDesc", "Check clinical food & beverage rules for your medicines"),
+      fn: () => { setActionSheetOpen(false); setSelectedMedForGuide(""); setFoodGuideOpen(true); },
     },
     {
       icon: "calendar-outline",
@@ -556,7 +563,7 @@ export default function Today() {
         </View>
       </View>
 
-      {isSyncing && (
+      {isSyncing && !refreshing && (
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4, backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", gap: 6 }}>
           <ActivityIndicator size="small" color={theme.accent} />
           <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "500" }}>Updating latest data...</Text>
@@ -751,14 +758,6 @@ export default function Today() {
           </View>
         </View>
 
-        {/* AI Insight */}
-        {aiMsg && (
-          <View style={[s.aiCard, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
-            <View style={s.aiH}><Ionicons name="sparkles" size={12} color={theme.accent} /><Text style={[s.aiK, { color: theme.accent }]}>AI INSIGHT</Text></View>
-            <Text style={[s.aiTx, { color: theme.textSecondary }]}>{aiMsg}</Text>
-          </View>
-        )}
-
         {/* AI Recommended Yoga Therapy Card */}
         <TouchableOpacity
           activeOpacity={0.85}
@@ -809,7 +808,18 @@ export default function Today() {
                       <Ionicons name="medical-outline" size={16} color={tk ? "#10B981" : theme.accent} />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={[s.dN, { color: theme.textPrimary }, (tk) && { color: theme.textSecondary }]}>{m.name || "Unknown"}</Text>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Text style={[s.dN, { color: theme.textPrimary }, (tk) && { color: theme.textSecondary }]}>{m.name || "Unknown"}</Text>
+                        <TouchableOpacity
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          onPress={() => {
+                            setSelectedMedForGuide(m.name || "");
+                            setFoodGuideOpen(true);
+                          }}
+                        >
+                          <Ionicons name="information-circle-outline" size={15} color={theme.accent} />
+                        </TouchableOpacity>
+                      </View>
                       {m.generic_name ? <Text style={[s.dM, { color: theme.accent, fontStyle: "italic" }]}>Generic: {m.generic_name}</Text> : null}
                       <Text style={[s.dM, { color: theme.textSecondary }]}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                       {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : theme.textSecondary, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
@@ -962,6 +972,16 @@ export default function Today() {
           </View>
         </View>
       </Modal>
+
+      <DrugFoodGuideModal
+        visible={foodGuideOpen}
+        onClose={() => {
+          setFoodGuideOpen(false);
+          setSelectedMedForGuide("");
+        }}
+        guide={drugFoodGuide}
+        targetMedicationName={selectedMedForGuide}
+      />
     </SafeAreaView>
   );
 }

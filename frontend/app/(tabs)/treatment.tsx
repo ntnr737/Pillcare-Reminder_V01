@@ -377,6 +377,23 @@ export default function Treatment() {
       <View style={[s.hdr, { flexDirection: "row", alignItems: "center", justifyContent: "space-between", borderBottomColor: theme.surfaceBorder }]}>
         <Text style={[s.title, { color: theme.textPrimary }]}>{t("treatment.title", "My Medications")}</Text>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <TouchableOpacity
+            onPress={() => router.push("/nearby?type=pharmacy" as any)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 20,
+              backgroundColor: isDark ? "rgba(16,185,129,0.15)" : "rgba(16,185,129,0.1)",
+              borderWidth: 1,
+              borderColor: "rgba(16,185,129,0.3)",
+            }}
+          >
+            <Ionicons name="medkit-outline" size={14} color="#10B981" />
+            <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>Pharmacies</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={onRefresh} style={{ padding: 6 }} testID="refresh-treatment-btn">
             <Ionicons name="refresh" size={20} color={theme.accent} />
           </TouchableOpacity>
@@ -401,6 +418,46 @@ export default function Treatment() {
       </ScrollView>
 
       <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} colors={[theme.accent]} />}>
+        {/* Top Quick Pharmacy Shortcut (visible across all Treatment subsections) */}
+        <TouchableOpacity
+          style={[
+            s.card,
+            {
+              backgroundColor: theme.surface,
+              borderColor: "rgba(16,185,129,0.3)",
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              paddingVertical: 10,
+              paddingHorizontal: 14,
+              marginBottom: 4,
+            },
+          ]}
+          onPress={() => router.push("/nearby?type=pharmacy" as any)}
+        >
+          <View
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 11,
+              backgroundColor: "rgba(16,185,129,0.14)",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <Ionicons name="medkit-outline" size={18} color="#10B981" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[s.cT, { color: theme.textPrimary, fontSize: 13, fontWeight: "700" }]}>
+              {t("treatment.findNearestStore", "Find Nearest Medical Store")}
+            </Text>
+            <Text style={[s.cS, { color: theme.textSecondary, fontSize: 11 }]}>
+              {t("treatment.pharmaciesNearYou", "Pharmacies & chemists near you")}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
+        </TouchableOpacity>
+
         {/* MEDICATIONS */}
         {tab === 0 && (<View style={{ gap: 10 }}>
           {/* Filter tags */}
@@ -592,21 +649,6 @@ export default function Treatment() {
               );
             })
           )}
-
-          {/* Find Medical Store — always shown at bottom of medications */}
-          <TouchableOpacity
-            style={[s.card, { backgroundColor: theme.surface, borderColor: "rgba(74,222,128,0.3)", flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 }]}
-            onPress={() => router.push("/nearby?type=pharmacy" as any)}
-          >
-            <View style={{ width: 38, height: 38, borderRadius: 11, backgroundColor: "rgba(74,222,128,0.15)", alignItems: "center", justifyContent: "center" }}>
-              <Ionicons name="medkit-outline" size={18} color="#10B981" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[s.cT, { color: theme.textPrimary }]}>{t("treatment.findNearestStore", "Find Nearest Medical Store")}</Text>
-              <Text style={[s.cS, { color: theme.textSecondary }]}>{t("treatment.pharmaciesNearYou", "Pharmacies & chemists near you")}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={14} color={theme.textSecondary} />
-          </TouchableOpacity>
         </View>)}
 
         {/* MEASUREMENTS */}
