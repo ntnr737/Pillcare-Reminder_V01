@@ -363,9 +363,9 @@ export default function Today() {
     });
   }, [date]);
 
-  const performWaterLog = (amount: number, timestamp: number) => {
+  const performWaterLog = (amount: number, timestamp: number, isRetroactive = false) => {
     const next = waterLogged + amount;
-    const newLog = { amount, ts: timestamp };
+    const newLog = { amount, ts: timestamp, isRetroactive, loggedAt: Date.now() };
     const updatedLogs = [...waterLogs, newLog];
 
     setWaterLogged(next);
@@ -377,16 +377,27 @@ export default function Today() {
 
     scheduleHydrationPacingReminder(10);
 
-    // Sync water activity to backend and refresh streak
-    api.createActivity({ type: "water", value: amount, date, timestamp: new Date(timestamp).toISOString() }).then(() => {
-      api.adherence(30).then((data: any) => {
-        if (data && typeof data.streak === "number") {
-          setCachedStreak(data.streak);
-          set(K.streak, data.streak).catch(() => {});
-          setProfile((p: any) => p ? { ...p, streak_days: data.streak } : { streak_days: data.streak });
-        }
-      }).catch(() => {});
-    }).catch(() => {});
+    // Sync water activity to backend and refresh streak, with offline write queue fallback
+    api.createActivity({ type: "water", value: amount, unit: "ml", date, timestamp: new Date(timestamp).toISOString() })
+      .then(() => {
+        api.adherence(30).then((data: any) => {
+          if (data && typeof data.streak === "number") {
+            setCachedStreak(data.streak);
+            set(K.streak, data.streak).catch(() => {});
+            setProfile((p: any) => (p ? { ...p, streak_days: data.streak } : { streak_days: data.streak }));
+          }
+        }).catch(() => {});
+      })
+      .catch((err) => {
+        console.warn("Failed to sync water activity online, queueing offline write:", err);
+        enqueueWrite("activity", {
+          type: "water",
+          value: amount,
+          unit: "ml",
+          date,
+          timestamp: new Date(timestamp).toISOString(),
+        }).catch(() => {});
+      });
   };
 
   const addWater = (amount: number) => {
@@ -398,7 +409,7 @@ export default function Today() {
     const hourLogs = waterLogs.filter((l) => curNow - l.ts < 60 * 60 * 1000);
     const hourTotal = hourLogs.reduce((sum, l) => sum + l.amount, 0);
 
-    // Hard WHO Rule 1: Hourly limit exceeded (Max 1000 mL/hr renal clearance)
+    // Hydration Safety Pacing: Hourly limit (Max 1000 mL/hr safe absorption clearance)
     if (hourTotal + amount > 1000) {
       setAttemptedAmount(amount);
       setPacingLockReason("HOURLY_LIMIT");
@@ -406,7 +417,7 @@ export default function Today() {
       return;
     }
 
-    // Hard WHO Rule 2: Spacing cooldown active (15m for 250mL, 30m for 500mL)
+    // Hydration Safety Pacing: Spacing cooldown active (15m for 250mL, 30m for 500mL)
     if (lastLog && timeSinceLast < reqCooldown) {
       setAttemptedAmount(amount);
       setPacingLockReason("SPACING_COOLDOWN");
@@ -416,7 +427,10 @@ export default function Today() {
 
     // Absolute Safety Limit: Max 4000 mL per day
     if (waterLogged + amount > 4000) {
-      Alert.alert("Daily Hydration Safety Ceiling", "WHO guidelines recommend an optimal daily limit of 2,500 mL – 3,500 mL. Fluid intake exceeding 4,000 mL per day is restricted to prevent electrolyte dilution.");
+      Alert.alert(
+        "Daily Hydration Safety Ceiling",
+        "Clinical hydration guidelines recommend an optimal daily target of 2,000 mL – 3,500 mL. Fluid intake exceeding 4,000 mL per day is restricted to prevent electrolyte dilution."
+      );
       return;
     }
 
@@ -424,8 +438,43 @@ export default function Today() {
   };
 
   const handleRetroactiveLog = () => {
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    performWaterLog(attemptedAmount, oneHourAgo);
+    const now = Date.now();
+    // 1. Guard: At most one past-intake entry allowed per rolling hour to prevent rapid override abuse
+    const hasRecentPastLog = waterLogs.some(
+      (l: any) => l.isRetroactive && (now - (l.loggedAt || l.ts)) < 60 * 60 * 1000
+    );
+    if (hasRecentPastLog) {
+      Alert.alert(
+        "Hourly Pacing Guard",
+        "Only one past-intake correction is permitted per rolling hour to maintain clinically safe pacing."
+      );
+      return;
+    }
+
+    // 2. Bound past intake to an explicit window (1 hour earlier) and enforce hourly pacing against that target time
+    const targetPastTs = now - 60 * 60 * 1000;
+    const windowStart = targetPastTs - 30 * 60 * 1000;
+    const windowEnd = targetPastTs + 30 * 60 * 1000;
+    const logsInPastWindow = waterLogs.filter((l) => l.ts >= windowStart && l.ts <= windowEnd);
+    const pastWindowTotal = logsInPastWindow.reduce((sum, l) => sum + l.amount, 0);
+
+    if (pastWindowTotal + attemptedAmount > 1000) {
+      Alert.alert(
+        "Hourly Limit Exceeded",
+        `Logging ${attemptedAmount}mL for that earlier time would exceed the 1,000 mL/hr safe absorption limit (already logged ${pastWindowTotal}mL in that window).`
+      );
+      return;
+    }
+
+    if (waterLogged + attemptedAmount > 4000) {
+      Alert.alert(
+        "Daily Hydration Ceiling",
+        "Daily fluid intake exceeding 4,000 mL is restricted to prevent electrolyte dilution."
+      );
+      return;
+    }
+
+    performWaterLog(attemptedAmount, targetPastTs, true);
     setPacingModalOpen(false);
     Alert.alert("Logged as Past Intake", `Recorded ${attemptedAmount}mL for an earlier glass today.`);
   };
@@ -486,10 +535,12 @@ export default function Today() {
 
   const days = getWD(date);
   const total = doses.length;
-  const taken = doses.filter(d => d.status === "taken").length;
-  const streak = (typeof profile?.streak_days === "number")
-    ? profile.streak_days
-    : (typeof (adherenceMap as any)?.streak === "number" ? (adherenceMap as any).streak : cachedStreak);
+  const taken = doses.filter((d) => d.status === "taken").length;
+  // Prioritize live adherence map streak, then profile, then cached streak
+  const serverStreak = typeof (adherenceMap as any)?.streak === "number"
+    ? (adherenceMap as any).streak
+    : (typeof profile?.streak_days === "number" ? profile.streak_days : cachedStreak);
+  const streak = serverStreak ?? cachedStreak ?? 0;
   const todayStreak = useMemo(() => {
     return evaluateTodayStreakStatus(waterLogged, waterGoal, doses);
   }, [waterLogged, waterGoal, doses]);
@@ -966,7 +1017,7 @@ export default function Today() {
                 onPress={() => setPacingModalOpen(false)}
                 style={[s.mBtn, { backgroundColor: "transparent", borderWidth: 1, borderColor: theme.surfaceBorder }]}
               >
-                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textSecondary }}>Close & Respect WHO Pacing</Text>
+                <Text style={{ fontSize: 13, fontWeight: "600", color: theme.textSecondary }}>Close & Respect Pacing Guide</Text>
               </TouchableOpacity>
             </View>
           </View>

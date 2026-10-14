@@ -29,7 +29,8 @@ export function evaluateTodayStreakStatus(
   waterGoalMl: number = 2500,
   doses: any[] = []
 ): TodayStreakStatus {
-  const targetWater = Math.min(MANDATORY_WATER_THRESHOLD_ML, waterGoalMl);
+  // Align strictly with backend server adherence: mandatory 1,500 mL required
+  const targetWater = MANDATORY_WATER_THRESHOLD_ML;
   const isWaterQualified = waterLoggedMl >= targetWater;
 
   const activeDoses = doses.filter((d) => d.status !== "cancelled");

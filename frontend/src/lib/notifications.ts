@@ -145,14 +145,28 @@ async function handleLogWaterFromNotification(amount: number, fallbackTag?: stri
     await set(wLoggedKey, newAmount);
     await set(wLogsKey, newLogs);
 
-    // Sync to backend activity API with local date
+    // Sync to backend activity API with local date and queue fallback on failure
     api.createActivity({
       type: "water",
       value: amount,
       unit: "ml",
       date: todayDate,
+      timestamp: new Date(now).toISOString(),
       note: "Logged from OS notification bar",
-    }).catch(() => {});
+    }).catch(async (err) => {
+      console.warn("Notification water sync failed, queueing offline write:", err);
+      try {
+        const { enqueueWrite } = require("./sync");
+        await enqueueWrite("activity", {
+          type: "water",
+          value: amount,
+          unit: "ml",
+          date: todayDate,
+          timestamp: new Date(now).toISOString(),
+          note: "Logged from OS notification bar",
+        });
+      } catch {}
+    });
   } catch (err) {
     console.warn("Failed to log water from notification bar action:", err);
   }
@@ -229,8 +243,16 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           try {
             await api.markTakenByMedication(medId, schedTime, nowStr);
           } catch (err) {
+            console.warn("API markTakenByMedication failed, queueing offline write:", err);
             const { enqueueWrite } = require("./sync");
-            await enqueueWrite("doseStatus", { medication_id: medId, scheduled_time: schedTime, taken_at: nowStr, dose_id: canonicalDoseKey }).catch(() => {});
+            await enqueueWrite("doseStatus", {
+              medication_id: medId,
+              scheduled_time: schedTime,
+              status: "taken",
+              taken_at: nowStr,
+              dose_id: canonicalDoseKey,
+              id: canonicalDoseKey,
+            }).catch(() => {});
           }
 
           // 3. Update cached doses array idempotently
@@ -246,15 +268,19 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
           }
         }
       } else if (actionId === "SNOOZE_10" || actionId === "SNOOZE_15" || actionId === "SNOOZE_30") {
-        // NTF-01: Explicit snooze arms exactly one 10-minute reminder
+        // NTF-01: Explicit snooze arms a 10-minute reminder plus an automatic 20-minute escalation if unanswered
         const snoozeSecs = 600; // Standard 10 minutes
         const snoozeMins = 10;
         const medId = data.medicationId ? String(data.medicationId) : "general";
+        const baseTitle = response.notification.request.content.title || "PillCare Reminder";
+        const baseBody = response.notification.request.content.body || "";
+
+        // 1. Primary 10m snoozed reminder
         await Notifications.scheduleNotificationAsync({
           identifier: `snooze_med_${medId}_${Date.now()}`,
           content: {
-            title: response.notification.request.content.title,
-            body: `[Snoozed ${snoozeMins}m] ${response.notification.request.content.body}`,
+            title: baseTitle,
+            body: `[Snoozed ${snoozeMins}m] ${baseBody}`,
             data: { ...data, isSnooze: true },
             categoryIdentifier: MEDICATION_CATEGORY,
             sound: "default",
@@ -266,6 +292,25 @@ export function setupNotificationListeners(onNavigate?: (path: string) => void):
             seconds: snoozeSecs,
           },
         });
+
+        // 2. Chained 20-minute escalation if snooze is unanswered
+        const escalationTag = `snooze_esc_${medId}_${Date.now()}`;
+        await Notifications.scheduleNotificationAsync({
+          identifier: escalationTag,
+          content: {
+            title: `Urgent Reminder: ${baseTitle}`,
+            body: `[Escalation - 20m] Your snoozed medication dose is still pending. Tap to mark as taken.`,
+            data: { ...data, isEscalation: true, fallbackTag: escalationTag },
+            categoryIdentifier: MEDICATION_CATEGORY,
+            sound: "default",
+            channelId: "medication-reminders",
+            priority: Notifications.AndroidNotificationPriority.MAX,
+          } as any,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+            seconds: 1200, // 20 minutes from snooze tap
+          },
+        }).catch(() => {});
       } else if (actionId === "LOG_250ML") {
         await handleLogWaterFromNotification(250, fallbackTag);
       } else if (actionId === "LOG_500ML") {
@@ -590,14 +635,15 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
           trigger: dailyTrigger,
         });
 
-        // NTF-01: Schedule one-shot +5-minute no-action fallback for the next upcoming dose
-        const fallbackSecs = Math.max(10, Math.floor((nextOccurrence.getTime() - now.getTime()) / 1000) + 300);
-        if (fallbackSecs < 86400) {
+        // NTF-01: Two-tier medication reminder escalation:
+        // Tier 1: +10-minute follow-up if initial dose reminder is unanswered
+        const fallbackSecs10 = Math.max(10, Math.floor((nextOccurrence.getTime() - now.getTime()) / 1000) + 600);
+        if (fallbackSecs10 < 86400) {
           await Notifications.scheduleNotificationAsync({
-            identifier: fallbackTag,
+            identifier: `${fallbackTag}_10`,
             content: {
               title: `Dose Reminder: ${med.name}`,
-              body: `[Follow-up] Have you taken ${med.name}? Tap to mark as taken or snooze.`,
+              body: `[Follow-up +10m] Have you taken ${med.name}? Tap to mark as taken or snooze.`,
               data: { medicationId: med.id, scheduledTime: t, isFallback: true, fallbackTag },
               categoryIdentifier: MEDICATION_CATEGORY,
               sound: medSoundParam,
@@ -606,7 +652,29 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             } as any,
             trigger: {
               type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-              seconds: fallbackSecs,
+              seconds: fallbackSecs10,
+              repeats: false,
+            },
+          }).catch(() => {});
+        }
+
+        // Tier 2: +20-minute total escalation if dose is still unconfirmed
+        const fallbackSecs20 = Math.max(10, Math.floor((nextOccurrence.getTime() - now.getTime()) / 1000) + 1200);
+        if (fallbackSecs20 < 86400) {
+          await Notifications.scheduleNotificationAsync({
+            identifier: `${fallbackTag}_20`,
+            content: {
+              title: `Urgent Dose Reminder: ${med.name}`,
+              body: `[Second Reminder +20m] ${med.name} dose is now 20 minutes past scheduled time. Tap to mark as taken or snooze.`,
+              data: { medicationId: med.id, scheduledTime: t, isFallback: true, fallbackTag },
+              categoryIdentifier: MEDICATION_CATEGORY,
+              sound: medSoundParam,
+              channelId: medChannel,
+              priority: Notifications.AndroidNotificationPriority.MAX,
+            } as any,
+            trigger: {
+              type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+              seconds: fallbackSecs20,
               repeats: false,
             },
           }).catch(() => {});

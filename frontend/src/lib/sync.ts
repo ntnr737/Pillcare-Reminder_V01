@@ -14,6 +14,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api } from "./api";
+import { set, K } from "./store";
 
 const QUEUE_KEY = "pc6_write_queue";
 const TAKEN_KEY_PREFIX = "pc6_taken_doses_"; // persistent taken dose IDs per date
@@ -132,9 +133,17 @@ export async function flushQueue(): Promise<void> {
     for (const item of userQueue) {
       try {
         switch (item.type) {
-          case "doseStatus":
-            await api.setDoseStatus(item.payload.id, item.payload.status, item.payload.taken_at);
+          case "doseStatus": {
+            const p = item.payload || {};
+            if (p.id && !String(p.id).startsWith("med_")) {
+              await api.setDoseStatus(p.id, p.status || "taken", p.taken_at);
+            } else if (p.medication_id) {
+              await api.markTakenByMedication(p.medication_id, p.scheduled_time, p.taken_at);
+            } else if (p.id) {
+              await api.setDoseStatus(p.id, p.status || "taken", p.taken_at);
+            }
             break;
+          }
           case "measurement":
             await api.createMeasurement(item.payload);
             break;
@@ -178,6 +187,15 @@ export async function flushQueue(): Promise<void> {
           break;
         }
       }
+    }
+
+    // Refresh streak in background if any queue items were flushed
+    if (userQueue.length > 0) {
+      api.adherence(30).then((data: any) => {
+        if (data && typeof data.streak === "number") {
+          set(K.streak, data.streak).catch(() => {});
+        }
+      }).catch(() => {});
     }
   } finally {
     syncing = false;

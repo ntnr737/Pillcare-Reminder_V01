@@ -1389,8 +1389,9 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
 @app.post("/doses/mark-taken-by-medication")
 @api.post("/doses/mark-taken-by-medication")
 async def mark_taken_by_medication(payload: MarkTakenByMedPayload, user_id: str = Depends(get_current_user_id)):
-    """Mark a dose as taken using medication_id & optional scheduled_time. Ideal for OS Notification Bar Action Buttons."""
-    today_str = payload.date_str or datetime.now(APP_TIMEZONE).strftime("%Y-%m-%d")
+    profile = await db.profile.find_one({"id": user_id}) or {}
+    user_tz = get_user_timezone(profile.get("timezone", ""))
+    today_str = payload.date_str or datetime.now(user_tz).strftime("%Y-%m-%d")
     await _ensure_doses_for_date(user_id, today_str)
 
     query = {

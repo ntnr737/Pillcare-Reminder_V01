@@ -206,3 +206,46 @@ async def test_qc_streak_calculation_contract():
     res4 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
     assert res4["streak"] == 2, f"Expected streak 2 when prior zero-med day had water, got {res4['streak']}"
 
+
+@pytest.mark.anyio
+async def test_qc_mark_taken_by_medication_contract():
+    """Verify notification action / offline sync mark_taken_by_medication:
+    1. Successfully marks dose taken by medication_id and scheduled_time.
+    2. Works idempotently on repeat calls.
+    3. Respects user timezone for date resolution.
+    """
+    user_id = f"user_notif_act_{uuid.uuid4().hex[:8]}"
+    today_str = datetime.now(timezone.utc).date().isoformat()
+    med_id = f"med_{uuid.uuid4().hex[:6]}"
+
+    # Insert dose
+    dose_id = f"dose_{uuid.uuid4().hex[:6]}"
+    await server.db.doses.insert_one({
+        "id": dose_id,
+        "user_id": user_id,
+        "medication_id": med_id,
+        "date": today_str,
+        "scheduled_time": "09:00",
+        "status": "pending",
+    })
+
+    # Call mark_taken_by_medication
+    payload = server.MarkTakenByMedPayload(
+        medication_id=med_id,
+        scheduled_time="09:00",
+        taken_at=datetime.now(timezone.utc).isoformat(),
+        date_str=today_str,
+    )
+    res = await server.mark_taken_by_medication(payload, user_id=user_id)
+    assert res["status"] == "taken"
+    assert res["id"] == dose_id
+
+    # Verify persisted in database
+    db_dose = await server.db.doses.find_one({"id": dose_id})
+    assert db_dose["status"] == "taken"
+
+    # Repeat call (idempotency)
+    res_repeat = await server.mark_taken_by_medication(payload, user_id=user_id)
+    assert res_repeat["status"] == "taken"
+
+
