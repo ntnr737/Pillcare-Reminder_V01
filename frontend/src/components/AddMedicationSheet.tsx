@@ -242,7 +242,15 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             </View>
 
             <TouchableOpacity
-              onPress={() => setFoodGuideOpen(true)}
+              onPress={() => {
+                const currentName = name.trim();
+                if (currentName) {
+                  api.getDrugFoodGuide(currentName).then((g) => {
+                    if (g) setDrugFoodGuide(g);
+                  }).catch(() => {});
+                }
+                setFoodGuideOpen(true);
+              }}
               style={{
                 flexDirection: "row",
                 alignItems: "center",

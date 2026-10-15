@@ -579,7 +579,13 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
     } catch (err) {
       console.warn("Targeted medication cancellation fallback:", err);
     }
-    const activeMeds = (meds || []).filter((m: any) => m.active !== false);
+
+    const activeMeds = (meds || []).filter((m: any) => {
+      if (!m || m.active === false || m.completed === true) return false;
+      // Exclude confirmed zero-stock medicines from recurring reminder scheduling
+      if (typeof m.stock === "number" && m.stock <= 0) return false;
+      return true;
+    });
     let scheduled = 0;
     const now = new Date();
 

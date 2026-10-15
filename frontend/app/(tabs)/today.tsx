@@ -96,18 +96,36 @@ function getBadgeFirstName(profile?: any, authUser?: any): string {
 function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: any[] = []): any[] {
   if (!Array.isArray(meds) || meds.length === 0) return existingDoses || [];
 
+  const medStockMap = new Map<string, number>();
+  meds.forEach((m) => {
+    if (m && m.id && typeof m.stock === "number") {
+      medStockMap.set(m.id, m.stock);
+    }
+  });
+
   const existingMap = new Map<string, any>();
   (existingDoses || []).forEach((d) => {
     if (d && (d.medication_id || d.medication?.id) && d.scheduled_time) {
       const medId = d.medication_id || d.medication?.id;
+      // Confirmed zero-stock medicines are excluded from Today dose rows
+      const stock = medStockMap.get(medId) ?? d.medication?.stock;
+      if (typeof stock === "number" && stock <= 0) return;
       existingMap.set(`${medId}_${d.scheduled_time}`, d);
     }
   });
 
-  const result: any[] = [...(existingDoses || [])];
+  // Filter out any existing doses for confirmed zero-stock medications
+  const result: any[] = (existingDoses || []).filter((d) => {
+    const medId = d?.medication_id || d?.medication?.id;
+    const stock = medStockMap.get(medId) ?? d?.medication?.stock;
+    if (typeof stock === "number" && stock <= 0) return false;
+    return true;
+  });
 
   for (const m of meds) {
     if (!m || m.active === false || m.completed === true) continue;
+    // Confirmed zero-stock medicines are excluded
+    if (typeof m.stock === "number" && m.stock <= 0) continue;
     if (m.start_date && m.start_date > targetDate) continue;
     if (m.duration_days && m.start_date) {
       try {
@@ -149,6 +167,7 @@ export default function Today() {
 
   const [date, setDate] = useState(ds());
   const [doses, setDoses] = useState<any[]>([]);
+  const [medications, setMedications] = useState<any[]>([]);
   const [profile, setProfile] = useState<any>(null);
   const [cachedStreak, setCachedStreak] = useState<number>(0);
   const [authUser, setAuthUser] = useState<any>(null);
@@ -189,6 +208,77 @@ export default function Today() {
   const [actionSheetOpen, setActionSheetOpen] = useState(false);
   const [modalTab, setModalTab] = useState<"leaderboard" | "calendar">("leaderboard");
 
+  const outOfStockMeds = useMemo(() => {
+    return medications.filter(
+      (m) => m && m.active !== false && !m.completed && typeof m.stock === "number" && m.stock <= 0
+    );
+  }, [medications]);
+
+  const handleCourseComplete = async (medId: string) => {
+    try {
+      const updated = medications.map((m) =>
+        m.id === medId ? { ...m, active: false, completed: true } : m
+      );
+      setMedications(updated);
+      await set(K.medications, updated);
+
+      try {
+        await api.updateMedication(medId, { active: false, completed: true });
+      } catch (e) {
+        console.warn("API updateMedication failed, queueing offline course completion:", e);
+        await enqueueWrite("medication_update", {
+          id: medId,
+          data: { active: false, completed: true },
+        });
+      }
+
+      fetchServer();
+      resyncReminders(updated).catch(() => {});
+      Alert.alert("Course Completed", "Medication course marked as finished and excluded from reminders.");
+    } catch (err: any) {
+      Alert.alert("Error", err?.message || "Failed to update medication.");
+    }
+  };
+
+  const applyRefill = async (medId: string, addQty: number) => {
+    try {
+      const updated = medications.map((m) =>
+        m.id === medId ? { ...m, stock: (m.stock || 0) + addQty } : m
+      );
+      setMedications(updated);
+      await set(K.medications, updated);
+
+      try {
+        await api.refillMedication(medId, addQty);
+      } catch (e) {
+        console.warn("API refillMedication failed, queueing offline refill:", e);
+        const targetMed = updated.find((x) => x.id === medId);
+        await enqueueWrite("medication_update", {
+          id: medId,
+          data: { stock: targetMed?.stock },
+        });
+      }
+
+      fetchServer();
+      await resyncReminders(updated);
+      Alert.alert("Stock Refilled", `Added +${addQty} pills to stock. Reminders refreshed.`);
+    } catch (err: any) {
+      Alert.alert("Refill Failed", err?.message || "Could not update stock.");
+    }
+  };
+
+  const handleAddQuantity = (med: any) => {
+    Alert.alert(
+      `Refill ${med.name}`,
+      `Current stock is 0. Select quantity to add:`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "+10 Pills", onPress: () => applyRefill(med.id, 10) },
+        { text: "+30 Pills", onPress: () => applyRefill(med.id, 30) },
+      ]
+    );
+  };
+
   const actionOptions = [
     {
       icon: "medical-outline",
@@ -200,7 +290,12 @@ export default function Today() {
       icon: "restaurant-outline",
       title: t("actionSheet.drugFoodGuide", "Drug-Food Interaction Guide"),
       body: t("actionSheet.drugFoodGuideDesc", "Check clinical food & beverage rules for your medicines"),
-      fn: () => { setActionSheetOpen(false); setSelectedMedForGuide(""); setFoodGuideOpen(true); },
+      fn: () => {
+        setActionSheetOpen(false);
+        setSelectedMedForGuide("");
+        api.getDrugFoodGuide().then((g: any) => { if (g) setDrugFoodGuide(g); }).catch(() => {});
+        setFoodGuideOpen(true);
+      },
     },
     {
       icon: "calendar-outline",
@@ -247,6 +342,7 @@ export default function Today() {
       if (Array.isArray(cachedWLogs)) setWaterLogs(cachedWLogs);
 
       const medsArr = Array.isArray(cachedMeds) ? cachedMeds : [];
+      if (medsArr.length > 0) setMedications(medsArr);
       const dosesArr = Array.isArray(cachedDoses) ? cachedDoses : [];
       if (medsArr.length > 0 || dosesArr.length > 0) {
         const localSynth = synthesizeDosesForDate(medsArr, targetDate, dosesArr);
@@ -288,6 +384,7 @@ export default function Today() {
       if (apiMeds && Array.isArray(apiMeds)) {
         await set(K.medications, apiMeds).catch(() => {});
       }
+      setMedications(allMeds);
 
       const rawDoses = Array.isArray(dos) ? dos : (((await get(K.doses(date))) as any[]) || []);
       const finalDoses = synthesizeDosesForDate(allMeds, date, rawDoses);
@@ -710,9 +807,9 @@ export default function Today() {
                 />
                 <Text style={{ fontSize: 11, fontWeight: "700", color: isWaterLocked ? "#EF4444" : "#10B981" }}>
                   {isHourlyLimitReached
-                    ? `WHO Hourly Limit (1,000 mL/hr reached)`
+                    ? `Hourly Limit (1,000 mL/hr reached)`
                     : isCooldownActive
-                    ? `WHO Lockout (Unlocks in ${formatCountdown(cooldownRemainingSecs)})`
+                    ? `Pacing Lockout (Unlocks in ${formatCountdown(cooldownRemainingSecs)})`
                     : minsSinceLastWater === null
                     ? "Ready for first 250mL glass"
                     : `Optimal Pacing (Last intake ${minsSinceLastWater}m ago)`}
@@ -721,7 +818,7 @@ export default function Today() {
 
               {waterLogged >= 4000 ? (
                 <Text style={{ fontSize: 11, color: "#f87171", fontWeight: "700", marginTop: 2 }}>
-                  Daily Ceiling Reached (4,000 mL). WHO daily max: 3,500 mL.
+                  Daily Ceiling Reached (4,000 mL). Recommended daily max: 3,500 mL.
                 </Text>
               ) : waterLogged >= 3000 ? (
                 <Text style={{ fontSize: 11, color: "#fbbf24", fontWeight: "700", marginTop: 2 }}>
@@ -747,9 +844,9 @@ export default function Today() {
             <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 4000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
           </View>
 
-          {/* WHO Guideline Advice */}
+          {/* Guideline Advice */}
           <Text style={{ fontSize: 10, color: theme.textSecondary, fontStyle: "italic", marginBottom: 10 }}>
-            WHO Rule: Max 1,000 mL/hr renal capacity. Space 250mL intake by 15m & 500mL by 30m.
+            Renal Pacing Rule: Max 1,000 mL/hr renal capacity. Space 250mL intake by 15m & 500mL by 30m.
           </Text>
 
           {/* Action buttons with WHO Hard Lockout */}
@@ -803,7 +900,7 @@ export default function Today() {
                 color={isWaterLocked ? "#EF4444" : "#0284C7"}
               />
               <Text style={{ fontSize: 11, color: isWaterLocked ? "#EF4444" : "#0284C7", fontWeight: "700" }}>
-                {isWaterLocked ? "WHO Lockout" : t("today.addBottle", "+ Bottle (500ml)")}
+                {isWaterLocked ? "Locked" : t("today.addBottle", "+ Bottle (500ml)")}
               </Text>
             </TouchableOpacity>
           </View>
@@ -834,6 +931,56 @@ export default function Today() {
           </View>
         </TouchableOpacity>
 
+        {/* Out of Stock Notice Card */}
+        {outOfStockMeds.length > 0 && (
+          <View style={[s.outOfStockCard, { backgroundColor: isDark ? "rgba(239,68,68,0.08)" : "#fef2f2", borderColor: "rgba(239,68,68,0.3)" }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="alert-circle" size={16} color="#EF4444" />
+                <Text style={{ fontSize: 13, fontWeight: "800", color: "#EF4444" }}>
+                  {outOfStockMeds.length === 1
+                    ? `Out of Stock: ${outOfStockMeds[0].name}`
+                    : `${outOfStockMeds.length} Medications Out of Stock`}
+                </Text>
+              </View>
+              <Text style={{ fontSize: 10, fontWeight: "700", color: "#EF4444" }}>Doses Paused</Text>
+            </View>
+            <Text style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 8, lineHeight: 16 }}>
+              Stock reached 0. Scheduled reminders and Today doses are hidden until refilled or completed.
+            </Text>
+            {outOfStockMeds.map((med) => (
+              <View key={med.id} style={{ marginTop: 4, paddingTop: 4, borderTopWidth: outOfStockMeds.length > 1 ? 1 : 0, borderTopColor: "rgba(239,68,68,0.15)" }}>
+                {outOfStockMeds.length > 1 && (
+                  <Text style={{ fontSize: 12, fontWeight: "700", color: theme.textPrimary, marginBottom: 4 }}>{med.name}</Text>
+                )}
+                <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+                  <TouchableOpacity
+                    style={[s.oosBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#FFF", borderColor: theme.surfaceBorder }]}
+                    onPress={() => handleCourseComplete(med.id)}
+                  >
+                    <Ionicons name="checkmark-done" size={13} color="#10B981" />
+                    <Text style={[s.oosBtnText, { color: "#10B981" }]}>Course Complete</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.oosBtn, { backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "#FFF", borderColor: theme.surfaceBorder }]}
+                    onPress={() => router.push("/treatment" as any)}
+                  >
+                    <Ionicons name="location-outline" size={13} color="#3B82F6" />
+                    <Text style={[s.oosBtnText, { color: "#3B82F6" }]}>Nearby Pharmacy</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[s.oosBtn, { backgroundColor: "#EF4444", borderColor: "#EF4444" }]}
+                    onPress={() => handleAddQuantity(med)}
+                  >
+                    <Ionicons name="add-circle-outline" size={13} color="#FFF" />
+                    <Text style={[s.oosBtnText, { color: "#FFF" }]}>Add Quantity</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* Dose sections */}
         {total === 0 ? (
           <TouchableOpacity
@@ -863,9 +1010,16 @@ export default function Today() {
                         <Text style={[s.dN, { color: theme.textPrimary }, (tk) && { color: theme.textSecondary }]}>{m.name || "Unknown"}</Text>
                         <TouchableOpacity
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          onPress={() => {
-                            setSelectedMedForGuide(m.name || "");
+                          onPress={async () => {
+                            const medName = m.name || "";
+                            setSelectedMedForGuide(medName);
                             setFoodGuideOpen(true);
+                            if (medName) {
+                              try {
+                                const specific = await api.getDrugFoodGuide(medName);
+                                if (specific) setDrugFoodGuide(specific);
+                              } catch {}
+                            }
                           }}
                         >
                           <Ionicons name="information-circle-outline" size={15} color={theme.accent} />
@@ -1081,4 +1235,7 @@ const s = StyleSheet.create({
   modalContent: { width: "100%", padding: 20, borderRadius: 20, borderWidth: 1 },
   mTitle: { fontSize: 18, fontWeight: "800" },
   mBtn: { height: 44, borderRadius: 12, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+  outOfStockCard: { borderRadius: 16, padding: 14, borderWidth: 1, marginVertical: 6 },
+  oosBtn: { flexDirection: "row", alignItems: "center", gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1 },
+  oosBtnText: { fontSize: 12, fontWeight: "700" },
 });

@@ -28,8 +28,8 @@ export function DrugFoodGuideModal({ visible, onClose, guide, targetMedicationNa
   const matchedGuide = trimmedTarget && guide?.guides
     ? guide.guides.find(
         (g) =>
-          g.medication.toLowerCase().includes(trimmedTarget.toLowerCase()) ||
-          trimmedTarget.toLowerCase().includes(g.medication.toLowerCase())
+          g.medication.toLowerCase() === trimmedTarget.toLowerCase() &&
+          g.category !== "General Medication Care"
       )
     : null;
 
@@ -73,11 +73,11 @@ export function DrugFoodGuideModal({ visible, onClose, guide, targetMedicationNa
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
                     <Ionicons name="information-circle-outline" size={16} color="#F59E0B" />
                     <Text style={{ fontSize: 13, fontWeight: "700", color: "#F59E0B" }}>
-                      No Specific Interaction Data Found
+                      No Specific Catalog Entry Found
                     </Text>
                   </View>
                   <Text style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 17 }}>
-                    No critical food or beverage interactions are specifically cataloged for &quot;{trimmedTarget}&quot;. Follow standard prescribing directions or consult your doctor/pharmacist.
+                    No specific clinical drug-food interactions are cataloged for &quot;{trimmedTarget}&quot;. Follow standard prescribing directions or consult your doctor/pharmacist.
                   </Text>
                 </View>
               )

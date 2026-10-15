@@ -18,6 +18,8 @@ ADMIN_HEADERS = {"x-admin-secret": "pillcare_admin_secret_key_2026"}
 
 @pytest.fixture(autouse=True)
 def setup_mock_db():
+    server.JWT_SECRET = "test_jwt_secret_for_qc_audit_contracts_2026"
+    server.TEST_DEMO_ENABLED = True
     mock_client = mongomock_motor.AsyncMongoMockClient()
     server.db = mock_client["pillcare"]
     server.client = mock_client
@@ -247,5 +249,52 @@ async def test_qc_mark_taken_by_medication_contract():
     # Repeat call (idempotency)
     res_repeat = await server.mark_taken_by_medication(payload, user_id=user_id)
     assert res_repeat["status"] == "taken"
+
+
+@pytest.mark.anyio
+async def test_qc_drug_food_guide_dynamic_lookup_contract():
+    """Verify medicine-specific drug-food interaction contract:
+    1. Querying for an active user with medications returns their personalized guide.
+    2. Querying with a known med_name (e.g. Metformin) returns exact guide and no general filler.
+    3. Querying with an unknown med_name returns empty guides array (no false partial match fallbacks).
+    4. Unauthenticated call without med_name safely returns baseline advice.
+    """
+    user_id = "demo_user"
+    await server.db.medications.insert_one({
+        "id": "med_test_1",
+        "user_id": user_id,
+        "name": "Metformin 500mg",
+        "active": True
+    })
+    auth_headers = {"Authorization": "Bearer demo_token_guide_test"}
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. User with medications
+        r_user = await ac.get("/api/treatment/drug-food-guide", headers=auth_headers)
+        assert r_user.status_code == 200
+        data_user = r_user.json()
+        assert "dos" in data_user
+        assert "donts" in data_user
+        assert len(data_user.get("guides", [])) > 0
+
+        # 2. Known medicine exact lookup (no auth required)
+        r_met = await ac.get("/treatment/drug-food-guide?med_name=Metformin")
+        assert r_met.status_code == 200
+        data_met = r_met.json()
+        assert len(data_met.get("guides", [])) == 1
+        assert data_met["guides"][0]["medication"].lower() == "metformin"
+
+        # 3. Unknown medicine lookup returns empty guides
+        r_unk = await ac.get("/treatment/drug-food-guide?med_name=NonExistentPharmaX123")
+        assert r_unk.status_code == 200
+        data_unk = r_unk.json()
+        assert len(data_unk.get("guides", [])) == 0
+
+        # 4. Unauthenticated fallback without med_name
+        r_anon = await ac.get("/treatment/drug-food-guide")
+        assert r_anon.status_code == 200
+        assert r_anon.json().get("has_medications") is False
+
+
 
 

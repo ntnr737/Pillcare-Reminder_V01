@@ -61,7 +61,8 @@ export const api = {
   createMood: (data: any) => req<any>("/mood", { method: "POST", body: JSON.stringify(data) }),
   adherence: (days: number = 7) => req<any>(`/progress/adherence?days=${days}&local_date=${localDateStr()}`),
   yogaTip: () => req<any>("/yoga-tip"),
-  getDrugFoodGuide: () => req<any>("/treatment/drug-food-guide"),
+  getDrugFoodGuide: (medName?: string) =>
+    req<any>(`/treatment/drug-food-guide${medName ? `?med_name=${encodeURIComponent(medName)}` : ""}`),
   doseHistory: (days: number = 30) => req<any[]>(`/doses/history?days=${days}`),
   listAppointments: () => req<any[]>("/appointments"),
   createAppointment: (data: any) => req<any>("/appointments", { method: "POST", body: JSON.stringify(data) }),

@@ -418,6 +418,13 @@ async def get_current_user_id(request: Request = None, authorization: str = Head
     return user_id
 
 
+async def get_optional_user_id(request: Request = None, authorization: str = Header(None)) -> Optional[str]:
+    try:
+        return await get_current_user_id(request, authorization)
+    except Exception:
+        return None
+
+
 async def _migrate_legacy_default_data(new_user_id: str):
     """
     One-time bootstrap: if this is the very first user ever to sign in, and
@@ -1683,10 +1690,18 @@ async def ai_drug_interactions(request: Request, user_id: str = Depends(get_curr
 
 
 @api.get("/treatment/drug-food-guide")
+@app.get("/treatment/drug-food-guide")
+@app.get("/api/treatment/drug-food-guide")
 @limiter.limit("30/minute")
-async def drug_food_guide(request: Request, user_id: str = Depends(get_current_user_id)):
-    """Personalized Drug-Food Interactions & Clinical Do's and Don'ts Guide based on active medications."""
-    meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(20)
+async def drug_food_guide(request: Request, med_name: Optional[str] = None, user_id: Optional[str] = Depends(get_optional_user_id)):
+    """Personalized Drug-Food Interactions & Clinical Do's and Don'ts Guide based on active medications or requested med_name."""
+    if med_name:
+        meds = [{"name": med_name.strip()}]
+    elif user_id:
+        meds = await db.medications.find({"user_id": user_id, "active": True}, PROJECTION).to_list(20)
+    else:
+        meds = []
+
     if not meds:
         return {
             "has_medications": False,
@@ -1747,12 +1762,13 @@ async def drug_food_guide(request: Request, user_id: str = Depends(get_current_u
                 "donts": ["Do not skip meals after taking dose", "Avoid heavy alcohol consumption"]
             })
         else:
-            guides.append({
-                "medication": m["name"],
-                "category": "General Medication Care",
-                "dos": ["Take with a full glass of water", "Follow prescribed daily schedule"],
-                "donts": ["Do not crush or chew sustained-release tablets", "Avoid taking with soda or fruit juice"]
-            })
+            if not med_name:
+                guides.append({
+                    "medication": m["name"],
+                    "category": "General Medication Care",
+                    "dos": ["Take with a full glass of water", "Follow prescribed daily schedule"],
+                    "donts": ["Do not crush or chew sustained-release tablets", "Avoid taking with soda or fruit juice"]
+                })
 
     return {
         "has_medications": True,
