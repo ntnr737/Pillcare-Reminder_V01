@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
 import Svg, { Circle } from "react-native-svg";
 import { AddMedicationSheet } from "@/src/components/AddMedicationSheet";
 import { ActionSheetModal } from "@/src/components/ActionSheetModal";
@@ -19,10 +19,10 @@ import { useTranslation } from "@/src/context/LanguageContext";
 import { getFeatures } from "@/src/lib/features";
 import { track, trackScreenView, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
-import { resyncReminders, scheduleHydrationPacingReminder } from "@/src/lib/notifications";
+import { resyncReminders, scheduleHydrationPacingReminder, getCanonicalDoseId } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { getStoredUser } from "@/src/lib/auth";
-import { backgroundRefresh, enqueueWrite, flushQueue } from "@/src/lib/sync";
+import { backgroundRefresh, enqueueWrite, flushQueue, getLastSyncTimestamp, bootstrapUserDataset, recordTaken, recordSkipped } from "@/src/lib/sync";
 import { evaluateTodayStreakStatus } from "@/src/lib/streakEngine";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -141,7 +141,7 @@ function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: 
       const key = `${m.id}_${t}`;
       if (!existingMap.has(key)) {
         const synthDose = {
-          id: `local_dose_${m.id}_${targetDate}_${t.replace(":", "")}`,
+          id: getCanonicalDoseId(m.id, targetDate, t),
           user_id: m.user_id || "local",
           medication_id: m.id,
           medication: m,
@@ -162,6 +162,8 @@ function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: 
 
 export default function Today() {
   const router = useRouter();
+  const params = useLocalSearchParams<{ focus?: string; medId?: string }>();
+  const scrollViewRef = useRef<ScrollView>(null);
   const { theme, isDark } = useTheme();
   const { t } = useTranslation();
 
@@ -173,6 +175,14 @@ export default function Today() {
   const [authUser, setAuthUser] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
+
+  useEffect(() => {
+    if (params?.focus === "water") {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ y: 320, animated: true });
+      }, 350);
+    }
+  }, [params?.focus]);
   const [addMed, setAddMed] = useState(false);
   const [refillMed, setRefillMed] = useState<any>(null);
   const [showUpgrade, setShowUpgrade] = useState(false);
@@ -351,70 +361,36 @@ export default function Today() {
     } catch {}
   };
 
-  const fetchServer = async () => {
+  const fetchServer = async (force: boolean = false) => {
     setIsSyncing(true);
     try {
       await flushQueue().catch(() => {});
-      const [dos, prof, user, cachedProf, cachedMeds] = await Promise.all([
-        api.listDoses(date).catch(() => null),
-        api.getProfile().catch(() => null),
-        getStoredUser().catch(() => null),
-        get<any>(K.profile).catch(() => null),
-        get<any[]>(K.medications).catch(() => []),
-      ]);
+      const syncResult = await bootstrapUserDataset(date);
 
-      if (user) setAuthUser(user);
-      if (prof) {
-        setProfile(prof);
-        await set(K.profile, prof).catch(() => {});
-        if (typeof prof.streak_days === "number") {
-          setCachedStreak(prof.streak_days);
-          await set(K.streak, prof.streak_days).catch(() => {});
+      if (syncResult) {
+        if (syncResult.profile) setProfile(syncResult.profile);
+        if (typeof syncResult.streak === "number") setCachedStreak(syncResult.streak);
+        if (typeof syncResult.waterLogged === "number") setWaterLogged(syncResult.waterLogged);
+        if (Array.isArray(syncResult.waterLogs)) setWaterLogs(syncResult.waterLogs);
+        if (Array.isArray(syncResult.medications)) setMedications(syncResult.medications);
+        if (Array.isArray(syncResult.doses)) {
+          const finalDoses = synthesizeDosesForDate(syncResult.medications, date, syncResult.doses);
+          setDoses(finalDoses);
+          await set(K.doses(date), finalDoses).catch(() => {});
         }
-      } else if (cachedProf) {
-        setProfile(cachedProf);
-        if (typeof cachedProf.streak_days === "number") {
-          setCachedStreak(cachedProf.streak_days);
-        }
+      } else {
+        // Fallback to local cache if network is offline
+        await hydrateFromLocalCache(date);
       }
 
-      const localMeds = (cachedMeds && Array.isArray(cachedMeds)) ? cachedMeds : [];
-      const apiMeds = await api.listMedications(true).catch(() => null);
-      const allMeds = (apiMeds && Array.isArray(apiMeds)) ? apiMeds : localMeds;
-      if (apiMeds && Array.isArray(apiMeds)) {
-        await set(K.medications, apiMeds).catch(() => {});
-      }
-      setMedications(allMeds);
-
-      const rawDoses = Array.isArray(dos) ? dos : (((await get(K.doses(date))) as any[]) || []);
-      const finalDoses = synthesizeDosesForDate(allMeds, date, rawDoses);
-      setDoses(finalDoses);
-      await set(K.doses(date), finalDoses).catch(() => {});
-
-      api.adherence(30).then((data: any) => {
-        if (data && typeof data === "object") {
-          setAdherenceMap(data);
-          if (typeof data.streak === "number") {
-            setCachedStreak(data.streak);
-            set(K.streak, data.streak).catch(() => {});
-            setProfile((p: any) => p ? { ...p, streak_days: data.streak } : { streak_days: data.streak });
-          }
-        }
-      }).catch(() => {});
-
-      api.getDrugFoodGuide().then((guide: any) => {
-        if (guide) setDrugFoodGuide(guide);
-      }).catch(() => {});
-
-      const curMeds = (dos || []).map((d: any) => d.medication?.name).filter(Boolean);
-      const prevMeds = ((await get("cached_med_names")) as string[]) || [];
-      if (JSON.stringify(curMeds) !== JSON.stringify(prevMeds)) {
-        await set("cached_med_names", curMeds);
-        resyncReminders().catch(() => {});
+      // Adherence and drug-food guide fetched only if empty
+      if (!drugFoodGuide) {
+        api.getDrugFoodGuide().then((guide: any) => {
+          if (guide) setDrugFoodGuide(guide);
+        }).catch(() => {});
       }
     } catch {
-      const stored = ((await get(K.doses(date))) as any[]) || [];
-      setDoses(stored.filter((d: any) => d.scheduled_time?.startsWith(date)));
+      await hydrateFromLocalCache(date);
     } finally {
       setIsSyncing(false);
     }
@@ -422,13 +398,18 @@ export default function Today() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchServer();
+    await fetchServer(true);
     setRefreshing(false);
   };
 
   useFocusEffect(useCallback(() => {
     hydrateFromLocalCache(date);
-    fetchServer();
+    const now = Date.now();
+    const lastSync = getLastSyncTimestamp();
+    // 5-minute SWR Cache TTL: Skip Cloud Run network requests if synced in the last 5 minutes!
+    if (now - lastSync > 5 * 60 * 1000 || medications.length === 0) {
+      fetchServer();
+    }
     trackScreenView("today");
   }, [date]));
 
@@ -602,15 +583,24 @@ export default function Today() {
     setDoses(updated);
     await set(K.doses(date), updated);
 
-    // 2. Track analytics
+    // 2. Persist to local persistent dose registry
+    const targetDose = doses.find((d: any) => d.id === doseId);
+    const medId = targetDose?.medication_id;
+    const schedTime = targetDose?.scheduled_time;
+    if (newStatus === "taken") {
+      await recordTaken(doseId, date, taken_at || new Date().toISOString(), medId, schedTime);
+    } else if (newStatus === "skipped") {
+      await recordSkipped(doseId, date, new Date().toISOString(), medId, schedTime);
+    }
+
+    // 3. Track analytics
     try {
       const evtName: EventName = newStatus === "taken" ? "dose_taken" : newStatus === "missed" ? "dose_missed" : "dose_skipped";
       track(evtName, { doseId });
     } catch {}
 
-    // 3. Persist status to backend server and handle offline queue
+    // 4. Persist status to backend server and handle offline queue
     try {
-      const targetDose = doses.find((d: any) => d.id === doseId);
       if (doseId.startsWith("local_dose_") && targetDose) {
         await api.markTakenByMedication(targetDose.medication_id, targetDose.scheduled_time, taken_at);
       } else {
@@ -718,7 +708,7 @@ export default function Today() {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
+      <ScrollView ref={scrollViewRef} contentContainerStyle={s.body} showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}>
 
         {/* Overview card */}
@@ -1029,35 +1019,40 @@ export default function Today() {
                       <Text style={[s.dM, { color: theme.textSecondary }]}>{m.dosage ? `${m.dosage} ${m.unit}` : m.unit || ""}</Text>
                       {typeof m.stock === "number" ? (<Text style={[s.dM, { color: m.stock <= 0 ? "#f87171" : m.stock < 3 ? "#fbbf24" : theme.textSecondary, marginTop: 1 }]}>{m.stock <= 0 ? "Out of stock" : `${m.stock} left`}</Text>) : null}
                     </View>
-                    {/* Time-locked dose actions */}
+                    {/* Dose actions */}
                     {(() => {
-                      const win = getDoseWindow(dose.scheduled_time, date);
                       if (tk) return (
-                        <View style={[s.bTk, { opacity: 1 }]}>
+                        <TouchableOpacity style={[s.bTk, { opacity: 1 }]} onPress={() => mark(dose.id, st, "pending")}>
                           <Ionicons name="checkmark-circle" size={13} color="#10B981" style={{ marginRight: 3 }} />
                           <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>{t("today.taken", "Taken")}</Text>
-                        </View>
-                      );
-                      if (ms || sk) return (
-                        <View style={s.bSk}>
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : t("today.skipped", "Skipped")}</Text>
-                        </View>
-                      );
-                      if (win.isFuture) return (
-                        <View style={s.bLock}>
-                          <Ionicons name="lock-closed" size={10} color={theme.textSecondary} />
-                          <Text style={{ fontSize: 10, color: theme.textSecondary }}>{formatTimeUntil(win.minutesUntil)}</Text>
-                        </View>
-                      );
-                      if (win.isPast) return (
-                        <TouchableOpacity style={s.bMs} onPress={() => mark(dose.id, st, "missed")}>
-                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>Mark Missed</Text>
                         </TouchableOpacity>
                       );
-                      return (
-                        <View style={{ flexDirection: "row", gap: 4 }}>
-                          <TouchableOpacity style={[s.bP, { backgroundColor: theme.accent }]} onPress={() => mark(dose.id, st, "taken")}>
+                      if (ms || sk) return (
+                        <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                          <View style={s.bSk}>
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : t("today.skipped", "Skipped")}</Text>
+                          </View>
+                          <TouchableOpacity
+                            style={[s.bP, { backgroundColor: theme.accent, paddingHorizontal: 10, paddingVertical: 5 }]}
+                            onPress={() => mark(dose.id, st, "taken")}
+                          >
                             <Text style={{ fontSize: 11, fontWeight: "700", color: "#FFF" }}>{t("today.markTaken", "Taken")}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      );
+                      return (
+                        <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
+                          <TouchableOpacity
+                            style={[s.bP, { backgroundColor: theme.accent, paddingHorizontal: 12, paddingVertical: 6 }]}
+                            onPress={() => mark(dose.id, st, "taken")}
+                          >
+                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#FFF" }}>{t("today.markTaken", "Taken")}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[s.bSk, { paddingHorizontal: 8, paddingVertical: 5 }]}
+                            onPress={() => mark(dose.id, st, "skipped")}
+                          >
+                            <Text style={{ fontSize: 10, fontWeight: "600", color: theme.textSecondary }}>{t("today.skip", "Skip")}</Text>
                           </TouchableOpacity>
                         </View>
                       );

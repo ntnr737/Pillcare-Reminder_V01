@@ -80,7 +80,8 @@ export function InAppBottomNotification({
 
   useEffect(() => {
     fetchActiveAnnouncements();
-    const interval = setInterval(fetchActiveAnnouncements, 10000);
+    // Poll every 5 minutes instead of 10s to conserve server requests and battery
+    const interval = setInterval(fetchActiveAnnouncements, 300000);
     return () => clearInterval(interval);
   }, []);
 

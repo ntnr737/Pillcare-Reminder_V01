@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useState, useEffect, useRef } from "react";
 import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Linking, Alert, Platform, RefreshControl } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -228,9 +228,15 @@ export default function Treatment() {
     setRefreshing(false);
   };
 
+  const lastTreatmentFetchRef = useRef<number>(0);
+
   useFocusEffect(useCallback(() => {
     loadCache();
-    backgroundRefresh(loadServer);
+    const now = Date.now();
+    if (now - lastTreatmentFetchRef.current > 5 * 60 * 1000) {
+      lastTreatmentFetchRef.current = now;
+      backgroundRefresh(loadServer);
+    }
     trackScreenView("treatment");
   }, [loadCache, loadServer]));
 

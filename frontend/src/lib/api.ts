@@ -119,6 +119,12 @@ export const api = {
   createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
   verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
   exportExcel: () => req<any>("/export/excel"),
-  getActiveAnnouncements: (plan?: string) => req<any[]>(`/announcements/active?plan=${plan || "free"}`),
   getLeaderboard: () => req<any>("/leaderboard"),
+  syncState: (localDate?: string) =>
+    req<any>(`/me/sync-state${localDate ? `?local_date=${encodeURIComponent(localDate)}` : ""}`),
+  getActiveAnnouncements: (plan: string = "free") =>
+    req<any[]>(`/announcements/active?plan=${encodeURIComponent(plan)}`).catch(() => []),
+  reportCrash: (data: any) =>
+    req<any>("/analytics/crash", { method: "POST", body: JSON.stringify(data) }).catch(() => null),
 };
+

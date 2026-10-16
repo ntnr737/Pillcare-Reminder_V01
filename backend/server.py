@@ -2049,6 +2049,12 @@ async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_i
         PROJECTION
     ).to_list(5000)
 
+    water_start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
+    water_logs = await db.activities.find(
+        {"user_id": user_id, "type": "water", "recorded_at": {"$gte": water_start_dt}},
+        PROJECTION
+    ).to_list(5000)
+
     med_ids = list({x["medication_id"] for x in all_doses if "medication_id" in x})
     meds = await db.medications.find({"id": {"$in": med_ids}, "user_id": user_id}, PROJECTION).to_list(1000)
     med_map = {m["id"]: m for m in meds}
@@ -2061,13 +2067,21 @@ async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_i
     for y in yoga_logs:
         yogas_by_date.setdefault(y["date"], []).append(y)
 
+    waters_by_date = {}
+    for w in water_logs:
+        rec_at = w.get("recorded_at")
+        w_date = rec_at.strftime("%Y-%m-%d") if isinstance(rec_at, datetime) else str(rec_at or "")[:10]
+        if w_date:
+            waters_by_date.setdefault(w_date, []).append(w)
+
     result = []
     for i in range(days - 1, -1, -1):
         d_str = (start + timedelta(days=i)).isoformat()
         doses_for_day = doses_by_date.get(d_str, [])
         yogas_for_day = yogas_by_date.get(d_str, [])
+        water_for_day = waters_by_date.get(d_str, [])
 
-        if not doses_for_day and not yogas_for_day:
+        if not doses_for_day and not yogas_for_day and not water_for_day:
             continue
 
         entries = []
@@ -2104,6 +2118,19 @@ async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_i
                 "time": comp_time,
                 "status": "yoga_completed",
                 "note": f"Completed yoga pose: {y.get('step_name', 'Yoga Pose')}",
+            })
+
+        if water_for_day:
+            total_ml = int(sum(float(w.get("value", 0)) for w in water_for_day))
+            entries.append({
+                "id": f"water_{d_str}",
+                "name": f"Hydration: {total_ml} ml logged",
+                "generic_name": "Water Intake",
+                "dosage": str(total_ml),
+                "unit": "ml",
+                "time": "Daily",
+                "status": "taken",
+                "note": f"Completed water intake: {total_ml} ml",
             })
 
         taken = sum(1 for e in entries if e["status"] in ("taken", "yoga_completed"))
@@ -3570,6 +3597,88 @@ async def my_subscription(user_id: str = Depends(get_current_user_id)):
         "features": features
     }
 
+
+@api.get("/me/sync-state")
+async def get_user_sync_state(local_date: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+    """
+    Consolidated Local-First Sync Endpoint.
+    Returns the user's active medications, today's doses, hydration total & logs,
+    yoga completion, profile, and streak in a single atomic payload.
+    Reduces 6 round-trip HTTP calls down to 1.
+    """
+    d_str = local_date or datetime.now(timezone.utc).date().isoformat()
+
+    # 1. Profile & streak
+    prof_doc = await db.profile.find_one({"$or": [{"user_id": user_id}, {"id": user_id}]}, PROJECTION)
+    user_doc = await db.users.find_one({"$or": [{"id": user_id}, {"_id": user_id}]}, PROJECTION)
+
+    # 2. Medications
+    meds = await db.medications.find(
+        {"user_id": user_id, "active": {"$ne": False}, "completed": {"$ne": True}}, PROJECTION
+    ).to_list(200)
+
+    # 3. Today's doses
+    await _ensure_doses_for_date(user_id, d_str)
+    doses = await db.doses.find({"user_id": user_id, "date": d_str}, PROJECTION).to_list(500)
+    med_map = {m["id"]: m for m in meds}
+    enriched_doses = []
+    for d in doses:
+        m = med_map.get(d.get("medication_id"))
+        if m and m.get("active", True) and not m.get("completed", False):
+            enriched_doses.append({**d, "medication": m})
+    enriched_doses.sort(key=lambda x: x.get("scheduled_time", ""))
+
+    # 4. Water activities for today
+    activities = await db.activities.find(
+        {"user_id": user_id, "type": "water"},
+        PROJECTION
+    ).sort("recorded_at", -1).to_list(100)
+
+    today_water_logs = []
+    water_total = 0.0
+    for act in activities:
+        rec = act.get("recorded_at")
+        act_date = None
+        ts = int(time.time() * 1000)
+        if isinstance(rec, datetime):
+            act_date = rec.strftime("%Y-%m-%d")
+            ts = int(rec.timestamp() * 1000)
+        elif isinstance(rec, str):
+            act_date = rec[:10]
+        if act_date == d_str:
+            amt = float(act.get("value", 0))
+            water_total += amt
+            today_water_logs.append({
+                "amount": int(amt),
+                "ts": ts,
+                "note": act.get("note", ""),
+                "id": act.get("id", "")
+            })
+
+    # 5. Yoga completed steps for today
+    yoga_docs = await db.yoga_log.find(
+        {"user_id": user_id, "date": d_str},
+        PROJECTION
+    ).to_list(50)
+    yoga_steps = [yd.get("step_num") for yd in yoga_docs if "step_num" in yd]
+
+    streak_val = (prof_doc or {}).get("streak_days", 0)
+
+    return {
+        "ok": True,
+        "date": d_str,
+        "server_time": datetime.now(timezone.utc).isoformat(),
+        "profile": _clean(prof_doc) if prof_doc else None,
+        "user": _clean(user_doc) if user_doc else None,
+        "medications": [_clean(m) for m in meds],
+        "doses": [_clean(d) for d in enriched_doses],
+        "water_logged_ml": int(water_total),
+        "water_logs": today_water_logs,
+        "yoga_completed_steps": sorted(yoga_steps),
+        "streak_days": streak_val,
+    }
+
+
 class UserUpgradeRequest(BaseModel):
     plan: str = "premium"
     days: int = 30
@@ -4340,6 +4449,8 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     }
 
 @app.get("/admin/notifications")
+@app.get("/api/admin/notifications")
+@api.get("/admin/notifications")
 async def admin_get_notifications(limit: int = 50, _: None = Depends(require_admin)):
     """Fetch history of sent push notification broadcast campaigns."""
     logs = await db.push_broadcast_logs.find({}).sort("ts", -1).limit(limit).to_list(limit)
@@ -4562,6 +4673,37 @@ async def track_user_event(payload: dict = Body(...), user_id: str = Depends(get
         return {"ok": False}
     await track_event(event, user_id, props)
     return {"ok": True}
+
+
+@api.post("/analytics/crash")
+async def report_app_crash(payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
+    """Receives and stores unhandled frontend exceptions and crash reports from mobile app ErrorBoundary."""
+    report = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "error_name": payload.get("errorName") or payload.get("name") or "Error",
+        "error_message": payload.get("errorMessage") or payload.get("message") or "Unknown error",
+        "component_stack": payload.get("componentStack", ""),
+        "stack_trace": payload.get("stack", ""),
+        "platform": payload.get("platform", "android"),
+        "app_version": payload.get("appVersion", "v1.0.74"),
+        "device_metadata": payload.get("metadata", {}),
+        "created_at": datetime.now(timezone.utc),
+    }
+    if db is not None:
+        await db.crash_reports.insert_one(report)
+    logger.error(f"Mobile Crash Reported [{report['error_name']}]: {report['error_message']}")
+    return {"ok": True, "report_id": report["id"]}
+
+
+@app.get("/admin/agent/run-telemetry-audit")
+@api.get("/admin/agent/run-telemetry-audit")
+async def run_sentinel_audit(admin: dict = Depends(require_admin)):
+    """Runs the Chief Engineer Sentinel Agent on demand and returns the generated diagnostic report."""
+    from agent.sentinel_agent import run_sentinel_analysis
+    report = await run_sentinel_analysis(db)
+    return report
+
 
 @api.post("/analytics/heartbeat")
 @app.post("/api/users/heartbeat")

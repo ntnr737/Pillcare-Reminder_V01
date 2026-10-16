@@ -13,59 +13,157 @@
  */
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { api } from "./api";
+import { api, localDateStr } from "./api";
 import { set, K } from "./store";
 
 const QUEUE_KEY = "pc6_write_queue";
 const TAKEN_KEY_PREFIX = "pc6_taken_doses_"; // persistent taken dose IDs per date
+const STATUS_KEY_PREFIX = "pc6_dose_status_"; // persistent dose statuses per date
 
 let syncing = false;
+let lastSyncTimestamp = 0;
 
-// ─── Persistent taken dose registry ─────────────────────────────────────────
+export function getLastSyncTimestamp(): number {
+  return lastSyncTimestamp;
+}
+
+export function setLastSyncTimestamp(ts: number = Date.now()): void {
+  lastSyncTimestamp = ts;
+}
+
+// ─── Persistent dose status registry ─────────────────────────────────────────
+
+export type LocalDoseRecord = {
+  status: "taken" | "skipped";
+  timestamp: string;
+};
 
 /**
- * Record that a dose was taken on a given date.
- * This set persists in AsyncStorage and is NEVER cleared by server data.
+ * Record that a dose was taken or skipped on a given date.
+ * Indexed by canonical dose ID and (medication_id, scheduled_time) to guarantee 100% match rate.
  */
-export async function recordTaken(doseId: string, date: string, takenAt: string): Promise<void> {
+export async function recordDoseStatus(
+  doseId: string,
+  date: string,
+  status: "taken" | "skipped",
+  timestamp: string,
+  medicationId?: string,
+  scheduledTime?: string
+): Promise<void> {
   try {
-    const key = TAKEN_KEY_PREFIX + date;
+    const key = STATUS_KEY_PREFIX + date;
     const raw = await AsyncStorage.getItem(key);
-    const existing: Record<string, string> = raw ? JSON.parse(raw) : {};
-    existing[doseId] = takenAt;
+    const existing: Record<string, LocalDoseRecord> = raw ? JSON.parse(raw) : {};
+    const rec: LocalDoseRecord = { status, timestamp };
+
+    existing[doseId] = rec;
+    if (medicationId && scheduledTime) {
+      const cleanTime = scheduledTime.replace(/[^a-zA-Z0-9]/g, "");
+      existing[`${medicationId}_${scheduledTime}`] = rec;
+      existing[`med_${medicationId}_${date}_${scheduledTime}`] = rec;
+      existing[`dose_${medicationId}_${date}_${cleanTime}`] = rec;
+      existing[`local_dose_${medicationId}_${date}_${cleanTime}`] = rec;
+    }
     await AsyncStorage.setItem(key, JSON.stringify(existing));
-  } catch {}
+
+    // Maintain legacy TAKEN_KEY_PREFIX compatibility
+    if (status === "taken") {
+      const takenKey = TAKEN_KEY_PREFIX + date;
+      const rawTaken = await AsyncStorage.getItem(takenKey);
+      const existingTaken: Record<string, string> = rawTaken ? JSON.parse(rawTaken) : {};
+      existingTaken[doseId] = timestamp;
+      if (medicationId && scheduledTime) {
+        existingTaken[`${medicationId}_${scheduledTime}`] = timestamp;
+      }
+      await AsyncStorage.setItem(takenKey, JSON.stringify(existingTaken));
+    }
+  } catch (err) {
+    console.warn("Failed to record local dose status:", err);
+  }
 }
 
 /**
- * Get all locally-taken dose IDs for a date, with their taken_at timestamps.
+ * Backward-compatible helper for recording taken doses.
  */
-export async function getLocalTaken(date: string): Promise<Record<string, string>> {
+export async function recordTaken(
+  doseId: string,
+  date: string,
+  takenAt: string,
+  medicationId?: string,
+  scheduledTime?: string
+): Promise<void> {
+  return recordDoseStatus(doseId, date, "taken", takenAt, medicationId, scheduledTime);
+}
+
+/**
+ * Record that a dose was skipped.
+ */
+export async function recordSkipped(
+  doseId: string,
+  date: string,
+  skippedAt: string,
+  medicationId?: string,
+  scheduledTime?: string
+): Promise<void> {
+  return recordDoseStatus(doseId, date, "skipped", skippedAt, medicationId, scheduledTime);
+}
+
+/**
+ * Get all locally recorded dose statuses for a given date.
+ */
+export async function getLocalDoseStatuses(date: string): Promise<Record<string, LocalDoseRecord>> {
   try {
-    const raw = await AsyncStorage.getItem(TAKEN_KEY_PREFIX + date);
-    return raw ? JSON.parse(raw) : {};
+    const raw = await AsyncStorage.getItem(STATUS_KEY_PREFIX + date);
+    const statusMap: Record<string, LocalDoseRecord> = raw ? JSON.parse(raw) : {};
+
+    // Merge with legacy taken keys if present
+    const rawTaken = await AsyncStorage.getItem(TAKEN_KEY_PREFIX + date);
+    if (rawTaken) {
+      const takenMap: Record<string, string> = JSON.parse(rawTaken);
+      for (const [k, v] of Object.entries(takenMap)) {
+        if (!statusMap[k]) {
+          statusMap[k] = { status: "taken", timestamp: v };
+        }
+      }
+    }
+    return statusMap;
   } catch {
     return {};
   }
 }
 
 /**
- * Merge server doses with local taken registry.
- * Local "taken" ALWAYS wins — server "pending" is ignored if we have a local record.
+ * Merge server doses with local taken/skipped registry.
+ * Local actions ALWAYS win — server "pending" is overridden if we have a local record.
  */
 export async function mergeDoses(serverDoses: any[], date: string): Promise<any[]> {
-  const localTaken = await getLocalTaken(date);
-  if (Object.keys(localTaken).length === 0) return serverDoses;
+  const localStatuses = await getLocalDoseStatuses(date);
+  if (Object.keys(localStatuses).length === 0) return serverDoses;
 
-  return serverDoses.map(dose => {
-    const localTakenAt = localTaken[dose.id];
-    if (localTakenAt && dose.status !== "taken") {
-      // Server hasn't caught up yet — keep local taken status
-      return { ...dose, status: "taken", taken_at: localTakenAt };
+  return serverDoses.map((dose) => {
+    const medId = dose.medication_id || dose.medication?.id;
+    const sched = dose.scheduled_time;
+    const cleanTime = sched ? sched.replace(/[^a-zA-Z0-9]/g, "") : "";
+
+    const local =
+      localStatuses[dose.id] ||
+      (medId && sched ? localStatuses[`${medId}_${sched}`] : null) ||
+      (medId && sched ? localStatuses[`dose_${medId}_${date}_${cleanTime}`] : null) ||
+      (medId && sched ? localStatuses[`local_dose_${medId}_${date}_${cleanTime}`] : null) ||
+      (medId && sched ? localStatuses[`med_${medId}_${date}_${sched}`] : null);
+
+    if (local && dose.status !== local.status) {
+      return {
+        ...dose,
+        status: local.status,
+        taken_at: local.status === "taken" ? local.timestamp : dose.taken_at,
+        skipped_at: local.status === "skipped" ? local.timestamp : dose.skipped_at,
+      };
     }
     return dose;
   });
 }
+
 
 // ─── Write queue ─────────────────────────────────────────────────────────────
 
@@ -222,3 +320,108 @@ export async function clearAllCachesOnSignOut(): Promise<void> {
 export function backgroundRefresh(fn: () => Promise<void>): void {
   setTimeout(() => fn().catch(() => {}), 50);
 }
+
+/**
+ * Bootstrap the user's complete data state on login or initial launch.
+ * Pulls profile, medications, today's doses, hydration activities, yoga logs, and streak
+ * in a single atomic payload via /api/me/sync-state, writing to local storage so
+ * the UI renders instantly with zero blank latency.
+ */
+export async function bootstrapUserDataset(targetDate?: string): Promise<{
+  profile: any;
+  medications: any[];
+  doses: any[];
+  waterLogged: number;
+  waterLogs: any[];
+  yogaSteps: number[];
+  streak: number;
+} | null> {
+  const d = targetDate || localDateStr();
+  try {
+    const data = await api.syncState(d);
+    if (!data || !data.ok) return null;
+
+    setLastSyncTimestamp();
+
+    if (data.profile) {
+      await set(K.profile, data.profile);
+    }
+    if (Array.isArray(data.medications)) {
+      await set(K.medications, data.medications);
+    }
+    if (Array.isArray(data.doses)) {
+      const merged = await mergeDoses(data.doses, d);
+      await set(K.doses(d), merged);
+    }
+    if (typeof data.water_logged_ml === "number") {
+      await set(`water_${d}`, data.water_logged_ml);
+      await set(`water_logged_${d}`, data.water_logged_ml);
+    }
+    if (Array.isArray(data.water_logs)) {
+      await set(`water_logs_${d}`, data.water_logs);
+    }
+    if (Array.isArray(data.yoga_completed_steps)) {
+      await set(`yoga_done_${d}`, data.yoga_completed_steps);
+      await set(`yoga_done_diabetes_${d}`, data.yoga_completed_steps);
+      await set(`yoga_done_bp_${d}`, data.yoga_completed_steps);
+      await set(`yoga_done_energy_${d}`, data.yoga_completed_steps);
+    }
+    if (typeof data.streak_days === "number") {
+      await set(K.streak, data.streak_days);
+    }
+
+    return {
+      profile: data.profile,
+      medications: data.medications || [],
+      doses: data.doses || [],
+      waterLogged: data.water_logged_ml || 0,
+      waterLogs: data.water_logs || [],
+      yogaSteps: data.yoga_completed_steps || [],
+      streak: data.streak_days || 0,
+    };
+  } catch (err) {
+    console.warn("api.syncState failed, falling back to parallel entity fetch:", err);
+    try {
+      const [prof, meds, doses, waterActivities, adh] = await Promise.all([
+        api.getProfile().catch(() => null),
+        api.listMedications(true).catch(() => []),
+        api.listDoses(d).catch(() => []),
+        api.listActivities("water").catch(() => []),
+        api.adherence(30).catch(() => null),
+      ]);
+
+      setLastSyncTimestamp();
+
+      if (prof) await set(K.profile, prof);
+      if (Array.isArray(meds) && meds.length) await set(K.medications, meds);
+      if (Array.isArray(doses)) {
+        const merged = await mergeDoses(doses, d);
+        await set(K.doses(d), merged);
+      }
+      let waterMl = 0;
+      if (Array.isArray(waterActivities)) {
+        waterMl = waterActivities
+          .filter((a: any) => a.date === d || (a.recorded_at && a.recorded_at.startsWith(d)))
+          .reduce((sum: number, a: any) => sum + (Number(a.value) || 0), 0);
+      }
+      await set(`water_${d}`, waterMl);
+      await set(`water_logged_${d}`, waterMl);
+      if (adh && typeof adh.streak === "number") await set(K.streak, adh.streak);
+
+      return {
+        profile: prof,
+        medications: meds || [],
+        doses: doses || [],
+        waterLogged: waterMl,
+        waterLogs: [],
+        yogaSteps: [],
+        streak: adh?.streak || 0,
+      };
+    } catch (fallbackErr) {
+      console.warn("Bootstrap fallback also failed:", fallbackErr);
+      setLastSyncTimestamp(); // Still set timestamp to avoid thrashing
+      return null;
+    }
+  }
+}
+

@@ -691,4 +691,14 @@ export const INITIAL_REPORTS: SystemReport[] = [
     sizeBytes: 420000,
     downloadUrl: '#',
   },
+  {
+    id: 'rep_04',
+    title: 'Chief Engineer Sentinel Telemetry & Bug Diagnostic Audit',
+    category: 'system',
+    format: 'PDF',
+    generatedAt: '2026-10-15T18:00:00Z',
+    generatedBy: 'sentinel_agent@pillcare.in',
+    sizeBytes: 1250000,
+    downloadUrl: '/api/admin/agent/run-telemetry-audit',
+  },
 ];

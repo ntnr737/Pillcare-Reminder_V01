@@ -51,8 +51,10 @@ class PillCareErrorBoundary extends Component<{ children: React.ReactNode }, Err
         errorName: error?.name || "Error",
         errorMessage: error?.message || "Unknown runtime exception",
         componentStack: errorInfo?.componentStack || "",
+        stack: error?.stack || "",
       };
       set("last_crash_diagnostic", crashData).catch(() => {});
+      api.reportCrash(crashData).catch(() => {});
     } catch {}
   }
 
@@ -165,29 +167,40 @@ export default function RootLayout() {
       })
       .catch(() => {});
 
-    // Periodic heartbeat ping to sync active connectivity
-    const sendHeartbeat = () => {
+    // Throttled heartbeat ping (15-minute cooldown instead of aggressive 60s polling)
+    let lastHeartbeatTime = 0;
+    const maybeSendHeartbeat = () => {
+      const now = Date.now();
+      if (now - lastHeartbeatTime < 15 * 60 * 1000) return;
+      lastHeartbeatTime = now;
       getStoredToken().then((token) => {
         if (token) {
           api.heartbeatPing().catch(() => {});
         }
       }).catch(() => {});
     };
-    sendHeartbeat();
-    const interval = setInterval(sendHeartbeat, 60000);
+    maybeSendHeartbeat();
 
     const unsubNotifs = setupNotificationListeners((path) => {
       try {
-        router.push(path as any);
-      } catch {}
+        if ((router as any).navigate) {
+          (router as any).navigate(path as any);
+        } else {
+          router.push(path as any);
+        }
+      } catch {
+        try {
+          router.replace(path as any);
+        } catch {}
+      }
     });
     return () => {
-      clearInterval(interval);
       unsubNotifs();
     };
   }, []);
 
   useEffect(() => {
+    let lastResumeHeartbeat = 0;
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         resyncReminders().catch(() => {});
@@ -195,7 +208,11 @@ export default function RootLayout() {
           .then((token) => {
             if (token) {
               fetchFeatures(token).catch(() => {});
-              api.heartbeatPing().catch(() => {});
+              const now = Date.now();
+              if (now - lastResumeHeartbeat > 15 * 60 * 1000) {
+                lastResumeHeartbeat = now;
+                api.heartbeatPing().catch(() => {});
+              }
               api.trackEvent("app_open", { screen: "Home & Dosage Tracker" }).catch(() => {});
             }
           })

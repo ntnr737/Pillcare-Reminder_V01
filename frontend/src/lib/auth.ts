@@ -101,6 +101,12 @@ export async function signInWithGoogle(): Promise<PillcareUser> {
   await storage.secureSet(TOKEN_KEY, data.token);
   await storage.secureSet(USER_KEY, JSON.stringify(user));
   await set(K.profile, { nickname: user.name, email: user.email, picture: user.picture, is_guest: false }).catch(() => {});
+  try {
+    const { bootstrapUserDataset } = require("./sync");
+    await bootstrapUserDataset();
+  } catch (e) {
+    console.warn("Sign-in bootstrap sync notice:", e);
+  }
   return user;
 }
 
@@ -122,6 +128,10 @@ export async function signInAsGuest(name: string = "PillCare Guest"): Promise<Pi
         await storage.secureSet(TOKEN_KEY, data.token);
         await storage.secureSet(USER_KEY, JSON.stringify(guestUser));
         await set(K.profile, { nickname: guestUser.name, email: guestUser.email, is_guest: true }).catch(() => {});
+        try {
+          const { bootstrapUserDataset } = require("./sync");
+          await bootstrapUserDataset();
+        } catch (e) {}
         return guestUser;
       }
     }

@@ -96,10 +96,16 @@ export default function Progress() {
     } catch {}
   }, []);
 
+  const lastProgressFetchRef = useRef<number>(0);
+
   useFocusEffect(useCallback(() => {
     get<any[]>(K.history).then(h => { if (h && Array.isArray(h)) setHistory(h); });
     get<any[]>(K.medications).then(m => { if (m && Array.isArray(m)) setMeds(m); });
-    backgroundRefresh(loadServer);
+    const now = Date.now();
+    if (now - lastProgressFetchRef.current > 5 * 60 * 1000) {
+      lastProgressFetchRef.current = now;
+      backgroundRefresh(loadServer);
+    }
     trackScreenView("progress");
   }, [loadServer]));
   const onRefresh = async () => { setRefreshing(true); await loadServer(); setRefreshing(false); };

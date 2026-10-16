@@ -342,28 +342,57 @@ export default function YogaTabScreen() {
     return `yoga_done_${routineId}_${dStr}`;
   };
 
+  const lastYogaFetchRef = useRef<number>(0);
+
   const loadProgress = async () => {
+    const d = new Date();
+    const dStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const currentRoutine = filteredRoutines[activeRoutineIndex] || BUILTIN_YOGA_ROUTINES[0];
-    const doneData = await get<any>(getYogaDoneKey(currentRoutine.id));
+    let doneData = await get<any>(getYogaDoneKey(currentRoutine.id));
+
+    if (!doneData || (Array.isArray(doneData) && doneData.length === 0)) {
+      const generalDone = await get<any>(`yoga_done_${dStr}`);
+      if (Array.isArray(generalDone) && generalDone.length > 0) {
+        doneData = generalDone;
+        set(getYogaDoneKey(currentRoutine.id), generalDone).catch(() => {});
+      } else {
+        api.yogaLog(1).then(async (logs: any[]) => {
+          if (Array.isArray(logs) && logs.length > 0) {
+            const todayLogs = logs.filter((l) => l.date === dStr);
+            const steps = todayLogs.map((l) => l.step_num).filter(Boolean);
+            if (steps.length > 0) {
+              setCompletedSteps(steps);
+              await set(getYogaDoneKey(currentRoutine.id), steps);
+              await set(`yoga_done_${dStr}`, steps);
+            }
+          }
+        }).catch(() => {});
+      }
+    }
+
     if (Array.isArray(doneData)) setCompletedSteps(doneData);
     else if (doneData === true) setCompletedSteps(currentRoutine.steps.map((s) => s.num));
     else setCompletedSteps([]);
 
-    // Sync Universal PillCare Health Streak across app
+    // Sync Universal PillCare Health Streak across app with 5-minute SWR caching
     try {
       const storedStreak = await get<number>(K.streak).catch(() => null);
       if (typeof storedStreak === "number") {
         setStreakDays(storedStreak);
       }
-      const profile = await api.getProfile().catch(() => null);
-      if (profile && typeof profile.streak_days === "number") {
-        setStreakDays(profile.streak_days);
-        set(K.streak, profile.streak_days).catch(() => {});
-      } else {
-        const adh = await api.adherence(30).catch(() => null);
-        if (adh && typeof adh.streak === "number") {
-          setStreakDays(adh.streak);
-          set(K.streak, adh.streak).catch(() => {});
+      const now = Date.now();
+      if (now - lastYogaFetchRef.current > 5 * 60 * 1000) {
+        lastYogaFetchRef.current = now;
+        const profile = await api.getProfile().catch(() => null);
+        if (profile && typeof profile.streak_days === "number") {
+          setStreakDays(profile.streak_days);
+          set(K.streak, profile.streak_days).catch(() => {});
+        } else {
+          const adh = await api.adherence(30).catch(() => null);
+          if (adh && typeof adh.streak === "number") {
+            setStreakDays(adh.streak);
+            set(K.streak, adh.streak).catch(() => {});
+          }
         }
       }
 
