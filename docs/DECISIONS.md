@@ -80,3 +80,48 @@
 - **Why**: Zero subscription overhead; deep domain-specific telemetry (medication action confirmation vs dismissal rates, sync queue drops) that generic APMs do not provide out of the box.
 - **Trade-off**: Maintenance of internal reporting script and report storage.
 - **Revisit if**: Monthly active users exceed 500,000, where dedicated time-series telemetry pipelines become necessary.
+
+---
+
+## D-006: Canonical Dose Fallback Resolution in Backend & Resilient Mark Handler
+
+- **Date**: 2026-10-16
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Marking synthesized doses failed with HTTP 404 because client synthesized doses with `dose_...` prefix while backend only knew server-generated dose UUIDs.
+- **Options**:
+  1. Force client to block UI and await server dose creation before rendering Today tab cards.
+  2. Have backend parse canonical `dose_{medId}_{date}_{time}` IDs, run `_ensure_doses_for_date`, and resolve the dose record seamlessly; update client `mark()` to use `markTakenByMedication` when medication ID is present.
+- **Chosen**: Option 2.
+- **Why**: Option 1 destroys offline-first instant loading. Option 2 guarantees that whether a dose is synthesized locally or in MongoDB, marking it taken never returns 404.
+- **Trade-off**: Requires parsing logic in backend `update_dose_status`.
+- **Revisit if**: Schema migrates to immutable event-sourcing streams.
+
+---
+
+## D-007: Explicit Date Field Persistence for Cross-Timezone Hydration Sync
+
+- **Date**: 2026-10-16
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Users drinking water in IST (UTC+5:30) early morning or late night lost water intake on Device B due to UTC date discrepancy in `get_user_sync_state`.
+- **Options**:
+  1. Rely solely on client to query by UTC date range and compute timezone shifts on device.
+  2. Add explicit `date: Optional[str]` and `timestamp` fields to `ActivityCreate` and `Activity` models, matching water activities by user local date.
+- **Chosen**: Option 2.
+- **Why**: Guarantees that water logged on a local calendar day is 100% reliably attributed to that day across all devices without timezone drift.
+- **Trade-off**: Extra string field stored in `activities` collection.
+- **Revisit if**: Activities support complex multi-timezone travel recalculation.
+
+---
+
+## D-008: Silent Background SWR Refresh with Awaited Local Cache
+
+- **Date**: 2026-10-16
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Switching to the Today tab constantly flashed a disruptive "Updating latest data..." spinner bar and triggered server fetches due to unawaited local cache hydration.
+- **Options**:
+  1. Keep the visible spinner on every focus.
+  2. Await `hydrateFromLocalCache` before checking the 5-minute SWR TTL; render immediately from storage and only run silent background updates when expired without flashing UI banners.
+- **Chosen**: Option 2.
+- **Why**: Matches industry benchmarks (Apple Health, WhatsApp, Spotify) where user experience is instantaneous and calm.
+- **Trade-off**: Users do not see a spinner during background sync, but data updates automatically upon completion.
+- **Revisit if**: Users report confusion about whether data is currently syncing (resolved via honest pull-to-refresh).
