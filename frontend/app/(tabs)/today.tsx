@@ -362,7 +362,8 @@ export default function Today() {
   };
 
   const fetchServer = async (force: boolean = false) => {
-    setIsSyncing(true);
+    const shouldShowSpinner = force || doses.length === 0;
+    if (shouldShowSpinner) setIsSyncing(true);
     try {
       await flushQueue().catch(() => {});
       const syncResult = await bootstrapUserDataset(date);
@@ -403,14 +404,21 @@ export default function Today() {
   };
 
   useFocusEffect(useCallback(() => {
-    hydrateFromLocalCache(date);
-    const now = Date.now();
-    const lastSync = getLastSyncTimestamp();
-    // 5-minute SWR Cache TTL: Skip Cloud Run network requests if synced in the last 5 minutes!
-    if (now - lastSync > 5 * 60 * 1000 || medications.length === 0) {
-      fetchServer();
-    }
+    let active = true;
+    (async () => {
+      await hydrateFromLocalCache(date);
+      if (!active) return;
+      const now = Date.now();
+      const lastSync = getLastSyncTimestamp();
+      const cachedMeds = (await get<any[]>(K.medications).catch(() => [])) || [];
+      const hasMeds = Array.isArray(cachedMeds) && cachedMeds.length > 0;
+      // 5-minute SWR Cache TTL: Skip Cloud Run network requests if synced in the last 5 minutes AND we have cached meds!
+      if (!hasMeds || (now - lastSync > 5 * 60 * 1000)) {
+        fetchServer(false);
+      }
+    })();
     trackScreenView("today");
+    return () => { active = false; };
   }, [date]));
 
   useEffect(() => {
@@ -601,7 +609,7 @@ export default function Today() {
 
     // 4. Persist status to backend server and handle offline queue
     try {
-      if (doseId.startsWith("local_dose_") && targetDose) {
+      if (newStatus === "taken" && targetDose?.medication_id) {
         await api.markTakenByMedication(targetDose.medication_id, targetDose.scheduled_time, taken_at);
       } else {
         await api.setDoseStatus(doseId, newStatus, taken_at);
@@ -615,8 +623,15 @@ export default function Today() {
         }
       }).catch(() => {});
     } catch (err) {
-      console.warn("API setDoseStatus failed, queueing offline write:", err);
-      await enqueueWrite("doseStatus", { id: doseId, status: newStatus, taken_at });
+      console.warn("API dose update failed, queueing offline write:", err);
+      await enqueueWrite("doseStatus", {
+        id: doseId,
+        dose_id: doseId,
+        status: newStatus,
+        taken_at,
+        medication_id: medId,
+        scheduled_time: schedTime,
+      });
     }
   };
 

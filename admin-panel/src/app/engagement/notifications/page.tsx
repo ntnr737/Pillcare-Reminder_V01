@@ -206,21 +206,27 @@ export default function NotificationsPage() {
         <h2 className="text-base font-bold text-white">Broadcast Delivery History</h2>
 
         <div className="space-y-3">
-          {campaigns.map((c) => (
-            <div key={c.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="font-bold text-white text-sm">{c.title}</span>
-                <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[10px]">
-                  {c.status.toUpperCase()}
-                </span>
-              </div>
-              <p className="text-slate-300">{c.body}</p>
-              <div className="flex justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800/80">
-                <span>Dispatched to {c.sentCount.toLocaleString()} devices</span>
-                <span>Open Rate: {c.openRatePercent}% | Click Rate: {c.clickRatePercent}%</span>
-              </div>
+          {campaigns.length === 0 ? (
+            <div className="p-8 text-center text-slate-400 rounded-2xl bg-slate-900/40 border border-slate-800">
+              <p className="text-xs">No broadcast campaigns found in database. Create and dispatch your first push notification above.</p>
             </div>
-          ))}
+          ) : (
+            campaigns.map((c) => (
+              <div key={c.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2 text-xs">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-white text-sm">{c.title}</span>
+                  <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[10px]">
+                    {c.status.toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-slate-300">{c.body}</p>
+                <div className="flex justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800/80">
+                  <span>Dispatched to {c.sentCount.toLocaleString()} devices</span>
+                  <span>Open Rate: {c.openRatePercent}% | Click Rate: {c.clickRatePercent}%</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
 
@@ -233,7 +239,7 @@ export default function NotificationsPage() {
               <h3 className="text-lg font-bold text-white">Confirm Mass Push Broadcast</h3>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              You are about to broadcast push notifications to <strong className="text-white">{targetAudience === 'all' ? '168,400' : '142,000'}</strong> active devices.
+              You are about to broadcast push notifications to registered devices in target cohort <strong className="text-sky-400">&apos;{targetAudience}&apos;</strong>.
             </p>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setConfirmSendModal(false)} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold">

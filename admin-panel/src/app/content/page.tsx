@@ -74,45 +74,57 @@ export default function CMSPage() {
 
       {/* Content List */}
       <div className="space-y-4">
-        {contents.map((item) => (
-          <div key={item.id} className="p-6 rounded-3xl glass-card border border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-white text-base">{item.title}</span>
-                <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[10px] font-mono uppercase">
-                  {item.type}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold">
-                  {item.status}
-                </span>
-                {canEdit && (
-                  <button
-                    onClick={() =>
-                      handleStatusChange(
-                        item.id,
-                        item.status === 'Published' ? 'Unpublished' : 'Published'
-                      )
-                    }
-                    className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium"
-                  >
-                    {item.status === 'Published' ? 'Unpublish' : 'Publish Live'}
-                  </button>
-                )}
-              </div>
+        {contents.length === 0 ? (
+          <div className="p-12 text-center rounded-3xl glass-card border border-slate-800 space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center mx-auto">
+              <FileText className="w-6 h-6" />
             </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed font-mono bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-              {item.content}
+            <h3 className="text-sm font-bold text-white">No CMS Announcements Found</h3>
+            <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              No CMS announcements found in database. Create and publish announcements above to broadcast to app users.
             </p>
-
-            <div className="flex justify-between items-center text-[11px] text-slate-400 pt-2 border-t border-slate-800/80">
-              <span>Author: {item.author}</span>
-              <span>Version v{item.version} • Updated: {new Date(item.updatedAt).toLocaleDateString()}</span>
-            </div>
           </div>
-        ))}
+        ) : (
+          contents.map((item) => (
+            <div key={item.id} className="p-6 rounded-3xl glass-card border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="font-bold text-white text-base">{item.title}</span>
+                  <span className="px-2.5 py-0.5 rounded bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[10px] font-mono uppercase">
+                    {item.type}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-semibold">
+                    {item.status}
+                  </span>
+                  {canEdit && (
+                    <button
+                      onClick={() =>
+                        handleStatusChange(
+                          item.id,
+                          item.status === 'Published' ? 'Unpublished' : 'Published'
+                        )
+                      }
+                      className="px-3 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium"
+                    >
+                      {item.status === 'Published' ? 'Unpublish' : 'Publish Live'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed font-mono bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                {item.content}
+              </p>
+
+              <div className="flex justify-between items-center text-[11px] text-slate-400 pt-2 border-t border-slate-800/80">
+                <span>Author: {item.author}</span>
+                <span>Version v{item.version} • Updated: {new Date(item.updatedAt).toLocaleDateString()}</span>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </Shell>
   );

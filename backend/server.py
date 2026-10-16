@@ -29,7 +29,7 @@ from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 from pathlib import Path
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from datetime import datetime, date, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -339,6 +339,7 @@ class Activity(BaseModel):
     value: float
     unit: str
     note: Optional[str] = None
+    date: Optional[str] = None
     recorded_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -347,6 +348,8 @@ class ActivityCreate(BaseModel):
     value: float
     unit: str
     note: Optional[str] = None
+    date: Optional[str] = None
+    timestamp: Optional[Union[datetime, str]] = None
 
 
 class MoodEntry(BaseModel):
@@ -1364,6 +1367,24 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
         # Dose already taken OR not found - return current state, do NOT decrement stock
         doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
         if not doc:
+            # Handle canonical or synthesized dose IDs: dose_{medId}_{date}_{time}
+            if dose_id.startswith("dose_") or dose_id.startswith("local_dose_"):
+                parts = dose_id.replace("local_dose_", "").replace("dose_", "").split("_")
+                if len(parts) >= 2:
+                    med_id = parts[0]
+                    dose_date = parts[1]
+                    sched_time = parts[2] if len(parts) > 2 else None
+                    if sched_time and len(sched_time) == 4 and sched_time.isdigit():
+                        sched_time = f"{sched_time[:2]}:{sched_time[2:]}"
+                    await _ensure_doses_for_date(user_id, dose_date)
+                    q = {"user_id": user_id, "medication_id": med_id, "date": dose_date}
+                    if sched_time:
+                        q["scheduled_time"] = sched_time
+                    doc = await db.doses.find_one(q, PROJECTION)
+                    if not doc:
+                        doc = await db.doses.find_one({"user_id": user_id, "medication_id": med_id, "date": dose_date}, PROJECTION)
+                    if doc:
+                        return await update_dose_status(doc["id"], payload, user_id)
             raise HTTPException(404, "Dose not found")
         return doc  # Idempotent - already taken, ignore duplicate request
 
@@ -1461,7 +1482,16 @@ async def list_activities(type: Optional[str] = None, limit: int = 200, user_id:
 
 @api.post("/activities")
 async def create_activity(payload: ActivityCreate, user_id: str = Depends(get_current_user_id)):
-    a = Activity(user_id=user_id, **payload.model_dump())
+    data = payload.model_dump()
+    rec_at = data.pop("timestamp", None) or datetime.now(timezone.utc)
+    if isinstance(rec_at, str):
+        try:
+            rec_at = datetime.fromisoformat(rec_at.replace("Z", "+00:00"))
+        except Exception:
+            rec_at = datetime.now(timezone.utc)
+    if not data.get("date"):
+        data["date"] = rec_at.strftime("%Y-%m-%d") if isinstance(rec_at, datetime) else str(rec_at)[:10]
+    a = Activity(user_id=user_id, recorded_at=rec_at, **data)
     await db.activities.insert_one(a.model_dump())
     return _clean(a.model_dump())
 
@@ -3632,19 +3662,21 @@ async def get_user_sync_state(local_date: Optional[str] = None, user_id: str = D
     activities = await db.activities.find(
         {"user_id": user_id, "type": "water"},
         PROJECTION
-    ).sort("recorded_at", -1).to_list(100)
+    ).sort("recorded_at", -1).to_list(200)
 
     today_water_logs = []
     water_total = 0.0
     for act in activities:
+        act_date = act.get("date")
         rec = act.get("recorded_at")
-        act_date = None
         ts = int(time.time() * 1000)
         if isinstance(rec, datetime):
-            act_date = rec.strftime("%Y-%m-%d")
+            if not act_date:
+                act_date = rec.strftime("%Y-%m-%d")
             ts = int(rec.timestamp() * 1000)
         elif isinstance(rec, str):
-            act_date = rec[:10]
+            if not act_date:
+                act_date = rec[:10]
         if act_date == d_str:
             amt = float(act.get("value", 0))
             water_total += amt
@@ -3652,8 +3684,9 @@ async def get_user_sync_state(local_date: Optional[str] = None, user_id: str = D
                 "amount": int(amt),
                 "ts": ts,
                 "note": act.get("note", ""),
-                "id": act.get("id", "")
+                "id": str(act.get("id") or act.get("_id", ""))
             })
+    today_water_logs.sort(key=lambda x: x.get("ts", 0))
 
     # 5. Yoga completed steps for today
     yoga_docs = await db.yoga_log.find(

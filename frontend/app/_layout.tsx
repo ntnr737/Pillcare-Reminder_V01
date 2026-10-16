@@ -182,17 +182,35 @@ export default function RootLayout() {
     maybeSendHeartbeat();
 
     const unsubNotifs = setupNotificationListeners((path) => {
-      try {
-        if ((router as any).navigate) {
-          (router as any).navigate(path as any);
-        } else {
-          router.push(path as any);
-        }
-      } catch {
+      setTimeout(() => {
         try {
-          router.replace(path as any);
-        } catch {}
-      }
+          const [basePath, queryString] = path.split("?");
+          const params: Record<string, string> = {};
+          if (queryString) {
+            queryString.split("&").forEach((part) => {
+              const [k, v] = part.split("=");
+              if (k) params[decodeURIComponent(k)] = decodeURIComponent(v || "");
+            });
+          }
+          if (Object.keys(params).length > 0) {
+            if ((router as any).navigate) {
+              (router as any).navigate({ pathname: basePath as any, params });
+            } else {
+              router.push({ pathname: basePath as any, params } as any);
+            }
+          } else {
+            if ((router as any).navigate) {
+              (router as any).navigate(basePath as any);
+            } else {
+              router.push(basePath as any);
+            }
+          }
+        } catch {
+          try {
+            router.replace(path as any);
+          } catch {}
+        }
+      }, 50);
     });
     return () => {
       unsubNotifs();

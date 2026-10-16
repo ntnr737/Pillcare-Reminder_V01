@@ -21,7 +21,7 @@ export default function Index() {
         }
         const cached = await get<any>(K.profile);
         if (!mounted) return;
-        if (cached?.nickname) {
+        if (token || cached?.nickname || cached?.name || cached?.email) {
           // Check if cold-started by tapping a notification
           const initialResponse = await Notifications.getLastNotificationResponseAsync().catch(() => null);
           let dest = "/(tabs)/today";

@@ -79,25 +79,36 @@ export default function History() {
     }
   };
 
-  const statusColor = (s: string) =>
-    s === "taken" || s === "yoga_completed" || s === "yoga_practice" || s === "completed"
+  const isWaterEntry = (s: string, name?: string) =>
+    s === "water" || s === "hydration" || (name ? (name.toLowerCase().includes("hydration") || name.toLowerCase().includes("water")) : false);
+
+  const statusColor = (s: string, name?: string) =>
+    isWaterEntry(s, name)
+      ? "#38bdf8"
+      : s === "yoga_completed" || s === "yoga_practice"
+      ? "#a78bfa"
+      : s === "taken" || s === "completed"
       ? "#4ade80"
-      : s === "missed" || s === "skipped"
+      : s === "missed"
       ? "#f87171"
       : "#fbbf24";
-  const statusIcon = (s: string) =>
-    s === "taken"
-      ? "checkmark-circle"
+
+  const statusIcon = (s: string, name?: string) =>
+    isWaterEntry(s, name)
+      ? "water-outline"
       : s === "yoga_completed" || s === "yoga_practice"
       ? "fitness"
-      : s === "completed"
+      : s === "taken" || s === "completed"
       ? "checkmark-circle"
       : "close-circle";
-  const statusLabel = (s: string) =>
-    s === "taken"
-      ? "Taken"
+
+  const statusLabel = (s: string, name?: string) =>
+    isWaterEntry(s, name)
+      ? "Logged"
       : s === "yoga_completed" || s === "yoga_practice" || s === "completed"
       ? "Completed"
+      : s === "taken"
+      ? "Taken"
       : s === "missed"
       ? "Missed"
       : "Skipped";
@@ -159,7 +170,7 @@ export default function History() {
                 </View>
                 {(day.entries || []).map((entry: any, i: number) => (
                   <View key={i} style={s.row}>
-                    <Ionicons name={statusIcon(entry.status) as any} size={18} color={statusColor(entry.status)} />
+                    <Ionicons name={statusIcon(entry.status, entry.name) as any} size={18} color={statusColor(entry.status, entry.name)} />
                     <View style={{ flex: 1 }}>
                       <Text style={s.medName}>{entry.name}</Text>
                       <Text style={s.time}>
@@ -168,9 +179,9 @@ export default function History() {
                         {entry.note && !entry.note.includes(entry.dosage) ? ` · ${entry.note}` : ""}
                       </Text>
                     </View>
-                    <View style={[s.badge, { backgroundColor: statusColor(entry.status) + "20" }]}>
-                      <Text style={[s.badgeTx, { color: statusColor(entry.status) }]}>
-                        {statusLabel(entry.status)}
+                    <View style={[s.badge, { backgroundColor: statusColor(entry.status, entry.name) + "20" }]}>
+                      <Text style={[s.badgeTx, { color: statusColor(entry.status, entry.name) }]}>
+                        {statusLabel(entry.status, entry.name)}
                       </Text>
                     </View>
                   </View>
