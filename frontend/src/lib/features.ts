@@ -60,9 +60,12 @@ export async function loadCachedFeatures(): Promise<void> {
   } catch {}
 }
 
+import { API_BASE_URL } from "./config";
+
 export async function fetchFeatures(token?: string): Promise<void> {
   try {
-    const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+    const BASE = API_BASE_URL;
+    if (!BASE || !BASE.startsWith("http")) return;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-App-Platform": Platform.OS,

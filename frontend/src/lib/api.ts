@@ -1,7 +1,8 @@
 import { getStoredToken } from "./auth";
 import type { Features } from "./features";
+import { API_BASE_URL } from "./config";
 
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+const BASE = API_BASE_URL;
 
 async function req<T>(path: string, opts: RequestInit = {}, timeoutMs = 7000): Promise<T> {
   const token = await getStoredToken();

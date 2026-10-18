@@ -171,4 +171,20 @@
 - **Trade-off**: Requires user to complete a 1-tap exemption in system settings.
 - **Revisit if**: Native Android CompanionDeviceManager or Foreground Service notification persistent foregrounding is introduced.
 
+---
+
+## D-012: Centralized Backend URL with Guaranteed Production Fallback
+
+- **Date**: 2026-10-18
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: On standalone APK builds, if `EXPO_PUBLIC_BACKEND_URL` is omitted or un-bundled during Gradle compilation, `BASE` resolved to `""`, causing startup calls like `fetch("/api/public/feature-config")` to crash React Native with `TypeError: Invalid URL: /api/public/feature-config`.
+- **Options**:
+  1. Rely exclusively on `.env` file bundling and assume it is always present during all Gradle/CI invocations.
+  2. Create a centralized `src/lib/config.ts` exporting `DEFAULT_BACKEND_URL = "https://pillcare-backend-1082668880575.europe-west1.run.app"`, resolving `API_BASE_URL` with a guaranteed fallback, and adding try-catch guards around non-critical startup feature probes in `sign-in.tsx`.
+- **Chosen**: Option 2.
+- **Why**: Zero risk of startup crashing. Even in custom offline, demo, or unconfigured builds, the app safely resolves the production Cloud Run backend or gracefully falls back to default feature flags without triggering the root Error Boundary.
+- **Trade-off**: Production URL is embedded as a code constant fallback.
+- **Revisit if**: Multi-tenant or dynamic on-premise backend switching is supported at runtime.
+
+
 

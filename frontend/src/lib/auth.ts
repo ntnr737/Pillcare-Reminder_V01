@@ -1,6 +1,7 @@
 import { GoogleSignin, isErrorWithCode, statusCodes } from "@react-native-google-signin/google-signin";
 import { storage } from "@/src/utils/storage";
 import { set, remove, K } from "./store";
+import { API_BASE_URL } from "./config";
 
 const TOKEN_KEY = "pillcare_auth_token";
 const USER_KEY = "pillcare_auth_user";
@@ -14,7 +15,7 @@ const WEB_CLIENT_ID = (process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID && process.e
 const IOS_CLIENT_ID = (process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID && process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.trim().length > 5)
   ? process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID.trim()
   : DEFAULT_IOS_ID;
-const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+const BASE = API_BASE_URL;
 
 try {
   if (GoogleSignin && typeof GoogleSignin.configure === "function") {

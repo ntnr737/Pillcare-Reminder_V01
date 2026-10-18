@@ -12,17 +12,18 @@
 - Protected offline write queue on logout: Added 2-second queue flush race in `signOut()` before wiping local session, guaranteeing recent doses and water intake from Device A reach Cloud Run before logging in on Device B.
 - Added automatic queue flush triggers in `_layout.tsx` on both app cold launch and app resume (`AppState === "active"`).
 - Added Android Battery Optimization Exemption UI card and deep link handler in `frontend/app/notification-settings.tsx` (`ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` + `dontkillmyapp.com` guide).
+- Fixed relative URL startup crash (`Invalid URL: /api/public/feature-config`): Created `frontend/src/lib/config.ts` providing guaranteed fallback `DEFAULT_BACKEND_URL = "https://pillcare-backend-1082668880575.europe-west1.run.app"`, updated `api.ts`, `auth.ts`, `features.ts`, and `sign-in.tsx`, and guarded `fetch` so URL or network errors never trigger the root Error Boundary.
+- Recompiled fresh release APK via Gradle (`866 actionable tasks: 60 executed, 806 up-to-date` in 27s); updated `PillCare-v1.0.74-release.apk` (113MB).
 - Verified test gates: `npx tsc --noEmit` (0 errors), `python3 -m py_compile backend/server.py` (code 0), `pytest test_qc_audit_contracts.py` (4/4 passed).
 
 ### In progress:
-- Preparing git commit and requesting explicit user confirmation before pushing to `origin/main`.
+- User reinstalling the updated release APK on physical device.
 
 ### Broken or risky:
-- High Risk: If the user tests using the old `PillCare-v1.0.74-release.apk` installed on their phone (built Oct 13), it will not contain any of these fixes. Must explain clearly how to run via Expo Metro or build an updated APK.
+- None. All startup fetch URLs have guaranteed production fallbacks and try-catch safety guards.
 
 ### Next:
-- Obtain explicit confirmation to push to `origin/main`.
-- Provide the user with step-by-step instructions for testing in Expo Metro or rebuilding the APK bundle.
+- Connect phone via USB to run `adb install -r -d PillCare-v1.0.74-release.apk` or transfer APK directly.
 
 ### Do not touch:
 - `frontend/src/lib/notifications.ts`: `BACKGROUND_NOTIFICATION_TASK` must remain defined at module scope (outside React components) or Android headless intents will fail.

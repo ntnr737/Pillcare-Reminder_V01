@@ -7,6 +7,7 @@ import { signInWithGoogle, signInAsGuest } from "@/src/lib/auth";
 import { trackEvent } from "@/src/lib/analytics";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { API_BASE_URL } from "@/src/lib/config";
 
 const BG = "#0B0D14", SF = "#161926", TX = "#F9FAFB",
   TM = "rgba(249, 250, 251, 0.65)", AC = "#6366F1", A3 = "#818CF8",
@@ -32,20 +33,23 @@ export default function SignIn() {
   const [maintenanceMode, setMaintenanceMode] = useState(false);
 
   useEffect(() => {
-    const BASE = process.env.EXPO_PUBLIC_BACKEND_URL || "";
+    const BASE = API_BASE_URL;
+    if (!BASE || !BASE.startsWith("http")) return;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       "X-App-Platform": Platform.OS,
       "X-App-Version": Constants.expoConfig?.version || "0.0.0",
     };
-    fetch(`${BASE}/api/public/feature-config`, { headers })
-      .then((res) => res.ok ? res.json() : null)
-      .then((config) => {
-        if (!config) return;
-        setGoogleEnabled(config.google_login !== false);
-        setMaintenanceMode(config.maintenance_mode === true);
-      })
-      .catch(() => {});
+    try {
+      fetch(`${BASE}/api/public/feature-config`, { headers })
+        .then((res) => res.ok ? res.json() : null)
+        .then((config) => {
+          if (!config) return;
+          setGoogleEnabled(config.google_login !== false);
+          setMaintenanceMode(config.maintenance_mode === true);
+        })
+        .catch(() => {});
+    } catch {}
   }, []);
 
   const handleSignIn = async () => {
