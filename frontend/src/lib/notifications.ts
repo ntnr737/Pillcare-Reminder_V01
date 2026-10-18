@@ -84,7 +84,7 @@ export async function cancelFallbackForTag(tag: string): Promise<void> {
  */
 export async function ensureCategories(): Promise<void> {
   try {
-    await Notifications.setNotificationCategoryAsync(MEDICATION_CATEGORY, [
+    const medActions = [
       {
         identifier: "MARK_TAKEN",
         buttonTitle: "✓ Taken",
@@ -105,9 +105,9 @@ export async function ensureCategories(): Promise<void> {
         buttonTitle: "⏱ 1 Hour",
         options: { opensAppToForeground: true },
       },
-    ]);
+    ];
 
-    await Notifications.setNotificationCategoryAsync(WATER_CATEGORY, [
+    const waterActions = [
       {
         identifier: "LOG_250ML",
         buttonTitle: "✓ 250 mL",
@@ -123,9 +123,9 @@ export async function ensureCategories(): Promise<void> {
         buttonTitle: "Remind in 30m",
         options: { opensAppToForeground: true },
       },
-    ]);
+    ];
 
-    await Notifications.setNotificationCategoryAsync(YOGA_CATEGORY, [
+    const yogaActions = [
       {
         identifier: "MARK_YOGA_DONE",
         buttonTitle: "✓ Mark Done",
@@ -136,7 +136,18 @@ export async function ensureCategories(): Promise<void> {
         buttonTitle: "Open Flow",
         options: { opensAppToForeground: true },
       },
-    ]);
+    ];
+
+    // Register primary and alias category IDs for broad OEM Android compatibility
+    for (const catId of [MEDICATION_CATEGORY, "medication_reminder_category", "medication", "medication-reminders"]) {
+      await Notifications.setNotificationCategoryAsync(catId, medActions).catch(() => {});
+    }
+    for (const catId of [WATER_CATEGORY, "water_reminder_category", "water", "hydration", "hydration-reminders"]) {
+      await Notifications.setNotificationCategoryAsync(catId, waterActions).catch(() => {});
+    }
+    for (const catId of [YOGA_CATEGORY, "yoga_reminder_category", "yoga", "yoga-reminders"]) {
+      await Notifications.setNotificationCategoryAsync(catId, yogaActions).catch(() => {});
+    }
   } catch (e) {
     console.warn("Category setup failed:", e);
   }
@@ -218,12 +229,32 @@ export async function handleNotificationResponse(
     if (actionId === Notifications.DEFAULT_ACTION_IDENTIFIER) {
       if (!navCallback) return;
 
-      if (data.type === "yoga" || data.isYogaReminder) {
+      const rawPath = data.path || data.routeKey || data.route_key || data.link_url;
+      if (typeof rawPath === "string" && rawPath.startsWith("/")) {
+        const basePath = rawPath.split("?")[0];
+        const allowlist = [
+          "/(tabs)/today",
+          "/(tabs)/treatment",
+          "/(tabs)/progress",
+          "/(tabs)/profile",
+          "/(tabs)/yoga",
+          "/history",
+          "/notification-settings",
+          "/caregiver",
+          "/appointments",
+        ];
+        if (allowlist.includes(basePath)) {
+          navCallback(rawPath);
+          return;
+        }
+      }
+
+      if (data.type === "yoga" || data.isYogaReminder || data.category === "yoga") {
         navCallback("/(tabs)/yoga");
         return;
       }
 
-      if (data.type === "water_reminder" || data.type === "water_pacing_reminder") {
+      if (data.type === "water_reminder" || data.type === "water_pacing_reminder" || data.category === "water") {
         navCallback("/(tabs)/today?focus=water");
         return;
       }
@@ -231,16 +262,6 @@ export async function handleNotificationResponse(
       if (data.medicationId) {
         navCallback(`/(tabs)/today?focus=medication&medId=${data.medicationId}`);
         return;
-      }
-
-      const rawPath = data.path || data.routeKey || data.link_url;
-      if (typeof rawPath === "string" && rawPath.startsWith("/")) {
-        const basePath = rawPath.split("?")[0];
-        const allowlist = ["/(tabs)/today", "/(tabs)/treatment", "/(tabs)/progress", "/(tabs)/profile", "/(tabs)/yoga"];
-        if (allowlist.includes(basePath)) {
-          navCallback(rawPath);
-          return;
-        }
       }
 
       navCallback("/(tabs)/today");
@@ -554,6 +575,31 @@ export async function ensureChannels(): Promise<void> {
         });
       } catch (err) {
         console.warn(`Channel setup error for ${cat}:`, err);
+      }
+    }
+
+    const staticChannels = [
+      { id: "medication-reminders", name: "PillCare Medication Reminders", importance: Notifications.AndroidImportance.MAX },
+      { id: "hydration-reminders", name: "PillCare Hydration Reminders", importance: Notifications.AndroidImportance.HIGH },
+      { id: "yoga-reminders", name: "PillCare Yoga Therapy Reminders", importance: Notifications.AndroidImportance.MAX },
+      { id: "broadcasts", name: "PillCare Broadcast Alerts & News", importance: Notifications.AndroidImportance.MAX },
+      { id: "default", name: "PillCare General Alerts", importance: Notifications.AndroidImportance.DEFAULT },
+    ];
+    for (const sc of staticChannels) {
+      try {
+        await Notifications.setNotificationChannelAsync(sc.id, {
+          name: sc.name,
+          description: `${sc.name} high-priority notification channel`,
+          importance: isMuted ? Notifications.AndroidImportance.LOW : sc.importance,
+          sound: isMuted ? undefined : "default",
+          enableVibrate: vibrate,
+          vibrationPattern: vibrate ? [0, 500, 250, 500] : undefined,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: !isMuted,
+          showBadge: true,
+        });
+      } catch (err) {
+        console.warn(`Static channel setup error for ${sc.id}:`, err);
       }
     }
 

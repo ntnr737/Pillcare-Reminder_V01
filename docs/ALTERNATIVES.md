@@ -17,7 +17,11 @@
 - **What it was**: Scheduling all medication and water reminders on a cloud cron server and pushing them via Firebase Cloud Messaging (FCM).
 - **Why rejected**: Fails completely when the user is on an airplane, in an underground train, or has poor cellular connectivity. Cloud delivery delays of even 10–15 minutes can lead to missed doses.
 - **Cost / Risk**: Massive Cloud Run egress and execution costs for millions of daily timer checks; dependency on network uptime.
-- **Revisit if**: PillCare becomes an enterprise hospital ward tracking app where nurses schedule doses from a central desktop station.
+### Rejected Alternative 1C: Strict Single Dynamic Channel ID
+- **What it was**: Enforcing only dynamic channel IDs like `pc_medication_chime_v1` and banning static legacy channels.
+- **Why rejected**: Dropped notifications on Android devices when notifications were scheduled with legacy/alias names (`medication-reminders`) or when sound settings were toggled during runtime.
+- **Cost / Risk**: Silent notification delivery failure across various Android OEM versions.
+- **Revisit if**: Android removes channel ID requirements in future OS versions.
 
 ---
 
@@ -34,6 +38,12 @@
 - **Why rejected**: Tripled Cloud Run concurrency and database CPU utilization; caused UI flashing and staggered loading bars.
 - **Cost / Risk**: High server bills ($$$) on Cloud Run; poor battery life on client devices.
 - **Revisit if**: Individual entity sizes grow into multiple megabytes where fetching everything together causes payload bloat.
+
+### Rejected Alternative 2C: Instant Cache Purge on Sign Out Without Queue Drain
+- **What it was**: Wiping all local storage and session tokens synchronously the instant the user taps "Sign Out".
+- **Why rejected**: Destroys pending offline logs (doses taken, water drunk) before they can be transmitted to Cloud Run. When the patient logs into another device, all recent activity appears lost.
+- **Cost / Risk**: Apparent data loss across devices, patient anxiety over unrecorded clinical adherence.
+- **Revisit if**: A device is reported stolen and immediate cryptographic zeroization is required.
 
 ---
 

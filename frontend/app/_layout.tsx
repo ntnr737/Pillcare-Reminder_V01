@@ -161,6 +161,10 @@ export default function RootLayout() {
     resyncReminders().catch(() => {});
     registerForPushNotifications().catch(() => {});
     loadCachedFeatures().catch(() => {});
+    try {
+      const { flushQueue } = require("@/src/lib/sync");
+      flushQueue().catch(() => {});
+    } catch {}
     getStoredToken()
       .then((token) => {
         if (token) fetchFeatures(token).catch(() => {});
@@ -222,6 +226,10 @@ export default function RootLayout() {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         resyncReminders().catch(() => {});
+        try {
+          const { flushQueue } = require("@/src/lib/sync");
+          flushQueue().catch(() => {});
+        } catch {}
         getStoredToken()
           .then((token) => {
             if (token) {

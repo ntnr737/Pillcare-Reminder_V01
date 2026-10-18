@@ -11,21 +11,23 @@
 cd frontend && npx tsc --noEmit
 ```
 - **What a pass looks like**: Exits with code 0 and zero output.
-- **Actual Verified Output (2026-10-17 Phase 2 QC)**:
+- **Actual Verified Output (2026-10-18 Local-First & Battery Integration QC)**:
   ```
   Completed with Exit Code: 0
   Zero errors found across 100% of TypeScript files.
   ```
 
-### Command 2: Backend Server Syntax & Compilation Check
+### Command 2: Backend Server Syntax & Contract Verification
 ```bash
 python3 -m py_compile backend/server.py
+backend/.venv/bin/pytest backend/tests/test_qc_audit_contracts.py
 ```
-- **What a pass looks like**: Exits with code 0 and zero syntax errors.
-- **Actual Verified Output (2026-10-17 Phase 2 QC)**:
+- **What a pass looks like**: Exits with code 0 and all contract tests pass.
+- **Actual Verified Output (2026-10-18 QC)**:
   ```
-  Completed with Exit Code: 0
-  Compiled clean with zero syntax or import errors.
+  python3 -m py_compile backend/server.py -> Code 0 (clean compilation)
+  backend/tests/test_qc_audit_contracts.py ....                            [100%]
+  4 passed in 0.47s
   ```
 
 ### Command 3: Remote Push & Deployment Gate

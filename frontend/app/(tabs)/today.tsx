@@ -22,7 +22,7 @@ import { api } from "@/src/lib/api";
 import { resyncReminders, scheduleHydrationPacingReminder, getCanonicalDoseId } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { getStoredUser } from "@/src/lib/auth";
-import { backgroundRefresh, enqueueWrite, flushQueue, getLastSyncTimestamp, bootstrapUserDataset, recordTaken, recordSkipped } from "@/src/lib/sync";
+import { backgroundRefresh, enqueueWrite, flushQueue, getLastSyncTimestamp, getLastSyncTimestampAsync, bootstrapUserDataset, recordTaken, recordSkipped } from "@/src/lib/sync";
 import { evaluateTodayStreakStatus } from "@/src/lib/streakEngine";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -362,8 +362,8 @@ export default function Today() {
   };
 
   const fetchServer = async (force: boolean = false) => {
-    const shouldShowSpinner = force || doses.length === 0;
-    if (shouldShowSpinner) setIsSyncing(true);
+    // Background SWR updates remain completely silent. Only explicit manual pull-to-refresh shows refresh indicator.
+    if (force && doses.length === 0) setIsSyncing(true);
     try {
       await flushQueue().catch(() => {});
       const syncResult = await bootstrapUserDataset(date);
@@ -409,7 +409,7 @@ export default function Today() {
       await hydrateFromLocalCache(date);
       if (!active) return;
       const now = Date.now();
-      const lastSync = getLastSyncTimestamp();
+      const lastSync = await getLastSyncTimestampAsync();
       const cachedMeds = (await get<any[]>(K.medications).catch(() => [])) || [];
       const hasMeds = Array.isArray(cachedMeds) && cachedMeds.length > 0;
       // 5-minute SWR Cache TTL: Skip Cloud Run network requests if synced in the last 5 minutes AND we have cached meds!
@@ -716,7 +716,7 @@ export default function Today() {
         </View>
       </View>
 
-      {isSyncing && !refreshing && (
+      {isSyncing && !refreshing && doses.length === 0 && (
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: 4, backgroundColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)", gap: 6 }}>
           <ActivityIndicator size="small" color={theme.accent} />
           <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "500" }}>Updating latest data...</Text>

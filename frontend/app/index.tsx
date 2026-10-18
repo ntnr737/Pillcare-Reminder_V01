@@ -27,14 +27,15 @@ export default function Index() {
           let dest = "/(tabs)/today";
           if (initialResponse) {
             const data = (initialResponse.notification.request.content.data || {}) as Record<string, any>;
-            if (data.type === "yoga" || data.isYogaReminder) {
+            const routePath = data.path || data.routeKey || data.route_key || data.link_url;
+            if (data.type === "yoga" || data.isYogaReminder || data.category === "yoga" || routePath === "/(tabs)/yoga") {
               dest = "/(tabs)/yoga";
-            } else if (data.type === "water_reminder" || data.type === "water_pacing_reminder") {
+            } else if (data.type === "water_reminder" || data.type === "water_pacing_reminder" || data.category === "water") {
               dest = "/(tabs)/today?focus=water";
             } else if (data.medicationId) {
               dest = `/(tabs)/today?focus=medication&medId=${data.medicationId}`;
-            } else if (data.path && typeof data.path === "string" && data.path.startsWith("/")) {
-              dest = data.path;
+            } else if (routePath && typeof routePath === "string" && routePath.startsWith("/")) {
+              dest = routePath;
             }
           }
           setTarget(dest);

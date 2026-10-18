@@ -177,6 +177,14 @@ export function isGuestUser(user?: PillcareUser | null): boolean {
 }
 
 export async function signOut(): Promise<void> {
+  try {
+    const { flushQueue } = require("./sync");
+    await Promise.race([
+      flushQueue(),
+      new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]);
+  } catch (e) {}
+
   await storage.secureRemove(TOKEN_KEY);
   await storage.secureRemove(USER_KEY);
   await remove(K.profile).catch(() => {});

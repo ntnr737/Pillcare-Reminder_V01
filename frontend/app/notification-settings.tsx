@@ -128,6 +128,24 @@ export default function NotificationSettingsScreen() {
     Alert.alert("Default Signature Sound Set", "🔔 Sound 1 — Medical Chime is now active as the default signature tone across all reminders!");
   };
 
+  const handleOpenBatterySettings = async () => {
+    if (Platform.OS === "android") {
+      try {
+        const intentUrl = "intent:#Intent;action=android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS;end";
+        const canOpen = await Linking.canOpenURL(intentUrl).catch(() => false);
+        if (canOpen) {
+          await Linking.openURL(intentUrl);
+          return;
+        }
+      } catch {}
+    }
+    await Linking.openSettings().catch(() => {});
+  };
+
+  const handleOpenDontKillMyApp = async () => {
+    await Linking.openURL("https://dontkillmyapp.com").catch(() => {});
+  };
+
   const handleSendTestNotification = async (category: SoundCategory) => {
     setTestingCategory(category);
     try {
@@ -222,6 +240,39 @@ export default function NotificationSettingsScreen() {
               <Ionicons name="checkmark-done" size={14} color={theme.accent} />
               <Text style={{ color: theme.accent, fontWeight: "700", fontSize: 11 }}>Set Default for All</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* ⚡ Exact Reminder Reliability & Battery Optimization Card (MyTherapy Aligned) */}
+        <View style={[s.bannerCard, { backgroundColor: isDark ? "rgba(16, 185, 129, 0.12)" : "rgba(16, 185, 129, 0.08)", borderColor: "rgba(16, 185, 129, 0.35)" }]}>
+          <View style={s.bannerRow}>
+            <View style={[s.iconBox, { backgroundColor: "#10b981" }]}>
+              <Ionicons name="battery-charging-outline" size={22} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.bannerTitle, { color: isDark ? "#34d399" : "#065f46" }]}>
+                Reliable Exact Alarms & Background Delivery
+              </Text>
+              <Text style={[s.bannerSub, { color: theme.textSecondary, marginBottom: 8 }]}>
+                To ensure dose alerts ring on time when your screen is locked or app is closed, set PillCare battery usage to "Unrestricted".
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
+                <TouchableOpacity
+                  style={{ backgroundColor: "#10b981", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 4 }}
+                  onPress={handleOpenBatterySettings}
+                >
+                  <Ionicons name="settings-outline" size={14} color="#fff" />
+                  <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>Disable Battery Limits</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)", borderWidth: 1, borderColor: "rgba(16, 185, 129, 0.4)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, flexDirection: "row", alignItems: "center", gap: 4 }}
+                  onPress={handleOpenDontKillMyApp}
+                >
+                  <Ionicons name="globe-outline" size={13} color={theme.textPrimary} />
+                  <Text style={{ color: theme.textPrimary, fontWeight: "600", fontSize: 12 }}>Device Guide</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
 

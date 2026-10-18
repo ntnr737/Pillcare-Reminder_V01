@@ -1368,23 +1368,35 @@ async def update_dose_status(dose_id: str, payload: DoseStatusUpdate, user_id: s
         doc = await db.doses.find_one({"id": dose_id, "user_id": user_id}, PROJECTION)
         if not doc:
             # Handle canonical or synthesized dose IDs: dose_{medId}_{date}_{time}
-            if dose_id.startswith("dose_") or dose_id.startswith("local_dose_"):
-                parts = dose_id.replace("local_dose_", "").replace("dose_", "").split("_")
-                if len(parts) >= 2:
-                    med_id = parts[0]
-                    dose_date = parts[1]
-                    sched_time = parts[2] if len(parts) > 2 else None
-                    if sched_time and len(sched_time) == 4 and sched_time.isdigit():
-                        sched_time = f"{sched_time[:2]}:{sched_time[2:]}"
-                    await _ensure_doses_for_date(user_id, dose_date)
-                    q = {"user_id": user_id, "medication_id": med_id, "date": dose_date}
-                    if sched_time:
-                        q["scheduled_time"] = sched_time
-                    doc = await db.doses.find_one(q, PROJECTION)
-                    if not doc:
-                        doc = await db.doses.find_one({"user_id": user_id, "medication_id": med_id, "date": dose_date}, PROJECTION)
-                    if doc:
-                        return await update_dose_status(doc["id"], payload, user_id)
+            import re
+            m_dose = re.match(r"^(?:local_dose_|dose_)(.+)_(\d{4}-\d{2}-\d{2})(?:_([0-9a-zA-Z:]+))?$", dose_id)
+            if m_dose:
+                med_id = m_dose.group(1)
+                dose_date = m_dose.group(2)
+                sched_time = m_dose.group(3)
+                if sched_time and len(sched_time) == 4 and sched_time.isdigit():
+                    sched_time = f"{sched_time[:2]}:{sched_time[2:]}"
+                await _ensure_doses_for_date(user_id, dose_date)
+                q = {"user_id": user_id, "medication_id": med_id, "date": dose_date}
+                if sched_time:
+                    q["scheduled_time"] = sched_time
+                doc = await db.doses.find_one(q, PROJECTION)
+                if not doc:
+                    doc = await db.doses.find_one({"user_id": user_id, "medication_id": med_id, "date": dose_date}, PROJECTION)
+                if doc:
+                    return await update_dose_status(doc["id"], payload, user_id)
+                # If dose record still doesn't exist in MongoDB, create it on-demand for existing medication!
+                med = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
+                if med:
+                    new_dose = DoseLog(
+                        user_id=user_id,
+                        medication_id=med_id,
+                        date=dose_date,
+                        scheduled_time=sched_time or (med.get("times") or ["08:00"])[0],
+                        status="pending"
+                    )
+                    await db.doses.insert_one(new_dose.model_dump())
+                    return await update_dose_status(new_dose.id, payload, user_id)
             raise HTTPException(404, "Dose not found")
         return doc  # Idempotent - already taken, ignore duplicate request
 
@@ -1442,7 +1454,19 @@ async def mark_taken_by_medication(payload: MarkTakenByMedPayload, user_id: str 
         dose = await db.doses.find_one({"user_id": user_id, "medication_id": payload.medication_id, "date": today_str}, PROJECTION)
 
     if not dose:
-        raise HTTPException(404, f"No dose entry found for medication {payload.medication_id} on {today_str}")
+        med = await db.medications.find_one({"id": payload.medication_id, "user_id": user_id}, PROJECTION)
+        if med:
+            new_dose = DoseLog(
+                user_id=user_id,
+                medication_id=payload.medication_id,
+                date=today_str,
+                scheduled_time=payload.scheduled_time or (med.get("times") or ["08:00"])[0],
+                status="pending"
+            )
+            await db.doses.insert_one(new_dose.model_dump())
+            dose = new_dose.model_dump()
+        else:
+            raise HTTPException(404, f"No dose entry found for medication {payload.medication_id} on {today_str}")
 
     return await update_dose_status(dose["id"], DoseStatusUpdate(status="taken", taken_at=payload.taken_at), user_id)
 

@@ -125,3 +125,50 @@
 - **Why**: Matches industry benchmarks (Apple Health, WhatsApp, Spotify) where user experience is instantaneous and calm.
 - **Trade-off**: Users do not see a spinner during background sync, but data updates automatically upon completion.
 - **Revisit if**: Users report confusion about whether data is currently syncing (resolved via honest pull-to-refresh).
+
+---
+
+## D-009: Regex-Based Canonical Dose ID Parser & On-Demand Creation Fallback
+
+- **Date**: 2026-10-17
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Dose marking failed with HTTP 404 when medication IDs contained underscores (e.g., `local_1729000_abc`), causing naive string splitting on `_` to truncate medication IDs and misparse dates.
+- **Options**:
+  1. Ban underscores in client-generated medication IDs.
+  2. Use a robust regex pattern `r"^(?:local_dose_|dose_)(.+)_(\d{4}-\d{2}-\d{2})(?:_([0-9a-zA-Z:]+))?$"` to isolate medication ID, date, and scheduled time; if the dose record is missing from MongoDB, create it on-demand from the existing medication.
+- **Chosen**: Option 2.
+- **Why**: Option 1 cannot fix existing stored offline IDs or prevent edge cases across different device platforms. Option 2 provides mathematical certainty for parsing canonical IDs regardless of dashes or underscores, and completely eliminates 404 drops by creating missing doses on-demand.
+- **Trade-off**: Minimal regex evaluation cost on incoming canonical dose updates.
+- **Revisit if**: Doses transition to content-addressed hashing.
+
+---
+
+## D-010: Pre-Signout Write Queue Flush & Android Static Channel Registration
+
+- **Date**: 2026-10-17
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Logging out on Device A erased queued offline writes before they reached Cloud Run, resulting in missing hydration/dose records when logging in on Device B. Furthermore, Android dropped notifications scheduled with legacy channel aliases (`medication-reminders`, `hydration-reminders`).
+- **Options**:
+  1. Wipe local storage immediately on signout regardless of queue state.
+  2. Race `flushQueue()` with a 2-second timeout before purging local session and cache; explicitly register all legacy/alias channels (`medication-reminders`, `hydration-reminders`, `yoga-reminders`, `broadcasts`) in `ensureChannels()`.
+- **Chosen**: Option 2.
+- **Why**: Protects clinical dose and hydration logs from accidental destruction upon device switching. Ensures Android OS never drops notifications scheduled with legacy or alias channel names.
+- **Trade-off**: 2-second maximum delay during signout if network is slow.
+- **Revisit if**: Background synchronization service worker manages queue independently of app process lifecycle.
+
+---
+
+## D-011: Android Battery Optimization Exemption Guidance UI
+
+- **Date**: 2026-10-18
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: On Android devices (Samsung OneUI, Xiaomi MIUI, OnePlus OxygenOS), aggressive OS Doze mode and OEM battery task killers delay or suppress exact alarms unless battery optimization is set to "Unrestricted" (matching MyTherapy's onboarding model).
+- **Options**:
+  1. Rely exclusively on system notification channels and assume OS will not throttle exact alarms.
+  2. Add an explicit "Reliable Exact Alarms & Background Delivery" card to `notification-settings.tsx` with one-tap deep links to Android's `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS` and OEM guidance on `dontkillmyapp.com`.
+- **Chosen**: Option 2.
+- **Why**: Clinical dose alerts must trigger reliably at exact clock times. Without battery exemption, OEM task killers terminate background tasks after 15 minutes of screen-off time. Option 2 provides direct user guidance to enable unrestricted battery access.
+- **Trade-off**: Requires user to complete a 1-tap exemption in system settings.
+- **Revisit if**: Native Android CompanionDeviceManager or Foreground Service notification persistent foregrounding is introduced.
+
+

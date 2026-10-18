@@ -20,8 +20,21 @@ const QUEUE_KEY = "pc6_write_queue";
 const TAKEN_KEY_PREFIX = "pc6_taken_doses_"; // persistent taken dose IDs per date
 const STATUS_KEY_PREFIX = "pc6_dose_status_"; // persistent dose statuses per date
 
+const LAST_SYNC_KEY = "pc6_last_sync_timestamp";
 let syncing = false;
 let lastSyncTimestamp = 0;
+
+export async function getLastSyncTimestampAsync(): Promise<number> {
+  if (lastSyncTimestamp > 0) return lastSyncTimestamp;
+  try {
+    const raw = await AsyncStorage.getItem(LAST_SYNC_KEY);
+    if (raw) {
+      lastSyncTimestamp = parseInt(raw, 10) || 0;
+      return lastSyncTimestamp;
+    }
+  } catch {}
+  return 0;
+}
 
 export function getLastSyncTimestamp(): number {
   return lastSyncTimestamp;
@@ -29,6 +42,7 @@ export function getLastSyncTimestamp(): number {
 
 export function setLastSyncTimestamp(ts: number = Date.now()): void {
   lastSyncTimestamp = ts;
+  AsyncStorage.setItem(LAST_SYNC_KEY, String(ts)).catch(() => {});
 }
 
 // ─── Persistent dose status registry ─────────────────────────────────────────
@@ -233,12 +247,20 @@ export async function flushQueue(): Promise<void> {
         switch (item.type) {
           case "doseStatus": {
             const p = item.payload || {};
-            if (p.id && !String(p.id).startsWith("med_")) {
-              await api.setDoseStatus(p.id, p.status || "taken", p.taken_at);
-            } else if (p.medication_id) {
+            if (p.status === "taken" && p.medication_id) {
               await api.markTakenByMedication(p.medication_id, p.scheduled_time, p.taken_at);
             } else if (p.id) {
-              await api.setDoseStatus(p.id, p.status || "taken", p.taken_at);
+              try {
+                await api.setDoseStatus(p.id, p.status || "taken", p.taken_at);
+              } catch (err: any) {
+                if (p.medication_id && (p.status === "taken" || !p.status)) {
+                  await api.markTakenByMedication(p.medication_id, p.scheduled_time, p.taken_at);
+                } else {
+                  throw err;
+                }
+              }
+            } else if (p.medication_id) {
+              await api.markTakenByMedication(p.medication_id, p.scheduled_time, p.taken_at);
             }
             break;
           }
