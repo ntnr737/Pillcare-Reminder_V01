@@ -42,7 +42,25 @@ git push origin main
   Cloud Build triggered for Cloud Run deployment.
   ```
 
-### Command 3: Autonomous Sentinel Agent Diagnostic Audit
+### Command 4: Local Native Android Release APK Build Pipeline
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17
+export ANDROID_HOME=/Users/nitin/Library/Android/sdk
+export PATH=$JAVA_HOME/bin:$PATH
+cd frontend/android && ./gradlew assembleRelease --no-daemon
+```
+- **What a pass looks like**: `BUILD SUCCESSFUL`, `app-release.apk` generated (~113 MB) with zip integrity verified.
+- **Actual Verified Output (2026-10-18)**:
+  ```
+  BUILD SUCCESSFUL in 11m 31s
+  866 actionable tasks: 866 executed
+  Output: frontend/android/app/build/outputs/apk/release/app-release.apk (113MB)
+  output-metadata.json: versionCode 74, versionName 1.0.74, single APK
+  Zip Integrity: No errors detected in compressed data
+  Copied to: PillCare-v1.0.74-release.apk (113MB) & build_artifacts/app-release/app-release.apk
+  ```
+
+### Command 5: Autonomous Sentinel Agent Diagnostic Audit
 ```bash
 python3 backend/agent/sentinel_agent.py
 ```
