@@ -1,7 +1,7 @@
 # ARCHITECTURE: PillCare High-Level System Map
 
 > **Scope**: 1-Page Architectural Overview  
-> **Deeper References**: Root [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`docs/FLOW.md`](FLOW.md), [`docs/DATA.md`](DATA.md)
+> **Deeper References**: Root [`ARCHITECTURE.md`](../ARCHITECTURE.md), [`docs/WORKFLOWS.md`](WORKFLOWS.md), [`docs/FLOW.md`](FLOW.md), [`docs/DATA.md`](DATA.md)
 
 ---
 

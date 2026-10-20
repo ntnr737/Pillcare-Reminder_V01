@@ -1,6 +1,7 @@
 # FLOW: Execution Paths & Tracing
 
 > **Scope**: End-to-end execution paths between UI, background tasks, local storage, and the Cloud Run backend.  
+> **Comprehensive Workflows Reference**: See [`docs/WORKFLOWS.md`](WORKFLOWS.md) for detailed sequence diagrams, 7 Laws of Local-First, Renal Pacing, Battery Optimization, Cost Optimization, and CI/CD pipelines.  
 > **Key Insight**: Bugs live in the gaps between files. Tracing every step exposes where failures occur.
 
 ---
