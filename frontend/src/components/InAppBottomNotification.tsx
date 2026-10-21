@@ -9,6 +9,8 @@ import {
   Linking,
   Modal,
   ScrollView,
+  Image,
+  Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,6 +27,7 @@ export interface InAppNotificationPayload {
   content?: string;
   type?: string;
   link_url?: string;
+  image_url?: string;
   data?: any;
 }
 
@@ -101,6 +104,7 @@ export function InAppBottomNotification({
         const notifId = unreadItem.id;
         const titleText = unreadItem.title || "PillCare Notification";
         const bodyText = getInAppBody(unreadItem) || "New update received from PillCare.";
+        const imageUrl = unreadItem.image_url || unreadItem.image || unreadItem.img || unreadItem.banner_url || unreadItem.data?.image_url;
 
         setServerNotif({
           id: notifId,
@@ -108,12 +112,18 @@ export function InAppBottomNotification({
           body: bodyText,
           type: unreadItem.type || "offer",
           link_url: unreadItem.link_url,
+          image_url: imageUrl,
         });
 
         // Dispatch live OS status bar push notification alert ONCE per unique ID as fallback
         if (notifId && !notifiedIdsRef.current.has(notifId)) {
           notifiedIdsRef.current.add(notifId);
-          sendSystemNotificationBarAlert(titleText, bodyText, { id: notifId, link_url: unreadItem.link_url }).catch(() => {});
+          sendSystemNotificationBarAlert(titleText, bodyText, {
+            id: notifId,
+            type: unreadItem.type || "offer",
+            link_url: unreadItem.link_url,
+            image_url: imageUrl,
+          }).catch(() => {});
         }
       } else {
         setServerNotif(null);
@@ -144,6 +154,16 @@ export function InAppBottomNotification({
       setDetailModalOpen(false);
     }
   }, [activeNotif]);
+
+  // Flash auto-dismiss timer (15s), paused if detail modal is open
+  useEffect(() => {
+    if (activeNotif?.type === "flash" && !detailModalOpen) {
+      const timer = setTimeout(() => {
+        handleDismiss();
+      }, 15000);
+      return () => clearTimeout(timer);
+    }
+  }, [activeNotif, detailModalOpen]);
 
   const handleDismiss = async () => {
     setDetailModalOpen(false);
@@ -176,6 +196,8 @@ export function InAppBottomNotification({
 
   const getTheme = () => {
     switch (notifType) {
+      case "flash":
+        return { bg: "#221338", border: "#f59e0b", icon: "flash", accent: "#fbbf24", badge: "⚡ FLASH ALERT", btnBg: "#f59e0b" };
       case "offer":
         return { bg: "#1e1b4b", border: "#6366f1", icon: "gift-outline", accent: "#a78bfa", badge: "SPECIAL OFFER", btnBg: "#6366f1" };
       case "warning":
@@ -221,9 +243,17 @@ export function InAppBottomNotification({
       >
         <TouchableOpacity activeOpacity={0.85} onPress={() => setDetailModalOpen(true)}>
           <View style={s.topRow}>
-            <View style={[s.iconBox, { backgroundColor: `${theme.accent}20` }]}>
-              <Ionicons name={theme.icon as any} size={20} color={theme.accent} />
-            </View>
+            {activeNotif.image_url ? (
+              <Image
+                source={{ uri: activeNotif.image_url }}
+                style={s.thumbnailImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={[s.iconBox, { backgroundColor: `${theme.accent}20` }]}>
+                <Ionicons name={theme.icon as any} size={20} color={theme.accent} />
+              </View>
+            )}
 
             <View style={s.textWrapper}>
               <View style={{ flexDirection: "row", alignItems: "center", marginBottom: 2 }}>
@@ -259,9 +289,9 @@ export function InAppBottomNotification({
         animationType="slide"
         onRequestClose={() => setDetailModalOpen(false)}
       >
-        <TouchableOpacity style={s.modalOverlay} activeOpacity={1} onPress={() => setDetailModalOpen(false)}>
+        <Pressable style={s.modalOverlay} onPress={() => setDetailModalOpen(false)}>
           <SafeAreaView style={s.modalSafe} edges={["bottom"]}>
-            <TouchableOpacity activeOpacity={1} style={[s.modalCard, { backgroundColor: "#161926", borderColor: theme.border }]}>
+            <Pressable onPress={(e) => e.stopPropagation()} style={[s.modalCard, { backgroundColor: "#161926", borderColor: theme.border }]}>
               <View style={s.modalHeader}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flex: 1 }}>
                   <View style={[s.iconBox, { backgroundColor: `${theme.accent}20` }]}>
@@ -276,7 +306,20 @@ export function InAppBottomNotification({
                 </TouchableOpacity>
               </View>
 
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.modalBodyContent}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={s.modalBodyContent}
+                style={{ maxHeight: 380 }}
+              >
+                {activeNotif.image_url ? (
+                  <View style={s.modalBannerWrapper}>
+                    <Image
+                      source={{ uri: activeNotif.image_url }}
+                      style={s.modalBannerImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                ) : null}
                 <Text style={s.modalFullTitle}>{activeNotif.title}</Text>
                 <Text style={s.modalFullBody}>
                   {bodyText || "No additional description provided for this notification."}
@@ -294,9 +337,9 @@ export function InAppBottomNotification({
                   <Text style={s.secondaryBtnText}>Dismiss</Text>
                 </TouchableOpacity>
               </View>
-            </TouchableOpacity>
+            </Pressable>
           </SafeAreaView>
-        </TouchableOpacity>
+        </Pressable>
       </Modal>
     </>
   );
@@ -328,6 +371,28 @@ const s = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
+  },
+  thumbnailImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.2)",
+    backgroundColor: "#1e293b",
+  },
+  modalBannerWrapper: {
+    width: "100%",
+    height: 150,
+    borderRadius: 16,
+    overflow: "hidden",
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: "#1e293b",
+  },
+  modalBannerImage: {
+    width: "100%",
+    height: "100%",
   },
   textWrapper: {
     flex: 1,
@@ -368,6 +433,7 @@ const s = StyleSheet.create({
     justifyContent: "flex-end",
   },
   modalSafe: {
+    width: "100%",
     justifyContent: "flex-end",
   },
   modalCard: {
@@ -376,7 +442,6 @@ const s = StyleSheet.create({
     borderWidth: 1,
     padding: 20,
     gap: 14,
-    maxHeight: "80%",
   },
   modalHeader: {
     flexDirection: "row",

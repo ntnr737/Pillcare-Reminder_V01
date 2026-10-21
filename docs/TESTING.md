@@ -182,5 +182,39 @@ To verify the interactive notification and multi-device sync path:
    - `GET /admin/notifications`: Status 200 OK (retrieved delivery history array).
    - `GET /admin/announcements`: Status 200 OK (retrieved 96 active announcement items).
 
+---
+
+## 2026-10-21: Flash Notifications & In-App Alerts with Text + Image (v1.0.80 Release QC)
+- **Target**: Next.js Web Admin Console (`admin-panel/`), Android Emulator (`emulator-5554`), and Cloud Run backend (`https://pillcare-backend-1082668880575.europe-west1.run.app`)
+- **Execution**: Live browser screenshots via headless Chrome + Android OS UI inspection on `emulator-5554`
+- **Results**: **15/15 PASS (100%)**
+
+### Test Execution Breakdown:
+1. **Admin Notification Composer & Live Preview**:
+   - `admin/engagement/notifications/`: Verified composer with Notification Style selector (`⚡ Flash Notification`, `💊 Medication Refill`, `🎁 Special Offer`, `⚠️ Clinical Warning`, `ℹ️ General Info`).
+   - Image URL input with 4 instant preset chips (`Medication Refill`, `Yoga Therapy`, `Flash Alert`, `Special Offer`).
+   - Simulated mobile device preview bezel rendering the live simulated notification card with gold badge `⚡ FLASH ALERT`, title, body, and route preview (`qc_admin_notifications_styled.png`).
+2. **Android Emulator Live In-App Notification (v1.0.80)**:
+   - Built and installed `PillCare-v1.0.80-release.apk` (`versionCode: 80`) onto `emulator-5554`.
+   - Dispatched live flash announcement with title `⚡ FLASH: Evening Hydration & Metformin`, body `Drink 250ml water now and take your evening dose before 8:30 PM to preserve your 100% streak.`, and high-resolution Unsplash image (`qc_emu_flash_v80_verified.png`).
+   - Floating Card Verification: Card displayed with 44x44 rounded thumbnail image, amber `⚡ FLASH ALERT` badge, bold title, 2-line body, and dismiss (X) button.
+   - OS Status Bar Heads-Up Alert: Dispatched to Android status bar heads-up HUD with title and text (`qc_emu_flash_v80_verified.png`).
+3. **Detail Modal & Action Navigation**:
+   - Tapping the notification card opened the full detail modal (`qc_emu_modal_chained.png`) displaying:
+     - Lightning bolt icon with amber background + `⚡ FLASH ALERT` badge.
+     - 150px wide hero banner image rendered with rounded corners and border.
+     - High-contrast title and body text.
+     - Amber `View & Take Action ->` button.
+     - Dismiss button.
+   - Tapping `View & Take Action ->` seamlessly navigates to `/yoga` and marks the notification as seen in local storage (`qc_action_tapped_yoga.png`).
+   - Tapping (X) close button on the floating card dismisses the notification instantly (`qc_emu_card_to_close.png` -> `qc_emu_card_closed.png`).
+   - 15-second Flash Auto-Dismiss HUD verified: Automatically closes card after 15 seconds if unpressed, but remains open while user views the detail modal.
+4. **Admin Panel System QC**:
+   - Executive Dashboard (`/admin/dashboard/`): 200 OK, live telemetry (`qc_admin_dashboard.png`).
+   - Feature Flags (`/admin/app-control/feature-flags/`): 200 OK, 6 flags live toggles (`qc_admin_feature_flags_delayed.png`).
+   - Financial Command (`/admin/finance/`): 200 OK, revenue, CAC, LTV (`qc_admin_finance.png`).
+   - Content Management (`/admin/content/`): 200 OK, live flash announcement list (`qc_admin_cms.png`).
+
+
 
 

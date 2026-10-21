@@ -177,7 +177,7 @@ export async function sendBroadcastPushNotification(
   title: string,
   body: string,
   targetPlan?: string,
-  extra?: { routeKey?: string; channels?: string[] }
+  extra?: { routeKey?: string; channels?: string[]; imageUrl?: string; type?: string }
 ): Promise<BroadcastResult> {
   try {
     const res = await adminFetch('admin/notify', {
@@ -192,6 +192,8 @@ export async function sendBroadcastPushNotification(
         targetAudience: targetPlan || 'all',
         route_key: extra?.routeKey,
         channels: extra?.channels || ['push', 'in_app'],
+        image_url: extra?.imageUrl,
+        type: extra?.type || 'info',
       }),
     });
     if (!res.ok) {

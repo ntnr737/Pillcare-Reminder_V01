@@ -103,7 +103,9 @@ function RootStack() {
       setInAppNotif({
         title: notif.title,
         body: notif.body,
-        type: notif.type || "info",
+        type: notif.type || notif.data?.type || "info",
+        image_url: (notif as any).image_url || notif.data?.image_url || notif.data?.image,
+        link_url: (notif as any).link_url || notif.data?.link_url || notif.data?.path || notif.data?.routeKey,
         data: notif.data,
       });
     });

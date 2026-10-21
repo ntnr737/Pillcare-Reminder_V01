@@ -40,6 +40,18 @@
   - Fixed FastAPI bidirectional route aliasing in `backend/server.py` to index on `(path, methods)` tuple, preventing HTTP method collisions (e.g. GET `/admin/announcements`).
   - Executed 20/20 end-to-end integration tests verifying live stats, feature flag persistence in MongoDB, subscription tier switching (`free` -> `basic` -> `premium`), per-user feature overrides, and push broadcast delivery.
   - Verified mobile app feature gating on Android emulator: confirmed `UpgradePrompt` modal triggers on Free tier when attempting to access Pro Dharma capabilities (full yoga library, medication limits, scanner, export).
+- Implemented and verified rich Flash Notifications and In-App Notifications with Text + Image support (v1.0.80):
+  - Admin Panel (`admin-panel/src/app/engagement/notifications/page.tsx`): Built rich notification composer supporting Notification Styles (`flash`, `medication`, `offer`, `warning`, `info`), target audience cohorts, action route navigation (`/today`, `/treatment`, `/yoga`, `/progress`, `/support`), rich image URL inputs with 4 preset image chips, and a live simulated mobile phone preview bezel with real-time HUD rendering.
+  - Mobile App (`frontend/src/components/InAppBottomNotification.tsx` & `frontend/app/_layout.tsx`):
+    - Added image thumbnail (44x44 rounded cover) to the floating bottom notification card.
+    - Added high-urgency amber `⚡ FLASH ALERT` theme with gold border and 15-second auto-dismiss HUD.
+    - Added full detail modal rendering a 150px wide high-resolution hero banner image, high-contrast title and body text, amber `View & Take Action ->` button, and `Dismiss` button.
+    - Implemented `Pressable` overlay gesture isolation so modal scroll and taps do not conflict with outer backdrop taps.
+    - Added auto-dismiss timer pause logic so the notification does not dismiss while the user has the modal open.
+  - Push Notification Integration: Foreground listener in `_layout.tsx` and status bar alert helper in `notifications.ts` wired to preserve `image_url` and notification `type`.
+  - Backend API (`backend/server.py`): Updated `create_announcement`, `admin_broadcast_notification`, and `update_announcement` to accept and persist `image_url` and `type` into MongoDB `announcements`.
+  - Android Release Build: Bumped version to `v1.0.80` (`versionCode: 80`), compiled `PillCare-v1.0.80-release.apk` with Gradle, and stream-installed to `emulator-5554`.
+  - Visual QC: Captured browser screenshots of Admin Panel (Notifications, Dashboard, Feature Flags, Financial Command, CMS) and Android emulator screenshots verifying the floating banner card, OS heads-up alert, full detail modal with hero image, action button navigation to `/yoga`, and close button dismissal.
 
 ### In progress:
 - Awaiting user confirmation to commit and push changes to GitHub `origin/main`.

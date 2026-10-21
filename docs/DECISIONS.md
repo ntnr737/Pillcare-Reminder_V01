@@ -291,6 +291,30 @@
 - **Trade-off**: Requires keeping `NEXT_PUBLIC_ADMIN_SECRET` configured in deployment environments.
 - **Revisit if**: Moving to OAuth2 granular RBAC with service account IAM delegation.
 
+---
+
+## D-018: Rich Flash Notifications & In-App Alerts with Text, Hero Images, and 15s Auto-Dismiss HUD
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: The user requested rich Flash and In-App notification controls from both the Web Admin Panel and the Android/iOS Mobile App, supporting both rich text and images, high-priority visual presentation, and full end-to-end QC.
+  1. The Admin Notification Composer lacked rich image URL inputs, preset image chips, and multi-channel style selection (`flash`, `medication`, `offer`, `warning`, `info`).
+  2. Mobile App lacked visual image thumbnail rendering in the floating bottom banner and full hero banner image rendering in the modal.
+  3. `flash` notifications required high-urgency amber/gold styling with an automatic 15-second dismissal timer, paused while the modal is open.
+  4. Backend `create_announcement`, `admin_broadcast_notification`, and `update_announcement` needed explicit `image_url` payload handling and propagation to push payloads.
+- **Options**:
+  1. Use standard plain-text push notifications only via Expo Push Service.
+  2. Implement an omni-channel rich notification pipeline:
+     - Admin Composer with image URL input, 4 quick preset image chips (`Medication Refill`, `Yoga Therapy`, `Flash Alert`, `Special Offer`), notification style selector, route destination picker, and live interactive simulated mobile preview bezel.
+     - Mobile `InAppBottomNotification` with image thumbnail in floating bottom card, gold accent border for flash alerts, 15-second auto-dismiss timer, and rich hero banner image in full detail modal with `Pressable` overlay gesture isolation.
+     - OS status bar heads-up push dispatch with matching notification type, title, and image payload.
+     - Backend persistence of `image_url` and `type` in MongoDB `announcements`.
+- **Chosen**: Option 2.
+- **Why**: Delivers a modern healthcare engagement experience matching industry leaders (Swiggy/Zomato flash alerts, Apple Health alerts), allowing administrators to broadcast visual health announcements, medication reminders, and wellness prompts with instant visual feedback and deep-link routing.
+- **Trade-off**: Requires image assets to be accessible over HTTPS.
+- **Revisit if**: Introducing offline local image caching or rich rich-text markdown rendering in announcements.
+
+
 
 
 

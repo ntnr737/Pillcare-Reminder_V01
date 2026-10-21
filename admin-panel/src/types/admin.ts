@@ -255,7 +255,7 @@ export interface NotificationCampaign {
   id: string;
   title: string;
   body: string;
-  channels: ('push' | 'email' | 'sms')[];
+  channels: ('push' | 'email' | 'sms' | 'in_app')[];
   targetAudience: 'all' | 'free_users' | 'premium_users' | 'inactive_7d' | 'custom';
   scheduledAt?: string;
   sentAt?: string;

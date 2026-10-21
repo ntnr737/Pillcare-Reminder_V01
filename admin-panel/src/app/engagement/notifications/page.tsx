@@ -11,6 +11,11 @@ import {
   History,
   Sparkles,
   Lock,
+  Image as ImageIcon,
+  Zap,
+  Smartphone,
+  ExternalLink,
+  Flame,
 } from 'lucide-react';
 import { fetchNotifications, sendBroadcastPushNotification } from '@/lib/api/client';
 import { NotificationCampaign } from '@/types/admin';
@@ -21,7 +26,12 @@ export default function NotificationsPage() {
   const [campaigns, setCampaigns] = useState<NotificationCampaign[]>([]);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [notifType, setNotifType] = useState<'flash' | 'medication' | 'offer' | 'warning' | 'info'>('flash');
+  const [routeKey, setRouteKey] = useState('/today');
   const [targetAudience, setTargetAudience] = useState<'all' | 'free_users' | 'premium_users' | 'inactive_7d'>('all');
+  const [inAppChannel, setInAppChannel] = useState(true);
+  const [pushChannel, setPushChannel] = useState(true);
   const [confirmSendModal, setConfirmSendModal] = useState(false);
   const [sending, setSending] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
@@ -40,7 +50,16 @@ export default function NotificationsPage() {
     }
     setSending(true);
     try {
-      const res = await sendBroadcastPushNotification(title, body, targetAudience);
+      const channels: ('push' | 'email' | 'sms' | 'in_app')[] = [];
+      if (pushChannel) channels.push('push');
+      if (inAppChannel) channels.push('in_app');
+
+      const res = await sendBroadcastPushNotification(title, body, targetAudience, {
+        routeKey,
+        channels: channels.length ? channels : ['push', 'in_app'],
+        imageUrl: imageUrl.trim() || undefined,
+        type: notifType,
+      });
       setSending(false);
       setConfirmSendModal(false);
       if (res.ok) {
@@ -49,7 +68,7 @@ export default function NotificationsPage() {
           id: res.campaign_id || `cmp_${Date.now()}`,
           title,
           body,
-          channels: ['push'],
+          channels: channels.length ? channels : ['push', 'in_app'],
           targetAudience,
           sentAt: new Date().toISOString(),
           status: 'sent',
@@ -61,12 +80,12 @@ export default function NotificationsPage() {
         setCampaigns([newCamp, ...campaigns]);
         setTitle('');
         setBody('');
+        setImageUrl('');
         setToastMsg(
           res.message ||
-            `Broadcast dispatched: ${actualSent} device(s) reached in cohort '${targetAudience}'.`
+            `✅ Broadcast dispatched: Reached cohort '${targetAudience}' across ${channels.join(' & ')}.`
         );
       } else {
-        // FL-03: On failure, keep the form values, show error reason, and allow safe retry
         setToastMsg(`Broadcast Error: ${res.error || 'Failed to dispatch push notifications'}. Form preserved.`);
       }
     } catch (e: any) {
@@ -75,6 +94,25 @@ export default function NotificationsPage() {
       setToastMsg(`Broadcast Error: ${e?.message || 'Network error'}. Form preserved.`);
     }
   };
+
+  const sampleImages = [
+    {
+      label: '💊 Medication Refill',
+      url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=600&auto=format&fit=crop&q=80',
+    },
+    {
+      label: '🧘 Yoga Therapy',
+      url: 'https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=600&auto=format&fit=crop&q=80',
+    },
+    {
+      label: '⚡ Flash Alert',
+      url: 'https://images.unsplash.com/photo-1505751172876-fa1923c5c528?w=600&auto=format&fit=crop&q=80',
+    },
+    {
+      label: '🎁 Special Offer',
+      url: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=600&auto=format&fit=crop&q=80',
+    },
+  ];
 
   return (
     <Shell>
@@ -85,10 +123,13 @@ export default function NotificationsPage() {
             <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30 text-[10px] font-mono font-bold">
               EXPO & FCM PUSH BROADCAST GATEWAY
             </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-bold flex items-center gap-1">
+              <Zap className="w-3 h-3" /> FLASH NOTIFICATIONS ENABLED
+            </span>
           </div>
           <h1 className="text-2xl font-black text-white">Engagement & Notification Command</h1>
           <p className="text-xs text-slate-400">
-            Create scheduled push notifications, segment target cohorts, and track open/click rates.
+            Broadcast rich notifications with text and images, trigger flash in-app popups, and segment cohorts.
           </p>
         </div>
       </div>
@@ -100,65 +141,256 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {/* Broadcast Composer */}
-      <div className="p-6 rounded-3xl glass-card border border-slate-800 space-y-4">
-        <h2 className="text-base font-bold text-white flex items-center gap-2">
-          <Bell className="w-4 h-4 text-sky-400" /> Create Broadcast Campaign
-        </h2>
+      {/* Broadcast Composer & Live Preview Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Cols: Composer Form */}
+        <div className="lg:col-span-2 p-6 rounded-3xl glass-card border border-slate-800 space-y-4">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <Bell className="w-4 h-4 text-sky-400" /> Create Rich Broadcast Campaign
+          </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-          <div className="space-y-1 md:col-span-2">
-            <label className="font-semibold text-slate-300">Notification Title</label>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. 🌧️ Monsoon Refill Alert - Check Medicine Supply"
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-300">Notification Title</label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. ⚡ Flash Reminder: Evening Dose & Hydration"
+                disabled={!canCreate}
+                className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-sky-500 text-slate-100 focus:outline-none font-medium"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-300">Notification Style / Type</label>
+              <select
+                value={notifType}
+                onChange={(e) => setNotifType(e.target.value as any)}
+                disabled={!canCreate}
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none"
+              >
+                <option value="flash">⚡ Flash Notification (High-Priority HUD Banner)</option>
+                <option value="medication">💊 Medication & Refill Alert</option>
+                <option value="offer">🎁 Special Offer & Dharma Plan Upgrade</option>
+                <option value="warning">⚠️ Health Precaution & Warning</option>
+                <option value="info">🔔 General System Update</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-300">Target Audience Segment</label>
+              <select
+                value={targetAudience}
+                onChange={(e) => setTargetAudience(e.target.value as any)}
+                disabled={!canCreate}
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none"
+              >
+                <option value="all">All Active App Users</option>
+                <option value="free_users">Free Tier Patients</option>
+                <option value="premium_users">Premium Subscribers</option>
+                <option value="inactive_7d">Inactive Users (Last 7 Days)</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-300">Action Route Destination</label>
+              <select
+                value={routeKey}
+                onChange={(e) => setRouteKey(e.target.value)}
+                disabled={!canCreate}
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none font-mono"
+              >
+                <option value="/today">Today Tab (/today)</option>
+                <option value="/yoga">Yoga Studio (/yoga)</option>
+                <option value="/treatment">Treatment & Meds (/treatment)</option>
+                <option value="/progress">Progress Tracker (/progress)</option>
+                <option value="/support">Support & Settings (/support)</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1 text-xs">
+            <label className="font-semibold text-slate-300">Notification Message Body</label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Enter message text with clinical guidance or user instructions..."
+              rows={3}
               disabled={!canCreate}
-              className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-sky-500 text-slate-100 focus:outline-none font-medium"
+              className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-sky-500 text-slate-100 focus:outline-none"
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="font-semibold text-slate-300">Target Audience Segment</label>
-            <select
-              value={targetAudience}
-              onChange={(e) => setTargetAudience(e.target.value as any)}
+          {/* Image URL input with preset chips */}
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-purple-400" /> Rich Notification Image URL (Optional)
+              </label>
+              <span className="text-[10px] text-slate-400 font-mono">PNG, JPG, or WebP</span>
+            </div>
+            <input
+              type="text"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://example.com/image.png or choose preset below"
               disabled={!canCreate}
-              className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none"
+              className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-purple-500 text-slate-100 focus:outline-none font-mono text-[11px]"
+            />
+            <div className="flex flex-wrap gap-2 pt-1">
+              {sampleImages.map((img) => (
+                <button
+                  key={img.label}
+                  type="button"
+                  onClick={() => setImageUrl(img.url)}
+                  className="px-2.5 py-1 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-[11px] text-slate-300 border border-slate-700 transition-colors"
+                >
+                  {img.label}
+                </button>
+              ))}
+              {imageUrl && (
+                <button
+                  type="button"
+                  onClick={() => setImageUrl('')}
+                  className="px-2 py-1 rounded-lg bg-rose-500/20 text-rose-300 text-[11px] border border-rose-500/30"
+                >
+                  Clear Image
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Delivery Channels */}
+          <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
+            <span className="font-semibold text-slate-300">Delivery Channels:</span>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 cursor-pointer text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={pushChannel}
+                  onChange={(e) => setPushChannel(e.target.checked)}
+                  className="accent-sky-500 rounded"
+                />
+                <span>OS Push Notification</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={inAppChannel}
+                  onChange={(e) => setInAppChannel(e.target.checked)}
+                  className="accent-amber-500 rounded"
+                />
+                <span>In-App Flash Alert</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={() => setConfirmSendModal(true)}
+              disabled={!title || !body || !canSend || (!pushChannel && !inAppChannel)}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all ${
+                canSend && title && body && (pushChannel || inAppChannel)
+                  ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-sky-500/20 hover:scale-[1.02]'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
             >
-              <option value="all">All Active App Users</option>
-              <option value="free_users">Free Tier Patients</option>
-              <option value="premium_users">Premium Subscribers</option>
-              <option value="inactive_7d">Inactive Users (Last 7 Days)</option>
-            </select>
+              <Send className="w-4 h-4" /> Send Mass Notification Broadcast
+            </button>
           </div>
         </div>
 
-        <div className="space-y-1 text-xs">
-          <label className="font-semibold text-slate-300">Notification Message Body</label>
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            placeholder="Type notification text to send to devices..."
-            rows={3}
-            disabled={!canCreate}
-            className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-sky-500 text-slate-100 focus:outline-none"
-          />
-        </div>
+        {/* Right 1 Col: Live Device Preview */}
+        <div className="p-6 rounded-3xl glass-card border border-slate-800 space-y-4">
+          <h2 className="text-base font-bold text-white flex items-center gap-2">
+            <Smartphone className="w-4 h-4 text-emerald-400" /> Live In-App / Flash Preview
+          </h2>
+          <p className="text-[11px] text-slate-400 leading-relaxed">
+            Real-time visual rendering of how the notification card will display inside the PillCare mobile app on Android & iOS.
+          </p>
 
-        <div className="flex justify-end">
-          <button
-            onClick={() => setConfirmSendModal(true)}
-            disabled={!title || !body || !canSend}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold shadow-lg transition-all ${
-              canSend && title && body
-                ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-sky-500/20'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            <Send className="w-4 h-4" /> Send Mass Notification Broadcast
-          </button>
+          {/* Phone Frame Mockup */}
+          <div className="w-full rounded-2xl bg-slate-950 border-2 border-slate-800 p-4 relative min-h-[340px] flex flex-col justify-end overflow-hidden shadow-2xl">
+            <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3.5 bg-slate-800 rounded-full"></div>
+
+            {/* Simulated In-App Notification Card */}
+            <div
+              className={`w-full p-3.5 rounded-2xl border shadow-xl transition-all space-y-2.5 ${
+                notifType === 'flash'
+                  ? 'bg-[#221338] border-amber-500/50 shadow-amber-500/10'
+                  : notifType === 'medication'
+                  ? 'bg-[#064e3b] border-emerald-500/50 shadow-emerald-500/10'
+                  : notifType === 'offer'
+                  ? 'bg-[#1e1b4b] border-indigo-500/50 shadow-indigo-500/10'
+                  : notifType === 'warning'
+                  ? 'bg-[#451a03] border-amber-600/50'
+                  : 'bg-[#161926] border-sky-500/50'
+              }`}
+            >
+              {/* Badge & Type indicator */}
+              <div className="flex items-center justify-between">
+                <span
+                  className={`text-[9px] font-mono font-black px-2 py-0.5 rounded ${
+                    notifType === 'flash'
+                      ? 'bg-amber-500/20 text-amber-300'
+                      : notifType === 'medication'
+                      ? 'bg-emerald-500/20 text-emerald-300'
+                      : notifType === 'offer'
+                      ? 'bg-indigo-500/20 text-indigo-300'
+                      : 'bg-sky-500/20 text-sky-300'
+                  }`}
+                >
+                  {notifType === 'flash'
+                    ? '⚡ FLASH ALERT'
+                    : notifType === 'medication'
+                    ? 'MEDICATION'
+                    : notifType === 'offer'
+                    ? 'SPECIAL OFFER'
+                    : notifType === 'warning'
+                    ? 'WARNING'
+                    : 'NOTIFICATION'}
+                </span>
+                <span className="text-[10px] text-slate-400">Just now</span>
+              </div>
+
+              {/* Title & Body */}
+              <div className="flex items-start gap-3">
+                {imageUrl && (
+                  <img
+                    src={imageUrl}
+                    alt="Preview"
+                    className="w-12 h-12 rounded-xl object-cover border border-white/20 shrink-0 bg-slate-800"
+                  />
+                )}
+                <div className="space-y-1 flex-1 min-w-0">
+                  <h4 className="text-xs font-bold text-white truncate">
+                    {title || 'PillCare Notification Title'}
+                  </h4>
+                  <p className="text-[11px] text-slate-300 line-clamp-2 leading-tight">
+                    {body || 'Your notification body and health guidance will appear here.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Image banner preview if provided */}
+              {imageUrl && (
+                <div className="w-full h-24 rounded-xl overflow-hidden border border-white/10 mt-1">
+                  <img src={imageUrl} alt="Banner" className="w-full h-full object-cover" />
+                </div>
+              )}
+
+              {/* Action route button */}
+              <div className="flex items-center justify-between pt-1 border-t border-white/10 text-[10px]">
+                <span className="text-slate-400 font-mono">Route: {routeKey}</span>
+                <span className="text-sky-400 font-bold flex items-center gap-1">
+                  Tap to open <ExternalLink className="w-3 h-3" />
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

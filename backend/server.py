@@ -4073,11 +4073,13 @@ async def create_announcement(payload: dict = Body(...), _: None = Depends(requi
     if not title or not body:
         raise HTTPException(400, "Title and body are required")
         
+    image_url = payload.get("image_url") or payload.get("image") or payload.get("img")
     exp = datetime.now(timezone.utc) + timedelta(hours=expires_hours)
     doc = {
         "id": f"ann_{uuid.uuid4().hex[:12]}",
         "title": title,
         "body": body,
+        "image_url": image_url,
         "action_text": payload.get("action_text") or "Explore Now",
         "action_link": action_link,
         "link_url": action_link,
@@ -4117,6 +4119,10 @@ async def update_announcement(ann_id: str, payload: dict = Body(...), _: None = 
         update_data["body"] = str(payload["content"]).strip()
     if "type" in payload:
         update_data["type"] = payload["type"]
+    if "image_url" in payload or "image" in payload or "img" in payload:
+        img = payload.get("image_url") or payload.get("image") or payload.get("img")
+        update_data["image_url"] = img
+        update_data["image"] = img
     if "target_plan" in payload:
         update_data["target_plan"] = payload["target_plan"]
         update_data["target"] = payload["target_plan"]
@@ -4413,12 +4419,15 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     
     # If in_app is enabled, auto-publish as an in-app system announcement
     in_app_published = False
+    image_url = payload.get("image_url") or payload.get("image") or payload.get("img")
+    notif_type = payload.get("type") or "info"
     if "in_app" in channels:
         announcement_doc = {
             "id": f"ann_{uuid.uuid4().hex[:12]}",
             "title": title,
             "body": body,
-            "type": "info",
+            "image_url": image_url,
+            "type": notif_type,
             "target_plan": target_plan,
             "target": target_plan,
             "action_link": payload.get("route_key") or payload.get("link_url") or payload.get("action_link"),
@@ -4451,9 +4460,10 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                 "ttl": 86400,
                 "_displayInForeground": True,
                 "data": {
-                    "type": "broadcast",
+                    "type": notif_type,
                     "title": title,
                     "body": body,
+                    "image_url": image_url,
                     "path": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
                     "routeKey": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
                 },
