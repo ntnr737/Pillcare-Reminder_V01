@@ -267,6 +267,31 @@
 - **Trade-off**: Requires injecting CSS rules that target YouTube mobile DOM classes.
 - **Revisit if**: YouTube significantly updates mobile web class names or introduces strict Content Security Policies that block injected styles.
 
+---
+
+## D-017: Admin Panel Feature Control, Secret Authorization, and Subscription Plan Normalization
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Verification of Admin Panel controls over mobile app features, live telemetry fetching, and subscription plan gating identified critical synchronization issues:
+  1. Next.js Admin Panel had 2 TypeScript compiler errors (`registerTestPushToken` missing export, `'system'` category missing in `SystemReport`).
+  2. `adminFetch` in `admin-panel/src/lib/api/client.ts` omitted the `x-admin-secret` header, causing the backend to reject requests and fall back to mock data.
+  3. Feature flag UI toggles and percentage rollout sliders in `app-control/feature-flags/page.tsx` only modified local React state and never dispatched `PUT /api/admin/feature-flags/{key}` to MongoDB.
+  4. Subscription plan management sent capitalized names (`'Premium'`, `'Basic'`) from `users/page.tsx`, failing exact match against `PLAN_FEATURES` lowercase dictionary keys in `server.py`, causing upgraded users to be capped at free tier limits.
+  5. Bidirectional route mirroring for `/admin` vs `/api/admin` only tracked path strings, causing route collisions across HTTP methods (e.g. GET `/admin/announcements` was omitted because POST `/admin/announcements` registered first).
+- **Options**:
+  1. Maintain mock data fallbacks in the admin UI and require manual MongoDB edits for feature gating.
+  2. Integrate live backend communication:
+     - Inject `x-admin-secret` with automatic `/admin` vs `/api/admin` URL resolution and fallback.
+     - Wire `updateFeatureFlag` into feature flag toggles and rollout sliders with optimistic UI updates and error rollback.
+     - Normalize plan strings to lowercase across client and server (`free`, `basic`, `premium`, `enterprise`), synchronizing `db.subscriptions` and `db.users`.
+     - Update dynamic route aliasing to index on `(path, methods)` tuple.
+- **Chosen**: Option 2.
+- **Why**: Ensures complete bidirectional control from the Next.js admin dashboard to the mobile app runtime. Admins can instantaneously trigger maintenance mode, adjust rollout percentages, modify caregiver alert limits, and upgrade user tiers with instant reflection on connected mobile clients.
+- **Trade-off**: Requires keeping `NEXT_PUBLIC_ADMIN_SECRET` configured in deployment environments.
+- **Revisit if**: Moving to OAuth2 granular RBAC with service account IAM delegation.
+
+
 
 
 

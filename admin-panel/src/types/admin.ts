@@ -321,7 +321,7 @@ export interface AuditLogRecord {
 export interface SystemReport {
   id: string;
   title: string;
-  category: 'users' | 'revenue' | 'medication' | 'ai' | 'security' | 'compliance';
+  category: 'users' | 'revenue' | 'medication' | 'ai' | 'security' | 'compliance' | 'system';
   format: 'CSV' | 'PDF' | 'JSON';
   generatedAt: string;
   generatedBy: string;

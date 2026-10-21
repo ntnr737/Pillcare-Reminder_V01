@@ -31,15 +31,24 @@
   - Live verified video playback, time scrubbing, timer progression, post-pose reflection (`Energized & Alert`), AYUSH clinical insight generation, and habit log persistence on `emulator-5554`.
 - Successfully compiled release APK v1.0.78 (`versionCode: 78`, `versionName: "1.0.78"`).
 - Stream installed `PillCare-v1.0.78-release.apk` to Android emulator (`emulator-5554`) and captured screenshot evidence across all test gates.
+- Completed comprehensive verification and end-to-end QC of Admin Panel feature controls and subscription tier management:
+  - Fixed Next.js Admin Panel build: Resolved 2 TypeScript compiler errors (`registerTestPushToken` export, `'system'` category in `SystemReport`).
+  - Fixed authentication header in `adminFetch`: Injected `x-admin-secret` so production requests authenticate against Cloud Run with live MongoDB telemetry instead of falling back to static mock data.
+  - Implemented dynamic fallback routing in `client.ts` for bidirectional `/admin` and `/api/admin` endpoint resolution.
+  - Connected Feature Flag controls: Wired `updateFeatureFlag` into UI switches and percentage rollout sliders in `app-control/feature-flags/page.tsx` with optimistic UI updates and error rollback.
+  - Normalized subscription plan casing across client and server (`free`, `basic`, `premium`, `enterprise`), synchronizing `db.subscriptions` and `db.users`.
+  - Fixed FastAPI bidirectional route aliasing in `backend/server.py` to index on `(path, methods)` tuple, preventing HTTP method collisions (e.g. GET `/admin/announcements`).
+  - Executed 20/20 end-to-end integration tests verifying live stats, feature flag persistence in MongoDB, subscription tier switching (`free` -> `basic` -> `premium`), per-user feature overrides, and push broadcast delivery.
+  - Verified mobile app feature gating on Android emulator: confirmed `UpgradePrompt` modal triggers on Free tier when attempting to access Pro Dharma capabilities (full yoga library, medication limits, scanner, export).
 
 ### In progress:
 - Awaiting user confirmation to commit and push changes to GitHub `origin/main`.
 
 ### Broken or risky:
-- None. All test gates passed (`npx tsc --noEmit` 0 errors).
+- None. Next.js admin build compiles cleanly (`npm run build` 25/25 routes static export); Python syntax check passes (`py_compile` 0 errors).
 
 ### Next:
-- User testing of notification action buttons on connected hardware.
+- User confirmation to commit and push all changes to GitHub `origin/main`.
 
 ### Do not touch:
 - `frontend/src/lib/notifications.ts`: `BACKGROUND_NOTIFICATION_TASK` must remain defined at module scope (outside React components) or Android headless intents will fail.

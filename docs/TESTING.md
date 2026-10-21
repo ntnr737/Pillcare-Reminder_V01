@@ -145,4 +145,42 @@ To verify the interactive notification and multi-device sync path:
   - Build Telemetry:
     - Support tab footer verified displaying `PillCare App v1.0.78 (Build 78) • Release Build` on `Android OS v37 (Target API 35)`.
 
+---
+
+## 5. Real QC Test Log (Admin Panel Feature Controls & Subscription Plan Gating)
+
+- **Date**: 2026-10-21
+- **Target**: Next.js Web Admin Console (`admin-panel/`), Android Emulator (`emulator-5554`), and Cloud Run backend (`https://pillcare-backend-1082668880575.europe-west1.run.app`)
+- **Execution**: Automated end-to-end integration suite (`qc_admin_features.py` / node runner) + live Android UI inspection
+- **Results**: **20/20 PASS (100%)**
+
+### Test Execution Breakdown:
+1. **Admin Data Retrieval & Live MongoDB Telemetry**:
+   - `GET /admin/stats`: Status 200 OK (`total_users: 44`, `adherence_rate: 4.0%`, `total_doses: 3432`, `doses_taken: 137`, `doses_missed: 18`).
+   - `GET /admin/revenue`: Status 200 OK (`premium_users: 43`, `conversion_rate: 97.7%`, `mrr_estimate: ₹4,257`).
+   - `GET /admin/users?limit=5`: Status 200 OK (returned 5 live user records with active plans, adherence scores, and activity timestamps).
+2. **Feature Flags Remote Control**:
+   - `GET /admin/feature-flags`: Status 200 OK (returned 6 core global flags: `google_login`, `apple_login`, `ai_assistant`, `yoga_recommendations`, `emergency_contacts`, `maintenance_mode`).
+   - `PUT /admin/feature-flags/yoga_recommendations`: Status 200 OK (modified rollout percentage from 80% to 95%).
+   - Verification: Persistence confirmed in MongoDB Atlas via subsequent GET (`rolloutPercentage: 95%`); reverted back to 80%.
+   - Pre-auth configuration: `GET /public/feature-config` returns platform-specific flags (`google_login: true`, `apple_login: false` on Android; `apple_login: true` on iOS; `maintenance_mode: false`).
+3. **Subscription Plans & App Gating Verification**:
+   - **Free Plan**:
+     - Remote assignment: `POST /admin/users/{user_id}/subscription` with `{ plan: "free" }` -> 200 OK.
+     - Mobile app behavior: Capped at 3 medications, 7 days history, 2 doctor appointments, 0 caregiver alerts, weekly AI insights, `yoga_full: false`, `scanner: false`, `export_data: false`.
+     - Live mobile UI verification: Tapping "View" on AI Recommended Yoga on Android emulator triggered `UpgradePrompt` modal ("Pro Dharma feature - Full yoga library - Upgrade to Pro Dharma for full guided routines with video demos").
+   - **Basic (Pro Dharma) Plan**:
+     - Remote assignment: `POST /admin/users/{user_id}/subscription` with `{ plan: "basic", billing_cycle: "monthly" }` -> 200 OK (`plan: "basic"`).
+     - Limits: Expanded to 10 medications, 30 days history, 5 doctor appointments, 2 caregiver alerts, daily AI insights, full yoga library (`yoga_full: true`), scanner enabled, CSV/Excel export enabled (₹30/month).
+   - **Premium (Elite Moksha) Plan**:
+     - Remote assignment: `POST /admin/users/{user_id}/subscription` with `{ plan: "premium", billing_cycle: "annual" }` -> 200 OK (`plan: "premium"`).
+     - Limits: 999 medications, 365 days history, 999 appointments, unlimited caregiver alerts, realtime AI insights, full yoga, full scanner, full export (₹99/month).
+   - **Granular Per-User Feature Overrides**:
+     - `POST /admin/users/{user_id}/features`: Successfully overrode `max_medications` to 50 for a custom user tier.
+     - `DELETE /admin/users/{user_id}/features/max_medications`: Successfully purged custom override, restoring plan default.
+4. **Broadcast Messaging & Announcements**:
+   - `GET /admin/notifications`: Status 200 OK (retrieved delivery history array).
+   - `GET /admin/announcements`: Status 200 OK (retrieved 96 active announcement items).
+
+
 

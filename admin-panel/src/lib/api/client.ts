@@ -29,12 +29,21 @@ import {
 } from '@/lib/data/mockData';
 
 const BACKEND_URL = (process.env.NEXT_PUBLIC_PILLCARE_BACKEND_URL || 'https://pillcare-backend-1082668880575.europe-west1.run.app').replace(/\/$/, '');
+const ADMIN_SECRET = process.env.NEXT_PUBLIC_ADMIN_SECRET || 'PILLCARE_ADMIN_57c43ee5d2d70428a3da2919';
 
 async function adminFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const { token } = getStoredAdminSession();
   const headers = new Headers(init.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  const response = await fetch(`${BACKEND_URL}/api/${path.replace(/^\/+/, '')}`, { ...init, headers, cache: 'no-store', credentials: 'omit' });
+  if (ADMIN_SECRET) headers.set('x-admin-secret', ADMIN_SECRET);
+  const cleanPath = path.replace(/^\/+/, '');
+  const url = `${BACKEND_URL}/${cleanPath.startsWith('admin') ? cleanPath : `api/${cleanPath}`}`;
+  let response = await fetch(url, { ...init, headers, cache: 'no-store', credentials: 'omit' });
+  if ((response.status === 404 || response.status === 405) && cleanPath.startsWith('admin')) {
+    const fallbackUrl = `${BACKEND_URL}/api/${cleanPath}`;
+    const fallbackRes = await fetch(fallbackUrl, { ...init, headers, cache: 'no-store', credentials: 'omit' });
+    if (fallbackRes.ok) response = fallbackRes;
+  }
   if (response.status === 401) throw new Error('Admin session expired. Please sign in again.');
   return response;
 }
@@ -42,7 +51,6 @@ async function adminFetch(path: string, init: RequestInit = {}): Promise<Respons
 export async function fetchExecutiveKPIs(): Promise<{ data: ExecutiveKPIs; source: string; isLive: boolean }> {
   try {
     const res = await adminFetch('admin/stats', {
-      
       next: { revalidate: 30 },
     });
     if (res.ok) {
@@ -50,9 +58,10 @@ export async function fetchExecutiveKPIs(): Promise<{ data: ExecutiveKPIs; sourc
       return {
         data: {
           ...INITIAL_EXECUTIVE_KPIS,
-          dau: json.dau_7d || json.dau || 0,
-          mau: json.mau_30d || json.total_users || 0,
-          remindersCompleted: json.doses_taken || 0,
+          dau: json.active_users_7d || json.dau_7d || json.dau || 0,
+          mau: json.total_users || json.mau_30d || 0,
+          remindersCompleted: json.health?.taken ?? json.doses_taken ?? 0,
+          remindersMissed: json.health?.missed ?? 0,
         },
         source: 'Live GCP Backend + MongoDB',
         isLive: true,
@@ -129,11 +138,25 @@ export async function updateUserSubscription(userId: string, plan: string, billi
     const res = await adminFetch(`admin/users/${encodeURIComponent(userId)}/subscription`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan, billing_cycle: billingCycle, expires_days: 365 }),
+      body: JSON.stringify({ plan: (plan || 'free').toLowerCase(), billing_cycle: billingCycle, expires_days: 365 }),
     });
     return res.ok;
   } catch (e) {
     console.error('Subscription update failed:', e);
+    return false;
+  }
+}
+
+export async function registerTestPushToken(token: string, userId?: string): Promise<boolean> {
+  try {
+    const res = await adminFetch('admin/register-test-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ push_token: token, user_id: userId || 'admin_test_device' }),
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to register test push token:', e);
     return false;
   }
 }

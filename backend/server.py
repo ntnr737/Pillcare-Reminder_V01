@@ -725,7 +725,7 @@ def require_admin(x_admin_secret: str = Header(default=""), authorization: str =
         try:
             token = authorization.removeprefix("Bearer ").strip()
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-            if payload.get("role") == "admin" and payload.get("purpose") == "admin_session":
+            if payload.get("role") == "admin" and (payload.get("purpose") == "admin_session" or payload.get("is_admin") is True):
                 return payload
         except Exception:
             pass
@@ -3576,7 +3576,7 @@ async def get_user_features(
     app_version: str = "",
 ) -> dict:
     sub = await db.subscriptions.find_one({"user_id": user_id}, PROJECTION)
-    plan = sub.get("plan", "free") if sub else "free"
+    plan = (sub.get("plan") or "free").strip().lower() if sub else "free"
     
     if sub and sub.get("expires_at"):
         exp = sub["expires_at"]
@@ -3858,10 +3858,11 @@ async def admin_set_subscription(user_id: str, body: SubscriptionUpdate, _: None
         days = 30
     cycle = body.billing_cycle or ("annual" if days > 180 else "monthly")
     expires = datetime.now(timezone.utc) + timedelta(days=days) if days > 0 else None
+    plan = (body.plan or "free").strip().lower()
     await db.subscriptions.update_one(
         {"user_id": user_id},
         {"$set": {
-            "plan": body.plan,
+            "plan": plan,
             "status": body.status,
             "billing_cycle": cycle,
             "expires_at": expires,
@@ -3870,8 +3871,12 @@ async def admin_set_subscription(user_id: str, body: SubscriptionUpdate, _: None
         }},
         upsert=True
     )
-    await track_event("subscription_changed", user_id, {"plan": body.plan, "billing_cycle": cycle, "by": "admin"})
-    return {"ok": True, "plan": body.plan, "billing_cycle": cycle, "expires_at": expires.isoformat() if expires else None}
+    await db.users.update_many(
+        {"$or": [{"id": user_id}, {"email": user_id}]},
+        {"$set": {"plan": plan, "subscription_status": body.status}}
+    )
+    await track_event("subscription_changed", user_id, {"plan": plan, "billing_cycle": cycle, "by": "admin"})
+    return {"ok": True, "plan": plan, "billing_cycle": cycle, "expires_at": expires.isoformat() if expires else None}
 
 @app.post("/admin/users/{user_id}/features")
 async def admin_set_feature(user_id: str, body: FeatureOverride, _: None = Depends(require_admin)):
@@ -4034,7 +4039,10 @@ async def admin_google_login(request: Request, payload: AdminGoogleAuth):
     # Success - issue 24h Admin JWT token for verified Google user
     await record_admin_attempt(ip, True, email)
     admin_token = pyjwt.encode({
-        "sub": email, "role": "admin",
+        "sub": email,
+        "role": "admin",
+        "is_admin": True,
+        "purpose": "admin_session",
         "name": idinfo.get("name", email),
         "picture": idinfo.get("picture", ""),
         "exp": datetime.now(timezone.utc) + timedelta(hours=24),
@@ -5256,33 +5264,35 @@ async def health_check(request: Request):
 app.include_router(api)
 
 # Alias /admin <-> /api/admin routes bidirectionally for universal frontend & admin client compatibility
-_existing_route_paths = {getattr(r, "path", None) for r in app.routes}
+_existing_routes = {(getattr(r, "path", None), tuple(sorted(getattr(r, "methods", set()) or []))) for r in app.routes}
 for _r in list(app.routes):
     _path = getattr(_r, "path", "")
+    _methods = getattr(_r, "methods", None)
+    _methods_tuple = tuple(sorted(_methods)) if _methods else ()
     if _path.startswith("/admin") and not _path.startswith("/api/admin"):
         _alias = f"/api{_path}"
-        if _alias not in _existing_route_paths:
+        if (_alias, _methods_tuple) not in _existing_routes:
             app.add_api_route(
                 _alias,
                 _r.endpoint,
-                methods=_r.methods,
+                methods=_methods,
                 response_model=getattr(_r, "response_model", None),
                 status_code=getattr(_r, "status_code", 200),
                 dependencies=getattr(_r, "dependencies", None),
             )
-            _existing_route_paths.add(_alias)
+            _existing_routes.add((_alias, _methods_tuple))
     elif _path.startswith("/api/admin"):
         _alias = _path.replace("/api/admin", "/admin", 1)
-        if _alias not in _existing_route_paths:
+        if (_alias, _methods_tuple) not in _existing_routes:
             app.add_api_route(
                 _alias,
                 _r.endpoint,
-                methods=_r.methods,
+                methods=_methods,
                 response_model=getattr(_r, "response_model", None),
                 status_code=getattr(_r, "status_code", 200),
                 dependencies=getattr(_r, "dependencies", None),
             )
-            _existing_route_paths.add(_alias)
+            _existing_routes.add((_alias, _methods_tuple))
 
 @app.middleware("http")
 async def request_size_limit(request: Request, call_next):

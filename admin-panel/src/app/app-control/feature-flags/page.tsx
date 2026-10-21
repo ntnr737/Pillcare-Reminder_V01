@@ -14,7 +14,7 @@ import {
   AlertTriangle,
   Lock,
 } from 'lucide-react';
-import { fetchFeatureFlags } from '@/lib/api/client';
+import { fetchFeatureFlags, updateFeatureFlag } from '@/lib/api/client';
 import { FeatureFlagRecord } from '@/types/admin';
 import { useAuth } from '@/context/AuthContext';
 
@@ -42,14 +42,17 @@ export default function FeatureFlagsPage() {
     }
   };
 
-  const executeToggle = (key: string) => {
+  const executeToggle = async (key: string) => {
+    const targetFlag = flags.find((f) => f.key === key);
+    if (!targetFlag) return;
+    const nextEnabled = !targetFlag.enabled;
+
     setFlags((prev) =>
       prev.map((f) => {
         if (f.key === key) {
-          const updatedState = !f.enabled;
           return {
             ...f,
-            enabled: updatedState,
+            enabled: nextEnabled,
             lastModifiedBy: 'admin@pillcare.in',
             lastModifiedAt: new Date().toISOString(),
           };
@@ -58,14 +61,29 @@ export default function FeatureFlagsPage() {
       })
     );
     setConfirmFlag(null);
-    setToastMsg(`Feature flag ${key} successfully updated & audit logged.`);
+
+    try {
+      await updateFeatureFlag(key, { enabled: nextEnabled });
+      setToastMsg(`✅ Feature flag "${key}" set to ${nextEnabled ? 'ENABLED' : 'DISABLED'} & synced to cloud.`);
+    } catch (err: any) {
+      setFlags((prev) =>
+        prev.map((f) => (f.key === key ? { ...f, enabled: !nextEnabled } : f))
+      );
+      setToastMsg(`❌ Failed to update feature flag "${key}": ${err?.message || 'Network error'}`);
+    }
   };
 
-  const handleRolloutChange = (key: string, percent: number) => {
+  const handleRolloutChange = async (key: string, percent: number) => {
     if (!canEdit) return;
     setFlags((prev) =>
       prev.map((f) => (f.key === key ? { ...f, rolloutPercentage: percent } : f))
     );
+    try {
+      await updateFeatureFlag(key, { rolloutPercentage: percent });
+      setToastMsg(`✅ Rollout for "${key}" updated to ${percent}%.`);
+    } catch (err: any) {
+      setToastMsg(`❌ Failed to update rollout: ${err?.message || 'Network error'}`);
+    }
   };
 
   return (
