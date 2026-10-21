@@ -207,13 +207,20 @@ export default function Treatment() {
         api.listMedications(true), api.listMeasurements(), api.listActivities(),
         api.listMood(), api.measurementCatalog(), api.activityCatalog()
       ]);
-      if (m && Array.isArray(m)) setMeds(m);
-      if (mes && Array.isArray(mes)) setMeasurements(mes);
+      if (m && Array.isArray(m)) {
+        const localMeds = (await get<any[]>(K.medications)) || [];
+        const pendingLocal = localMeds.filter(lm => lm && lm.id && String(lm.id).startsWith("local_"));
+        const serverIds = new Set(m.map(sm => String(sm.id)));
+        const combined = [...m, ...pendingLocal.filter(pl => !serverIds.has(String(pl.id)))];
+        const finalMeds = dedupeMeds(combined);
+        setMeds(finalMeds);
+        await set(K.medications, finalMeds);
+      }
+      if (mes && Array.isArray(mes)) { setMeasurements(mes); set(K.measurements, mes); }
       if (act && Array.isArray(act)) setActivities(act);
-      if (mo && Array.isArray(mo)) setMood(mo);
+      if (mo && Array.isArray(mo)) { setMood(mo); set(K.mood, mo); }
       if (mc?.measurements) setCatalog((prev: any) => ({ ...prev, m: mc.measurements }));
       if (ac?.activities) setCatalog((prev: any) => ({ ...prev, a: ac.activities }));
-      set(K.medications, m); set(K.measurements, mes); set(K.mood, mo);
       resyncReminders().catch(() => {});
     } catch {
       await loadCache();
@@ -345,9 +352,10 @@ export default function Treatment() {
     });
   };
 
-  const activeMedsList = meds.filter(m => m.active !== false && m.completed !== true);
-  const completedMedsList = meds.filter(m => m.active === false || m.completed === true);
-  const refillMedsList = activeMedsList.filter(m => m.stock <= (m.refill_threshold ?? 5) || (m.days_left != null && m.days_left <= 3));
+  const safeMeds = Array.isArray(meds) ? meds : [];
+  const activeMedsList = safeMeds.filter((m: any) => m && m.active !== false && m.completed !== true);
+  const completedMedsList = safeMeds.filter((m: any) => m && (m.active === false || m.completed === true));
+  const refillMedsList = activeMedsList.filter((m: any) => m && (m.stock <= (m.refill_threshold ?? 5) || (m.days_left != null && m.days_left <= 3)));
 
   const fm = dedupeMeds(
     filter === "active"
@@ -356,7 +364,7 @@ export default function Treatment() {
       ? completedMedsList
       : filter === "refill"
       ? refillMedsList
-      : meds
+      : safeMeds
   );
   const OPTS = [
     { icon: "medical-outline", title: t("actionSheet.addMedication", "Add Medication"), body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"), fn: () => { setSheet(false); setAddMed(true); } },
@@ -562,7 +570,11 @@ export default function Treatment() {
           />
 
           {fm.length === 0 ? (
-            <View style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+            <TouchableOpacity
+              activeOpacity={0.8}
+              onPress={() => setSheet(true)}
+              style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
+            >
               <Ionicons name="medical-outline" size={26} color={theme.accent} />
               <Text style={[s.emT, { color: theme.textPrimary }]}>
                 {filter === "refill" ? "No refills needed" : filter === "completed" ? "No completed courses" : t("treatment.noMeds", "No medications")}
@@ -570,7 +582,7 @@ export default function Treatment() {
               <Text style={[s.emS, { color: theme.textSecondary }]}>
                 {filter === "refill" ? "All stocks are sufficient" : filter === "completed" ? "Finished medication courses will appear here" : t("treatment.noMedsDesc", "Tap + to add one")}
               </Text>
-            </View>
+            </TouchableOpacity>
           ) : (
             fm.map(m => {
               const guide = drugFoodGuide?.guides?.find((g: any) =>

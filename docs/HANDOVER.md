@@ -3,6 +3,33 @@
 ## Latest session: 2026-10-21 (model: Antigravity / Gemini 2.5 Pro)
 
 ### Done:
+- **Universal Streak Management & Gamified Competition Engine (v1.0.82 Release)**:
+  - **Comprehensive Workflow Architecture (`docs/STREAK_COMPETITION_WORKFLOW.md`)**:
+    - Defined qualifying triggers: ≥80% daily dose adherence, or hydration (2000 mL) / clinical yoga fallback.
+    - Specified Streak Saver Shield mechanics (1-day freeze protection against accidental misses) and fair-play anti-tamper rules.
+    - Defined tier progression: Health Starter (1-6d) $\to$ Streak Warrior (7-13d, 2x XP) $\to$ Adherence Legend (14-29d, 3x XP) $\to$ Grand Master (30d+, 4x XP).
+  - **Backend Management & Competition Endpoints (`backend/server.py`)**:
+    - `GET /admin/streaks`: Live KPI metrics, competition list, brackets, and full global leaderboard.
+    - `POST /admin/streaks/competitions`: Create/configure seasonal challenges (title, dates, target streak, prize pool).
+    - `POST /admin/streaks/competitions/{id}/toggle`: Toggle competition between active and paused.
+    - `POST /admin/streaks/{user_id}/shield`: Grant/revoke Streak Saver Shield protection for patient support.
+    - `POST /admin/streaks/{user_id}/adjust`: Administrative adjustment of user streak days with mandatory audit reasoning.
+    - `POST /admin/streaks/remind-at-risk`: Dispatches high-priority FCM v1 and Expo push reminders to patients pending daily doses.
+    - Updated `GET /admin/users` to return `streak_days` and `streak_shield`.
+    - Enriched `GET /api/leaderboard` with `active_competition`.
+    - Deployed to Google Cloud Run revision `pillcare-backend-00095-jrg` serving 100% of traffic.
+  - **Admin Panel Enterprise Dashboard (`/engagement/streaks` & `/users`)**:
+    - Created dedicated dashboard at `/engagement/streaks` featuring 4 core KPI cards (Active Streaks, Average Platform Streak, Record Longest Streak, Streaks At Risk Today).
+    - Added Active Competitions Grid with live status toggles, target streaks, and prize badges.
+    - Added Live Competition Leaderboard table with medal rankings, streak badges, adherence %, XP, tier, and quick action buttons (Grant Shield, Adjust Streak).
+    - Added "Streak Competitions" item to `Sidebar.tsx` with active flame badge.
+    - Added Streak column and Streak Saver Shield controls to User Management page (`/users`).
+    - Successfully compiled Next.js static export (26/26 routes) and served on `http://localhost:3000`.
+  - **Mobile App Polish (`CalendarModal.tsx`)**:
+    - Embedded Active Health Competition Banner in the `Streak Ranks` tab with target streak, title, description, and prize pool.
+    - Tested 1-click Daily Streak Saver Shield activation with visual feedback and local persistence.
+    - Bumped app to v1.0.82 (`versionCode: 82`, `versionName: "1.0.82"`).
+    - Built `PillCare-v1.0.82-release.apk` with OpenJDK 17 and verified on `emulator-5554` with visual screenshot proof.
 - Resolved background/closed app push notification delivery failures and fresh install historical notification spam (v1.0.81):
   - **Firebase & Google Services Configuration**: Registered `com.pillcare.reminder` under Firebase project `pillcare-5fcac`, extracted official `google-services.json` to `frontend/` and `frontend/android/app/`, configured `com.google.gms:google-services:4.4.2` in `build.gradle`, and applied plugin `com.google.gms.google-services`.
   - **Guest Token Registration**: Updated `save_push_token_flexible` in `backend/server.py` with `Depends(get_optional_user_id)` to accept unauthenticated guest user device tokens, assigning deterministic guest IDs (`guest_{tokenHash}`) with `is_guest: True` in MongoDB Atlas (`db.users` and `db.profile`).
@@ -62,14 +89,19 @@
     - Added auto-dismiss timer pause logic so the notification does not dismiss while the user has the modal open.
   - Push Notification Integration: Foreground listener in `_layout.tsx` and status bar alert helper in `notifications.ts` wired to preserve `image_url` and notification `type`.
   - Backend API (`backend/server.py`): Updated `create_announcement`, `admin_broadcast_notification`, and `update_announcement` to accept and persist `image_url` and `type` into MongoDB `announcements`.
-  - Android Release Build: Bumped version to `v1.0.80` (`versionCode: 80`), compiled `PillCare-v1.0.80-release.apk` with Gradle, and stream-installed to `emulator-5554`.
-  - Visual QC: Captured browser screenshots of Admin Panel (Notifications, Dashboard, Feature Flags, Financial Command, CMS) and Android emulator screenshots verifying the floating banner card, OS heads-up alert, full detail modal with hero image, action button navigation to `/yoga`, and close button dismissal.
+  - Android Release Build: Bumped version to `v1.0.82` (`versionCode: 82`), compiled `PillCare-v1.0.82-release.apk` with Gradle and OpenJDK 17, and stream-installed to `emulator-5554`.
+  - Visual QC: Captured Android emulator screenshots verifying the floating banner card elevation above tabs, Calendar Streak modal with Active Competition Banner, Top 10 Champions, Streak Saver Shield activation, Today adherence card (100% adherence upon dose taken), Hydration logging, Yoga player guided studio, and Support settings with 120dp breathing room.
+  - Deep QC Fixes:
+    - `treatment.tsx`: Empty state card made interactive `TouchableOpacity` to open medication sheet; added local-first safe merge in `loadServer()` to protect offline pending meds.
+    - `support.tsx`: Increased bottom padding to 120dp to eliminate cramping against tab bar; updated version fallback to `1.0.82 (82)`.
+    - `AddMedicationSheet.tsx` & `PrimaryButton.tsx`: Added auto keyboard dismissal on save and primary button press.
+    - `InAppBottomNotification.tsx`: Elevated floating notification to `bottom: Math.max(insets.bottom + 85, 95)` to eliminate tab bar/FAB overlap.
 
 ### In progress:
-- Awaiting user confirmation to commit and push changes to GitHub `origin/main`.
+- All Deep QC fixes applied and verified on both mobile app and Admin Panel. Awaiting user confirmation to commit and push changes to GitHub `origin/main`.
 
 ### Broken or risky:
-- None. Next.js admin build compiles cleanly (`npm run build` 25/25 routes static export); Python syntax check passes (`py_compile` 0 errors).
+- None. Next.js admin build compiles cleanly (`npm run build` 26/26 routes static export); Python syntax check passes (`py_compile` 0 errors); TypeScript checks pass (`npx tsc --noEmit` 0 errors in both projects).
 
 ### Next:
 - User confirmation to commit and push all changes to GitHub `origin/main`.

@@ -580,8 +580,9 @@ export default function Progress() {
             </View>
             <Text style={[s.cS, { color: theme.textSecondary }]}>
               {(() => {
-                const yogaCount = history.reduce((acc: number, day: any) => {
-                  return acc + (day.entries || []).filter((e: any) => e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga")).length;
+                const safeHistory = Array.isArray(history) ? history : [];
+                const yogaCount = safeHistory.reduce((acc: number, day: any) => {
+                  return acc + ((day && Array.isArray(day.entries)) ? day.entries : []).filter((e: any) => e && (e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga"))).length;
                 }, 0);
                 return yogaCount > 0 ? t("progress.yogaPosesLogged", "{count} yoga poses logged in your history", { count: yogaCount }) : t("progress.clinicalYogaTailored", "Clinical yoga therapy tailored to your medications");
               })()}
@@ -834,15 +835,17 @@ export default function Progress() {
           </View>
 
           {(() => {
-            const filteredDays = history.map((day: any) => {
-              const filteredEntries = (day.entries || []).filter((e: any) => {
-                const isYoga = e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") || e.generic_name?.toLowerCase().includes("yoga") || String(e.id || "").startsWith("yoga_");
+            const safeHistory = Array.isArray(history) ? history : [];
+            const filteredDays = safeHistory.map((day: any) => {
+              const safeEntries = day && Array.isArray(day.entries) ? day.entries : [];
+              const filteredEntries = safeEntries.filter((e: any) => {
+                const isYoga = e && (e.status === "yoga_completed" || e.name?.toLowerCase().includes("yoga") || e.generic_name?.toLowerCase().includes("yoga") || String(e.id || "").startsWith("yoga_"));
                 if (listFilter === "yoga") return isYoga;
                 if (listFilter === "meds") return !isYoga;
                 return true;
               });
               return { ...day, entries: filteredEntries };
-            }).filter((day: any) => day.entries.length > 0);
+            }).filter((day: any) => day && Array.isArray(day.entries) && day.entries.length > 0);
 
             if (filteredDays.length === 0) {
               return (

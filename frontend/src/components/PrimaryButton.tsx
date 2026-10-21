@@ -1,5 +1,5 @@
 import React from "react";
-import { Text, TouchableOpacity, StyleSheet, ActivityIndicator, View, StyleProp, ViewStyle } from "react-native";
+import { Text, TouchableOpacity, StyleSheet, ActivityIndicator, View, StyleProp, ViewStyle, Keyboard } from "react-native";
 import { theme } from "@/src/lib/theme";
 
 type Props = {
@@ -19,7 +19,12 @@ export function PrimaryButton({ label, onPress, testID, variant = "primary", loa
   return (
     <TouchableOpacity
       testID={testID}
-      onPress={onPress}
+      onPress={() => {
+        try {
+          Keyboard.dismiss();
+        } catch {}
+        onPress();
+      }}
       disabled={disabled || loading}
       activeOpacity={0.85}
       accessibilityRole="button"

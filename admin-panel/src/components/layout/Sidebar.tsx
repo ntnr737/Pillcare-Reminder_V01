@@ -23,6 +23,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
+  Flame,
 } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 
@@ -45,6 +46,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: 'Medication Catalog', href: '/app-control/medication', icon: Pill },
   { name: 'AI / Groq Telemetry', href: '/ai/groq', icon: Sparkles, badge: 'Llama 3.3', badgeColor: 'bg-amber-500/20 text-amber-400' },
   { name: 'Notification Center', href: '/engagement/notifications', icon: Bell },
+  { name: 'Streak Competitions', href: '/engagement/streaks', icon: Flame, badge: 'Active', badgeColor: 'bg-amber-500/20 text-amber-400' },
   { name: 'CMS & Announcements', href: '/content', icon: FileText },
   { name: 'Infrastructure Health', href: '/system/infrastructure', icon: Server, badge: '100%', badgeColor: 'bg-emerald-500/20 text-emerald-400' },
   { name: 'Security Center', href: '/security', icon: ShieldCheck, badge: '2FA', badgeColor: 'bg-cyan-500/20 text-cyan-400' },

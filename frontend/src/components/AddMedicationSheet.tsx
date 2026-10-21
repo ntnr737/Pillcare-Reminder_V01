@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView, Alert } from "react-native";
+import { Modal, View, Text, TextInput, ScrollView, TouchableOpacity, StyleSheet, Platform, KeyboardAvoidingView, Alert, Keyboard } from "react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/src/context/ThemeContext";
@@ -75,6 +75,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   };
 
   const save = async () => {
+    Keyboard.dismiss();
     if (!name.trim()) return;
     setSaving(true);
     const payload = {

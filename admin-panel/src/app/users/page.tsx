@@ -22,8 +22,10 @@ import {
   Clock,
   X,
   CreditCard,
+  Flame,
+  ShieldCheck,
 } from 'lucide-react';
-import { fetchPillCareUsers, updateUserSubscription } from '@/lib/api/client';
+import { fetchPillCareUsers, updateUserSubscription, grantStreakShield } from '@/lib/api/client';
 import { PillCareUserRecord } from '@/types/admin';
 import { useAuth } from '@/context/AuthContext';
 
@@ -84,6 +86,24 @@ export default function UsersPage() {
       })
     );
     setToastMsg(`User status updated.`);
+  };
+
+  const handleToggleShield = async (userId: string, currentState: boolean) => {
+    if (!canEdit) {
+      setToastMsg('Permission Denied: users.edit authorization required.');
+      return;
+    }
+    const nextState = !currentState;
+    const ok = await grantStreakShield(userId, nextState);
+    if (ok) {
+      setUsers((prev) =>
+        prev.map((u) => (u.id === userId ? { ...u, streakShield: nextState } : u))
+      );
+      if (selectedUser && selectedUser.id === userId) {
+        setSelectedUser({ ...selectedUser, streakShield: nextState });
+      }
+      setToastMsg(`Streak Saver Shield ${nextState ? 'ACTIVATED' : 'REVOKED'}.`);
+    }
   };
 
   const handleDeleteUserCascade = (userId: string) => {
@@ -162,6 +182,7 @@ export default function UsersPage() {
                 <th className="py-3.5 px-4">Patient Name / Email</th>
                 <th className="py-3.5 px-4">Plan Tier</th>
                 <th className="py-3.5 px-4">Status</th>
+                <th className="py-3.5 px-4">Streak</th>
                 <th className="py-3.5 px-4">Adherence</th>
                 <th className="py-3.5 px-4">Device & App</th>
                 <th className="py-3.5 px-4">Location</th>
@@ -207,6 +228,17 @@ export default function UsersPage() {
                         Suspended
                       </span>
                     )}
+                  </td>
+                  <td className="py-3.5 px-4">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 font-bold border border-amber-500/20 font-mono text-[11px]">
+                      <Flame className="w-3 h-3 text-amber-400 fill-amber-400" />
+                      {u.streakDays ?? 0}d
+                      {u.streakShield && (
+                        <span title="Streak Shield Active">
+                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className="py-3.5 px-4 font-mono font-bold text-emerald-400">{u.adherenceScore}%</td>
                   <td className="py-3.5 px-4">
@@ -258,7 +290,7 @@ export default function UsersPage() {
             </div>
 
             {/* Profile Overview */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
               <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
                 <span className="text-slate-400 text-[10px] block">Current Plan</span>
                 <span className="font-bold text-sky-400 text-sm">{selectedUser.plan}</span>
@@ -268,6 +300,13 @@ export default function UsersPage() {
                 <span className="font-bold text-emerald-400 text-sm">{selectedUser.adherenceScore}%</span>
               </div>
               <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+                <span className="text-slate-400 text-[10px] block">Streak Days</span>
+                <span className="font-bold text-amber-400 text-sm flex items-center gap-1">
+                  <Flame className="w-3.5 h-3.5 fill-amber-400" />
+                  {selectedUser.streakDays ?? 0}d
+                </span>
+              </div>
+              <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
                 <span className="text-slate-400 text-[10px] block">Lifetime Value</span>
                 <span className="font-bold text-purple-400 text-sm">₹{selectedUser.ltvValueINR}</span>
               </div>
@@ -275,6 +314,35 @@ export default function UsersPage() {
                 <span className="text-slate-400 text-[10px] block">Reminders Count</span>
                 <span className="font-bold text-white text-sm">{selectedUser.remindersCount} Meds</span>
               </div>
+            </div>
+
+            {/* Streak Shield Action */}
+            <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-white">Streak Saver Shield</div>
+                  <div className="text-[11px] text-slate-400">
+                    Status: {selectedUser.streakShield ? (
+                      <span className="text-emerald-400 font-bold">PROTECTED (Shield Active)</span>
+                    ) : (
+                      <span className="text-slate-400">Standard (No Active Freeze)</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => handleToggleShield(selectedUser.id, Boolean(selectedUser.streakShield))}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
+                  selectedUser.streakShield
+                    ? 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white'
+                    : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/30'
+                }`}
+              >
+                {selectedUser.streakShield ? 'Revoke Shield' : 'Grant Streak Shield'}
+              </button>
             </div>
 
             {/* Subscription Upgrade Buttons */}

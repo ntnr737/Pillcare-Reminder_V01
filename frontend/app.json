@@ -2,7 +2,7 @@
   "expo": {
     "name": "PillCare Reminder",
     "slug": "pillcare-reminder",
-    "version": "1.0.81",
+    "version": "1.0.82",
     "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "pillcare",
@@ -37,7 +37,7 @@
       ],
       "jsEngine": "hermes",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 81
+      "versionCode": 82
     },
     "web": {
       "bundler": "metro",

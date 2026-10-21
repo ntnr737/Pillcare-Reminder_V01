@@ -14,7 +14,7 @@
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { api, localDateStr } from "./api";
-import { set, K } from "./store";
+import { get, set, K } from "./store";
 
 const QUEUE_KEY = "pc6_write_queue";
 const TAKEN_KEY_PREFIX = "pc6_taken_doses_"; // persistent taken dose IDs per date
@@ -206,27 +206,40 @@ async function getQueue(): Promise<WriteItem[]> {
   } catch { return []; }
 }
 
+let writeQueueLock: Promise<any> = Promise.resolve();
+
 async function removeFromQueue(id: string): Promise<void> {
-  try {
-    const q = await getQueue();
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(q.filter(i => i.id !== id)));
-  } catch {}
+  return new Promise((resolve) => {
+    writeQueueLock = writeQueueLock.then(async () => {
+      try {
+        const q = await getQueue();
+        await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(q.filter(i => i.id !== id)));
+      } catch {}
+      resolve();
+    });
+  });
 }
 
 export async function enqueueWrite(type: string, payload: any, ownerId?: string): Promise<string> {
-  const currentUser = await getStoredUser();
-  const activeOwner = ownerId || currentUser?.id || "guest";
-  const itemKey = payload?.id ? `${type}_${payload.id}` : null;
-  const id = itemKey || `${Date.now()}_${Math.random()}`;
-  try {
-    let q = await getQueue();
-    if (itemKey) {
-      q = q.filter(i => i.id !== itemKey);
-    }
-    q.push({ id, ts: Date.now(), type, payload, owner_id: activeOwner });
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(q));
-  } catch {}
-  return id;
+  return new Promise((resolve) => {
+    writeQueueLock = writeQueueLock.then(async () => {
+      try {
+        const currentUser = await getStoredUser();
+        const activeOwner = ownerId || currentUser?.id || "guest";
+        const itemKey = payload?.id ? `${type}_${payload.id}` : null;
+        const id = itemKey || `${Date.now()}_${Math.random()}`;
+        let q = await getQueue();
+        if (itemKey) {
+          q = q.filter(i => i.id !== itemKey);
+        }
+        q.push({ id, ts: Date.now(), type, payload, owner_id: activeOwner });
+        await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+        resolve(id);
+      } catch {
+        resolve(`${Date.now()}`);
+      }
+    });
+  });
 }
 
 /**
@@ -369,7 +382,11 @@ export async function bootstrapUserDataset(targetDate?: string): Promise<{
       await set(K.profile, data.profile);
     }
     if (Array.isArray(data.medications)) {
-      await set(K.medications, data.medications);
+      const localMeds = (await get<any[]>(K.medications)) || [];
+      const pendingLocal = localMeds.filter((lm: any) => lm && lm.id && String(lm.id).startsWith("local_"));
+      const serverIds = new Set(data.medications.map((sm: any) => String(sm.id)));
+      const mergedMeds = [...data.medications, ...pendingLocal.filter((pl: any) => !serverIds.has(String(pl.id)))];
+      await set(K.medications, mergedMeds);
     }
     let mergedDoses = data.doses || [];
     if (Array.isArray(data.doses)) {

@@ -355,6 +355,43 @@
 - **Trade-off**: Requires Cloud Run service account or environment credentials to maintain `firebase.messaging` IAM permission.
 - **Revisit if**: Introducing localized push payload translations.
 
+## D-020: Universal Streak Management, Gamified Competition Engine, and Admin Panel Control Dashboard
+- **Date**: 2026-10-21
+- **Status**: Accepted & QC Verified (v1.0.82)
+- **Context**:
+  - Sustained medication adherence and hydration habit-building require gamified feedback loops and healthy peer competitions.
+  - The Admin panel lacked streak visibility, competition lifecycle management, and patient habit retention telemetry.
+  - The mobile app had baseline streak tracking but lacked active challenge awareness, competition banners, and synchronized admin controls.
+- **Solution Architecture**:
+  1. **Comprehensive Workflow Specification (`docs/STREAK_COMPETITION_WORKFLOW.md`)**:
+     - Standardized qualifying triggers (≥80% dose adherence or hydration/yoga fallback).
+     - Formalized Streak Saver Shield mechanics and fair-play anti-tamper validation.
+     - Defined tier progression (Health Starter $\to$ Streak Warrior $\to$ Adherence Legend $\to$ Grand Master Champion) with XP multipliers.
+  2. **Backend Management & Competition Endpoints (`backend/server.py`)**:
+     - `GET /admin/streaks`: Real-time active streaks, average streak length, record streak, at-risk count, bracket distribution, active competitions, and top 25 live leaderboard champions.
+     - `POST /admin/streaks/competitions`: Create, edit, and schedule seasonal competitions in `db.streak_competitions`.
+     - `POST /admin/streaks/competitions/{id}/toggle`: Instant activation/pause controls.
+     - `POST /admin/streaks/{user_id}/shield`: Grant or revoke 1-day Streak Saver Shields for patient support.
+     - `POST /admin/streaks/{user_id}/adjust`: Administrative adjustment of user streak days with mandatory audit reasoning.
+     - `POST /admin/streaks/remind-at-risk`: Dispatches high-priority FCM v1 and Expo push reminders to patients pending daily doses.
+     - Updated `GET /admin/users` to return `streak_days` and `streak_shield`.
+     - Enriched `GET /api/leaderboard` with `active_competition`.
+  3. **Admin Panel Enterprise UI (`/engagement/streaks` & `/users`)**:
+     - 4 high-level KPI cards: Active Streaks, Average Platform Streak, Record Streak, Streaks At Risk Today.
+     - Active Competitions Grid with live status toggles, target streaks, and prize badges.
+     - Live Competition Leaderboard table with rank medals, streak badges, adherence %, XP, tier, and quick action buttons.
+     - Added "Streak Competitions" item to `Sidebar.tsx` with live badge.
+     - Added Streak column and Streak Saver Shield controls to User Management page (`/users`).
+  4. **Mobile App Polish (`CalendarModal.tsx`)**:
+     - Embedded Active Health Competition Banner in the `Streak Ranks` tab with target streak, title, description, and prize pool.
+     - Tested 1-click Daily Streak Saver Shield activation with visual feedback and local persistence.
+- **Verification**:
+  - Live backend endpoints verified with HTTP 200 responses on Cloud Run revision `pillcare-backend-00095-jrg`.
+  - Admin panel Next.js static export compiled cleanly (26/26 routes) and served on `http://localhost:3000`.
+  - Android emulator verification on `PillCare-v1.0.82-release.apk` with visual screenshot proof captured in artifacts.
+- **Trade-off**: Requires periodic background cron job or admin trigger for at-risk notifications before evening cutoff.
+- **Revisit if**: Introducing team-based / family cohort streak competitions.
+
 
 
 

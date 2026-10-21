@@ -247,7 +247,7 @@ export function InAppBottomNotification({
         style={[
           s.floatingContainer,
           {
-            bottom: Math.max(insets.bottom + 65, 80),
+            bottom: Math.max(insets.bottom + 85, 95),
             transform: [{ translateY }],
             opacity,
             backgroundColor: theme.bg,

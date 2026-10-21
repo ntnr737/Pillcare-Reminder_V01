@@ -256,6 +256,44 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               {activeTab === "leaderboard" ? (
                 <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14, paddingBottom: 10 }}>
                   
+                  {/* Active Competition Banner */}
+                  {leaderboardData?.active_competition && (
+                    <View style={[s.competitionBanner, { backgroundColor: isDark ? "rgba(245,158,11,0.15)" : "#FEF3C7", borderColor: "#F59E0B" }]}>
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                          <Ionicons name="trophy" size={16} color="#D97706" />
+                          <Text style={{ fontSize: 11, fontWeight: "900", color: "#D97706", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            Active Health Competition
+                          </Text>
+                        </View>
+                        <View style={{ backgroundColor: "#F59E0B", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 }}>
+                          <Text style={{ fontSize: 9, fontWeight: "800", color: "#fff" }}>
+                            {leaderboardData.active_competition.target_streak}-DAY SPRINT
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={{ fontSize: 14, fontWeight: "800", color: theme.textPrimary, marginTop: 4 }}>
+                        {leaderboardData.active_competition.title}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 15, marginTop: 2 }}>
+                        {leaderboardData.active_competition.description}
+                      </Text>
+
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 6, paddingTop: 6, borderTopWidth: 1, borderTopColor: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.06)" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Ionicons name="gift" size={13} color="#D97706" />
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#D97706" }}>
+                            {leaderboardData.active_competition.prize_pool}
+                          </Text>
+                        </View>
+                        <Text style={{ fontSize: 10, color: theme.textSecondary, fontWeight: "600" }}>
+                          Badge: {leaderboardData.active_competition.badge_reward}
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+
                   {/* Hero Rank Card */}
                   <View style={[s.heroCard, { backgroundColor: isDark ? "rgba(245,158,11,0.12)" : "rgba(245,158,11,0.08)", borderColor: "#F59E0B" }]}>
                     <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -567,6 +605,11 @@ const s = StyleSheet.create({
   tabText: {
     fontSize: 12,
     fontWeight: "700",
+  },
+  competitionBanner: {
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1.5,
   },
   heroCard: {
     borderRadius: 16,

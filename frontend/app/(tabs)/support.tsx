@@ -547,7 +547,7 @@ export default function Support() {
             </Text>
           </View>
           <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "500" }}>
-            {`PillCare App v${Constants.expoConfig?.version || "1.0.78"} (Build ${Constants.expoConfig?.android?.versionCode || 78}) • Release Build`}
+            {`PillCare App v${Constants.expoConfig?.version || "1.0.82"} (Build ${Constants.expoConfig?.android?.versionCode || 82}) • Release Build`}
           </Text>
         </View>
       </ScrollView>
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
     height: 42,
   },
   searchI: { flex: 1, paddingHorizontal: 10, fontSize: 13 },
-  body: { paddingHorizontal: 16, paddingBottom: 40 },
+  body: { paddingHorizontal: 16, paddingBottom: 120 },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 18 },
   qCard: {
     width: "48%",
