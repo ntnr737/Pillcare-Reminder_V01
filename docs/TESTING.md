@@ -215,6 +215,39 @@ To verify the interactive notification and multi-device sync path:
    - Financial Command (`/admin/finance/`): 200 OK, revenue, CAC, LTV (`qc_admin_finance.png`).
    - Content Management (`/admin/content/`): 200 OK, live flash announcement list (`qc_admin_cms.png`).
 
+---
+
+## 2026-10-21: Background Push Notification Delivery (App Closed), Guest Token Registration & Fresh Install Isolation (v1.0.81 Release QC)
+- **Target**: Android App (`com.pillcare.reminder` v1.0.81, `versionCode: 81`), Cloud Run backend (`pillcare-backend`), Google Cloud FCM v1 API, and MongoDB Atlas (`pillcare`).
+- **Device**: Android Emulator `emulator-5554` (Android 14 / API 34+).
+- **Execution**: Live OS notification shade inspection, process lifecycle termination (`am kill`), fresh install data wipe (`pm clear`), and direct FCM v1 verification.
+- **Results**: **10/10 PASS (100%)**
+
+### Test Execution Breakdown:
+1. **Google Services & FCM Initialization**:
+   - Registered `com.pillcare.reminder` in Firebase project `pillcare-5fcac`.
+   - Applied `google-services.json` and `com.google.gms.google-services` plugin in `build.gradle`.
+   - Verified logcat on app boot: `PillCare Registered Tokens: { expoToken: 'ExponentPushToken[ms67bjLip5Ym3nNWQF41vp]', deviceToken: 'd_vFQGhOQiCjyK81Wak5ty:APA91bHKDaKznlTsyFLGI8BxWUuz...' }`.
+   - Confirmed both tokens saved to MongoDB Atlas `db.users` and `db.profile` under guest user profile with `is_guest: false/true`.
+2. **Push Delivery to Closed / Killed App**:
+   - Forced app to background and killed process via `am kill com.pillcare.reminder`. Confirmed launcher focused and app not running.
+   - Sent broadcast from `/admin/notify` with `title: "⚡ Evening Flash Alert: PillCare Hydration"`, `channels: ["push"]`.
+   - Backend obtained Google OAuth2 FCM access token (`https://www.googleapis.com/auth/firebase.messaging`) and dispatched directly to `https://fcm.googleapis.com/v1/projects/pillcare-5fcac/messages:send`.
+   - Result: `Delivered to 1 active device(s)` (`sent: 1`).
+   - Android OS Notification Shade: Verified native heads-up notification with `tag=FCM-Notification:45762721`, `channel=broadcasts`, `importance=5 (MAX)`, app icon, and sound.
+   - Captured screenshot: `qc_closed_app_push_delivered.png`.
+3. **In-App Flash Alert While App is Open**:
+   - Dispatched live flash announcement with hero image and route `/yoga`.
+   - Verified floating bottom banner appeared immediately with amber `⚡ FLASH ALERT` badge, text, and 44x44 image thumbnail (`qc_open_app_flash_received.png`).
+4. **Fresh Install 5-Day Historical Push Spam Isolation**:
+   - Wiped app storage via `pm clear com.pillcare.reminder` to simulate a user installing after 5 days.
+   - Launched app: Confirmed onboarding screen displayed with ZERO stale popups and ZERO historical notification sounds (`qc_fresh_install_no_stale_alerts.png`).
+   - Completed onboarding and landed on Today tab: Verified completely clean screen (`qc_fresh_install_today_clean.png`). All 100+ past announcements were suppressed.
+   - Dispatched a new announcement (`"🎉 Welcome to PillCare: Fresh Install Verified"`): Confirmed it was received and rendered immediately (`qc_fresh_install_new_alert_received.png`).
+5. **Admin Panel Delivery Tracking**:
+   - Verified `/admin/notifications` returns live campaign records with accurate delivery counts (`sent: 1`, `failed: 4/6` for inactive/simulated test devices).
+
+
 
 
 

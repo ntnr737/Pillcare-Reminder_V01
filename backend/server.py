@@ -932,9 +932,9 @@ async def logout(authorization: str = Header(default="")):
 @app.post("/api/register-push-token")
 @app.post("/register-push-token")
 @api.post("/profile/push-token")
-async def save_push_token_flexible(payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
-    """Flexible push token registration supporting Expo, FCM, and APNs for authenticated user."""
-    token = (
+async def save_push_token_flexible(payload: dict = Body(...), user_id: Optional[str] = Depends(get_optional_user_id)):
+    """Flexible push token registration supporting Expo, FCM, and APNs for authenticated and guest users."""
+    raw_token = (
         payload.get("token") or
         payload.get("push_token") or
         payload.get("expo_token") or
@@ -942,19 +942,29 @@ async def save_push_token_flexible(payload: dict = Body(...), user_id: str = Dep
         payload.get("device_token") or
         ""
     ).strip()
-    
-    if not token or len(token) < 5:
+
+    fcm_token = (payload.get("fcm_token") or payload.get("device_token") or ("" if raw_token.startswith("ExponentPushToken") else raw_token)).strip()
+    expo_token = (payload.get("expo_push_token") or payload.get("expo_token") or (raw_token if raw_token.startswith("ExponentPushToken") else "")).strip()
+    primary_token = fcm_token or expo_token or raw_token
+
+    if not primary_token or len(primary_token) < 5:
         raise HTTPException(400, "ERR_4002: Invalid or empty push token")
-        
+
     now = datetime.now(timezone.utc)
+    is_guest = False
+    if not user_id:
+        user_id = payload.get("user_id") or payload.get("device_id") or f"guest_{hashlib.md5(primary_token.encode()).hexdigest()[:12]}"
+        is_guest = True
+
     update_doc = {
-        "push_token": token,
-        "expo_push_token": token if token.startswith("ExponentPushToken") else token,
-        "fcm_token": token if not token.startswith("ExponentPushToken") else token,
-        "device_token": token,
-        "push_token_updated": now
+        "push_token": primary_token,
+        "expo_push_token": expo_token,
+        "fcm_token": fcm_token,
+        "device_token": fcm_token or primary_token,
+        "push_token_updated": now,
+        "is_guest": is_guest
     }
-    
+
     await db.users.update_one(
         {"id": user_id},
         {"$set": update_doc},
@@ -965,7 +975,7 @@ async def save_push_token_flexible(payload: dict = Body(...), user_id: str = Dep
         {"$set": update_doc},
         upsert=True
     )
-    return {"ok": True, "token": token, "user_id": user_id}
+    return {"ok": True, "token": primary_token, "fcm_token": fcm_token, "expo_token": expo_token, "user_id": user_id, "is_guest": is_guest}
 
 @api.post("/profile/caregiver")
 async def update_caregiver(
@@ -4443,48 +4453,109 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     
     sent = 0
     failed = 0
-    
+
     if "push" in channels and tokens:
         import httpx
-        batch_size = 100
-        for i in range(0, len(tokens), batch_size):
-            batch = tokens[i:i + batch_size]
-            messages = [{
-                "to": token,
-                "title": title,
-                "body": body,
-                "sound": "default",
-                "priority": "high",
-                "channelId": "default",
-                "badge": 1,
-                "ttl": 86400,
-                "_displayInForeground": True,
-                "data": {
-                    "type": notif_type,
-                    "title": title,
-                    "body": body,
-                    "image_url": image_url,
-                    "path": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
-                    "routeKey": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
-                },
-            } for token in batch]
-            
+        expo_tokens = [t for t in tokens if t.startswith("ExponentPushToken")]
+        fcm_tokens = [t for t in tokens if not t.startswith("ExponentPushToken") and not t.startswith("sim_")]
+
+        # 1. Send native FCM v1 tokens directly via Google Cloud FCM v1 API
+        if fcm_tokens:
             try:
-                async with httpx.AsyncClient(timeout=30) as client:
-                    resp = await client.post(
-                        "https://exp.host/--/api/v2/push/send",
-                        json=messages,
-                        headers={"Content-Type": "application/json"},
-                    )
-                    data = resp.json()
-                    for item in data.get("data", []):
-                        if item.get("status") == "ok":
+                import google.auth
+                from google.auth.transport.requests import Request as GoogleAuthRequest
+                credentials, project_id = google.auth.default(scopes=["https://www.googleapis.com/auth/firebase.messaging"])
+                credentials.refresh(GoogleAuthRequest())
+                fcm_access_token = credentials.token
+
+                async with httpx.AsyncClient(timeout=15) as client:
+                    for fcm_tok in fcm_tokens:
+                        fcm_payload = {
+                            "message": {
+                                "token": fcm_tok,
+                                "notification": {
+                                    "title": title,
+                                    "body": body,
+                                },
+                                "android": {
+                                    "priority": "HIGH",
+                                    "notification": {
+                                        "channel_id": "broadcasts",
+                                        "sound": "default",
+                                        "notification_priority": "PRIORITY_MAX",
+                                        "visibility": "PUBLIC"
+                                    }
+                                },
+                                "data": {
+                                    "type": str(notif_type),
+                                    "title": str(title),
+                                    "body": str(body),
+                                    "image_url": str(image_url or ""),
+                                    "path": str(payload.get("route_key") or payload.get("link_url") or payload.get("path") or ""),
+                                }
+                            }
+                        }
+                        if image_url:
+                            fcm_payload["message"]["notification"]["image"] = image_url
+
+                        fcm_resp = await client.post(
+                            "https://fcm.googleapis.com/v1/projects/pillcare-5fcac/messages:send",
+                            json=fcm_payload,
+                            headers={
+                                "Authorization": f"Bearer {fcm_access_token}",
+                                "Content-Type": "application/json"
+                            }
+                        )
+                        if fcm_resp.status_code == 200:
                             sent += 1
                         else:
+                            logger.warning(f"FCM direct send failed ({fcm_resp.status_code}): {fcm_resp.text}")
                             failed += 1
-            except Exception as e:
-                logger.warning(f"Push batch failed: {e}")
-                failed += len(batch)
+            except Exception as fcm_err:
+                logger.error(f"FCM direct dispatch exception: {fcm_err}")
+                failed += len(fcm_tokens)
+
+        # 2. Send Expo push tokens via Expo's push service
+        if expo_tokens:
+            batch_size = 100
+            for i in range(0, len(expo_tokens), batch_size):
+                batch = expo_tokens[i:i + batch_size]
+                messages = [{
+                    "to": token,
+                    "title": title,
+                    "body": body,
+                    "sound": "default",
+                    "priority": "high",
+                    "channelId": "broadcasts",
+                    "badge": 1,
+                    "ttl": 86400,
+                    "_displayInForeground": True,
+                    "data": {
+                        "type": notif_type,
+                        "title": title,
+                        "body": body,
+                        "image_url": image_url,
+                        "path": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
+                        "routeKey": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
+                    },
+                } for token in batch]
+
+                try:
+                    async with httpx.AsyncClient(timeout=30) as client:
+                        resp = await client.post(
+                            "https://exp.host/--/api/v2/push/send",
+                            json=messages,
+                            headers={"Content-Type": "application/json"},
+                        )
+                        data = resp.json()
+                        for item in data.get("data", []):
+                            if item.get("status") == "ok":
+                                sent += 1
+                            else:
+                                failed += 1
+                except Exception as e:
+                    logger.warning(f"Expo push batch failed: {e}")
+                    failed += len(batch)
     
     campaign_id = f"cmp_{uuid.uuid4().hex[:12]}"
     log_doc = {

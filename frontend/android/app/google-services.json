@@ -1,0 +1,88 @@
+{
+  "project_info": {
+    "project_number": "1082668880575",
+    "project_id": "pillcare-5fcac",
+    "storage_bucket": "pillcare-5fcac.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1082668880575:android:c392585590311b690bec0a",
+        "android_client_info": {
+          "package_name": "com.pillcare.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDama0CsP27asVg9rK3A4H09csdeZ8Bokg"
+        },
+        {
+          "current_key": "AIzaSyBbIw8lc9_C_k2JAc4QA9dN9SOEyyZcEvQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1082668880575-og9vm3sduk1g7dlj8g17in3r1cicnbt6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.pillcare.reminder"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1082668880575:android:85f23efb2ad1a6d90bec0a",
+        "android_client_info": {
+          "package_name": "com.pillcare.reminder"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDama0CsP27asVg9rK3A4H09csdeZ8Bokg"
+        },
+        {
+          "current_key": "AIzaSyBbIw8lc9_C_k2JAc4QA9dN9SOEyyZcEvQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1082668880575-lfoqgnieodb52b5ges1vppiv92ifbioc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1082668880575-og9vm3sduk1g7dlj8g17in3r1cicnbt6.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.pillcare.reminder"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -43,7 +43,21 @@ export const K = {
   appointments: "appointments",
   writeQueue: "write_queue",
   seenNotifIds: "seen_notif_ids",
+  firstInstalledAt: "first_installed_at",
 };
+
+export async function getAppInstallTimestamp(): Promise<number> {
+  try {
+    let ts = await get<number>(K.firstInstalledAt);
+    if (!ts) {
+      ts = Date.now();
+      await set(K.firstInstalledAt, ts);
+    }
+    return ts;
+  } catch {
+    return Date.now();
+  }
+}
 
 export async function markNotifSeen(id: string): Promise<void> {
   if (!id) return;

@@ -15,8 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../lib/api";
-import { getSeenNotifIds, markNotifSeen } from "../lib/store";
-import { sendSystemNotificationBarAlert } from "../lib/notifications";
+import { getSeenNotifIds, markNotifSeen, getAppInstallTimestamp } from "../lib/store";
 
 export interface InAppNotificationPayload {
   id?: string;
@@ -92,9 +91,35 @@ export function InAppBottomNotification({
     try {
       const data = await api.getActiveAnnouncements();
       if (Array.isArray(data) && data.length > 0) {
-        // FL-02: Iterate active announcement queue and evaluate the first unread active item
         const seenIds = await getSeenNotifIds();
-        const unreadItem = data.find((item: any) => item && item.id && !seenIds.includes(item.id));
+        const installTs = await getAppInstallTimestamp();
+        const now = Date.now();
+
+        // Notification Lifecycle Rules:
+        // 1. Announcements created before app was installed (beyond 5m grace) are auto-marked seen so new users are never spammed with historic alerts
+        // 2. Flash alerts (⚡) have a strict 4-hour lifespan; stale flash alerts are auto-marked seen
+        let unreadItem: any = null;
+
+        for (const item of data) {
+          if (!item || !item.id || seenIds.includes(item.id)) continue;
+
+          const createdTs = item.created_at ? new Date(item.created_at).getTime() : now;
+
+          // If created before user installed the app, mark as seen and skip
+          if (createdTs < installTs - 5 * 60 * 1000) {
+            markNotifSeen(item.id).catch(() => {});
+            continue;
+          }
+
+          // If flash alert is older than 4 hours, mark as expired/seen and skip
+          if (item.type === "flash" && now - createdTs > 4 * 3600 * 1000) {
+            markNotifSeen(item.id).catch(() => {});
+            continue;
+          }
+
+          unreadItem = item;
+          break;
+        }
 
         if (!unreadItem || !unreadItem.id) {
           setServerNotif(null);
@@ -114,17 +139,6 @@ export function InAppBottomNotification({
           link_url: unreadItem.link_url,
           image_url: imageUrl,
         });
-
-        // Dispatch live OS status bar push notification alert ONCE per unique ID as fallback
-        if (notifId && !notifiedIdsRef.current.has(notifId)) {
-          notifiedIdsRef.current.add(notifId);
-          sendSystemNotificationBarAlert(titleText, bodyText, {
-            id: notifId,
-            type: unreadItem.type || "offer",
-            link_url: unreadItem.link_url,
-            image_url: imageUrl,
-          }).catch(() => {});
-        }
       } else {
         setServerNotif(null);
       }

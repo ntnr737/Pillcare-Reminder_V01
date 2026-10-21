@@ -870,14 +870,43 @@ export async function registerForPushNotifications(): Promise<string | null> {
     }
     if (finalStatus !== "granted") return null;
 
-    // Get Expo push token — works with FCM under the hood
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId || "64e98649-8c44-47bb-aa76-d95403ea78c3";
-    const token = await Notifications.getExpoPushTokenAsync({ projectId });
-    const pushToken = token.data;
+    // Fetch both Expo push token and native device token (FCM on Android, APNs on iOS)
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ||
+      (Constants as any).easConfig?.projectId ||
+      "5fdbf2ce-b12f-44ea-9ea7-83616dbfadc4";
 
-    // Save to backend silently
-    api.savePushToken(pushToken).catch(() => {});
-    return pushToken;
+    let expoToken: string | null = null;
+    let deviceToken: string | null = null;
+
+    try {
+      const expoRes = await Notifications.getExpoPushTokenAsync({ projectId });
+      expoToken = expoRes?.data || null;
+    } catch (e) {
+      console.warn("getExpoPushTokenAsync notice:", e);
+    }
+
+    try {
+      const devRes = await Notifications.getDevicePushTokenAsync();
+      deviceToken = devRes?.data || null;
+    } catch (e) {
+      console.warn("getDevicePushTokenAsync notice:", e);
+    }
+
+    const effectiveToken = deviceToken || expoToken;
+    if (effectiveToken) {
+      console.log("PillCare Registered Tokens:", { expoToken, deviceToken });
+      await api.savePushToken({
+        token: effectiveToken,
+        push_token: effectiveToken,
+        fcm_token: deviceToken,
+        expo_push_token: expoToken,
+        device_token: deviceToken,
+      }).catch((err) => {
+        console.warn("api.savePushToken error:", err);
+      });
+    }
+    return effectiveToken;
   } catch (e) {
     console.warn("Push token registration failed:", e);
     return null;

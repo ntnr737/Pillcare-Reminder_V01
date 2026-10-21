@@ -3,6 +3,18 @@
 ## Latest session: 2026-10-21 (model: Antigravity / Gemini 2.5 Pro)
 
 ### Done:
+- Resolved background/closed app push notification delivery failures and fresh install historical notification spam (v1.0.81):
+  - **Firebase & Google Services Configuration**: Registered `com.pillcare.reminder` under Firebase project `pillcare-5fcac`, extracted official `google-services.json` to `frontend/` and `frontend/android/app/`, configured `com.google.gms:google-services:4.4.2` in `build.gradle`, and applied plugin `com.google.gms.google-services`.
+  - **Guest Token Registration**: Updated `save_push_token_flexible` in `backend/server.py` with `Depends(get_optional_user_id)` to accept unauthenticated guest user device tokens, assigning deterministic guest IDs (`guest_{tokenHash}`) with `is_guest: True` in MongoDB Atlas (`db.users` and `db.profile`).
+  - **Direct Google Cloud FCM v1 Delivery**: Added native FCM v1 direct dispatch in `admin_broadcast_notification` (`backend/server.py`) using Google OAuth2 ADC credentials (`https://www.googleapis.com/auth/firebase.messaging`), bypassing third-party Expo relay server key dependencies. Pushes are delivered directly to Google Cloud FCM with `priority: HIGH`, `channel_id: broadcasts`, `visibility: PUBLIC`, and `notification_priority: PRIORITY_MAX`.
+  - **Fresh Install Historical Push Isolation**: Added `firstInstalledAt` baseline timestamp in `frontend/src/lib/store.ts`. In `frontend/src/components/InAppBottomNotification.tsx`, removed `sendSystemNotificationBarAlert` from announcement polling to eliminate forged OS status bar alerts on launch. Added logic automatically marking announcements created prior to `firstInstalledAt - 5m` as seen/baseline, plus a 4-hour freshness lifespan for `flash` alerts.
+  - **Dual-Token Client Pipeline**: Updated `frontend/src/lib/notifications.ts` and `frontend/src/lib/api.ts` to retrieve both Expo push token and native FCM registration token (`Notifications.getDevicePushTokenAsync()`).
+  - **Full Quality Control & Verification**:
+    - Compiled and installed release APK v1.0.81 (`versionCode: 81`, `versionName: "1.0.81"`).
+    - Verified closed/killed app push notification delivery on `emulator-5554`: native Android notification shade heads-up alert appeared with sound and app icon (`qc_closed_app_push_delivered.png`).
+    - Verified in-app flash notification delivery with image thumbnail and amber badge (`qc_open_app_flash_received.png`).
+    - Verified fresh install 5-day isolation via `pm clear com.pillcare.reminder`: zero stale popups or historical notifications on launch (`qc_fresh_install_today_clean.png`), while newly broadcasted announcements appear immediately (`qc_fresh_install_new_alert_received.png`).
+    - Verified live Cloud Run backend deployment (`pillcare-backend-00094-p5g`) and MongoDB campaign logging (`sent: 1`).
 - Overhauled and verified the Android notification bar interactive action pipeline:
   - Resolved payload missing `data` / `medicationId` issue across scheduled and test notifications.
   - Implemented multi-tier fallback dose resolution (canonical dose key, nearest pending dose lookup).

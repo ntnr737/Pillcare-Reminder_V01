@@ -111,7 +111,7 @@ export const api = {
   getFeatures: () => req<Features>("/me/features"),
   updateCaregiver: (phone: string) => req<any>("/profile/caregiver", { method: "POST", body: JSON.stringify({ caregiver_phone: phone }) }),
   updateCaregivers: (caregivers: string[]) => req<any>("/profile/caregivers", { method: "POST", body: JSON.stringify({ caregivers }) }),
-  savePushToken: (push_token: string) => req<any>("/profile/push-token", { method: "POST", body: JSON.stringify({ push_token }) }),
+  savePushToken: (data: string | Record<string, any>) => req<any>("/profile/push-token", { method: "POST", body: JSON.stringify(typeof data === "string" ? { push_token: data } : data) }),
   trackEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
   postTelemetryEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
   heartbeatPing: (network_type: string = "WiFi/5G", app_version: string = "v1.0.16") => req<any>("/users/heartbeat", { method: "POST", body: JSON.stringify({ network_type, app_version }) }).catch(() => null),

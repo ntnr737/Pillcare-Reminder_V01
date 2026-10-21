@@ -314,6 +314,48 @@
 - **Trade-off**: Requires image assets to be accessible over HTTPS.
 - **Revisit if**: Introducing offline local image caching or rich rich-text markdown rendering in announcements.
 
+---
+
+## D-019: Direct Google Cloud FCM v1 Background Delivery, Guest Device Token Support, and Fresh Install Historical Isolation
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Users reported two critical notification issues:
+  1. Push notifications were never arriving when the mobile app was closed/in background, only appearing when the app was actively open in foreground.
+  2. Newly installing users (e.g., installing on Day 5) were bombarded with historical push notifications and stale announcements from the past.
+- **Root Cause Analysis**:
+  1. **Closed App Push Delivery Failure**:
+     - Android project lacked official `google-services.json` and the `com.google.gms.google-services` plugin was omitted from `build.gradle`. As a result, Firebase Messaging was uninitialized in the app process.
+     - Backend `save_push_token_flexible` enforced mandatory user authentication (`Depends(get_current_user_id)`). Any guest or unauthenticated user had their push token registration rejected with HTTP 401 Unauthorized, resulting in 0 registered tokens in MongoDB.
+     - Expo push service relay (`https://exp.host/--/api/v2/push/send`) rejected pushes due to missing FCM v1 server keys on Expo servers (`InvalidCredentials`).
+     - Push payloads specified `"channelId": "default"` (`AndroidImportance.DEFAULT`) instead of high-priority heads-up `"broadcasts"` channel (`AndroidImportance.MAX`).
+  2. **Fresh Install Push Spam**:
+     - `InAppBottomNotification.tsx` previously dispatched `sendSystemNotificationBarAlert(...)` inside `fetchActiveAnnouncements()` on every app startup and 5-minute poll. Any user installing after multiple announcements had been published had system notifications forged locally for ancient announcements.
+     - There was no install date baseline filter, treating months-old announcements as fresh alerts.
+- **Solution Architecture**:
+  1. **Google Services & Firebase Setup**:
+     - Registered package `com.pillcare.reminder` under Firebase project `pillcare-5fcac`.
+     - Placed `google-services.json` in `frontend/` and `frontend/android/app/`.
+     - Configured `classpath('com.google.gms:google-services:4.4.2')` in root `build.gradle` and `apply plugin: 'com.google.gms.google-services'` in `app/build.gradle`.
+  2. **Guest Token & Dual-Registration Pipeline**:
+     - Updated `frontend/src/lib/notifications.ts` to fetch both Expo push token and native Google FCM token via `Notifications.getDevicePushTokenAsync()`.
+     - Updated `backend/server.py` `save_push_token_flexible` with `Depends(get_optional_user_id)`. Unauthenticated guest users are assigned a deterministic guest ID (`guest_{tokenHash}`) and stored with `is_guest: True` in both `db.users` and `db.profile`.
+  3. **Direct Google Cloud FCM v1 Dispatch**:
+     - Backend `admin_broadcast_notification` partitions tokens into native FCM tokens and Expo tokens.
+     - For FCM tokens, it obtains an OAuth2 access token with `https://www.googleapis.com/auth/firebase.messaging` scope via Google Cloud ADC and dispatches directly to `https://fcm.googleapis.com/v1/projects/pillcare-5fcac/messages:send` with `priority: HIGH`, `channel_id: broadcasts`, `visibility: PUBLIC`, and `notification_priority: PRIORITY_MAX`.
+     - Zero reliance on third-party relay; 100% native delivery to closed/background devices.
+  4. **Fresh Install Baseline & 4-Hour Lifespan**:
+     - Added `firstInstalledAt` timestamp to local store on first launch (`getAppInstallTimestamp()`).
+     - Removed `sendSystemNotificationBarAlert` from announcement polling.
+     - Filtered announcements created before `firstInstalledAt - 5m` window, automatically marking them as seen/baseline.
+     - Implemented 4-hour freshness lifespan for `flash` announcements (`Date.now() - created_at > 4 * 3600 * 1000` auto-marked seen).
+- **Verification**:
+  - Live Android emulator tests with app closed confirmed native Android notification shade delivery (`tag=FCM-Notification:45762721`, `channel=broadcasts`, `importance=5`).
+  - Fresh install test (`pm clear com.pillcare.reminder`) verified zero historical announcements popping up, while newly dispatched announcements appear instantaneously in foreground and background.
+- **Trade-off**: Requires Cloud Run service account or environment credentials to maintain `firebase.messaging` IAM permission.
+- **Revisit if**: Introducing localized push payload translations.
+
+
 
 
 
