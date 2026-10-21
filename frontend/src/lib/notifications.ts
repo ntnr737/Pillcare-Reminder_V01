@@ -6,13 +6,63 @@
  */
 import * as Notifications from "expo-notifications";
 import * as TaskManager from "expo-task-manager";
-import { Platform } from "react-native";
+import { Platform, ToastAndroid, DeviceEventEmitter } from "react-native";
 import { api, localDateStr } from "./api";
 import { get, set, K } from "./store";
 import { recordTaken, recordSkipped, recordDoseStatus } from "./sync";
 import Constants from "expo-constants";
 
 export const BACKGROUND_NOTIFICATION_TASK = "PILLCARE_BACKGROUND_NOTIFICATION_TASK";
+
+export type NotificationActionListener = (actionId: string, data: any) => void;
+const actionListeners = new Set<NotificationActionListener>();
+
+export function addNotificationActionListener(listener: NotificationActionListener): () => void {
+  actionListeners.add(listener);
+  return () => {
+    actionListeners.delete(listener);
+  };
+}
+
+export function notifyActionListeners(actionId: string, data: any): void {
+  actionListeners.forEach((fn) => {
+    try {
+      fn(actionId, data);
+    } catch {}
+  });
+}
+
+function showNativeToast(message: string): void {
+  if (Platform.OS === "android") {
+    try {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } catch {}
+  }
+}
+
+export function extractNotificationData(response: any): Record<string, any> {
+  if (!response) return {};
+  let d =
+    response.notification?.request?.content?.data ||
+    response.notification?.data ||
+    response.data ||
+    {};
+  if (typeof d === "string") {
+    try {
+      d = JSON.parse(d);
+    } catch {}
+  }
+  const dataString =
+    response.notification?.request?.content?.dataString ||
+    response.dataString;
+  if (dataString && typeof dataString === "string") {
+    try {
+      const parsed = JSON.parse(dataString);
+      d = { ...parsed, ...d };
+    } catch {}
+  }
+  return d || {};
+}
 
 /**
  * Shared canonical dose identifier generator.
@@ -216,9 +266,17 @@ export async function handleNotificationResponse(
   navCallback?: (path: string) => void
 ): Promise<void> {
   try {
-    const actionId = response.actionIdentifier;
-    const data = (response.notification.request.content.data || {}) as Record<string, any>;
+    const rawActionId = response.actionIdentifier || (response as any).actionId || "";
+    const actionId = rawActionId.trim();
+    const normActionId = actionId.toUpperCase();
+    const data = extractNotificationData(response);
     const fallbackTag = data.fallbackTag || data.reminderInstanceId;
+
+    // Immediately dismiss the active notification from Android system status bar / notification shade
+    const notifId = response.notification?.request?.identifier;
+    if (notifId) {
+      Notifications.dismissNotificationAsync(notifId).catch(() => {});
+    }
 
     // Cancel pending no-action fallback whenever any action (or body tap) occurs
     if (fallbackTag) {
@@ -259,8 +317,9 @@ export async function handleNotificationResponse(
         return;
       }
 
-      if (data.medicationId) {
-        navCallback(`/(tabs)/today?focus=medication&medId=${data.medicationId}`);
+      if (data.medicationId || data.medId || data.id) {
+        const targetId = data.medicationId || data.medId || data.id;
+        navCallback(`/(tabs)/today?focus=medication&medId=${targetId}`);
         return;
       }
 
@@ -268,122 +327,188 @@ export async function handleNotificationResponse(
       return;
     }
 
-    // Action 1: MARK_TAKEN
-    if (actionId === "MARK_TAKEN" || actionId === "MARK_DONE") {
-      if (data.medicationId) {
-        const medId = String(data.medicationId);
-        const schedTime = data.scheduledTime ? String(data.scheduledTime) : undefined;
-        const nowStr = new Date().toISOString();
-        const todayDate = localDateStr();
-        const canonicalDoseKey = getCanonicalDoseId(medId, todayDate, schedTime);
+    // Resolve medicationId and scheduledTime with multi-layer fallbacks
+    let medId = data.medicationId || data.medId || data.med_id || data.id || data._id;
+    let schedTime = data.scheduledTime || data.scheduled_time || data.time;
+    const todayDate = localDateStr();
+    const nowStr = new Date().toISOString();
 
-        // 1. Mark local persistent taken registry
-        await recordTaken(canonicalDoseKey, todayDate, nowStr, medId, schedTime);
+    const isMedAction =
+      normActionId.includes("TAKEN") ||
+      normActionId.includes("DONE") ||
+      normActionId.includes("SKIP") ||
+      normActionId.includes("SNOOZE");
 
-        // 2. Call backend endpoint to mark dose as taken, or queue offline write
-        try {
-          await api.markTakenByMedication(medId, schedTime, nowStr);
-        } catch (err) {
-          console.warn("API markTakenByMedication failed, queueing offline write:", err);
-          const { enqueueWrite } = require("./sync");
-          await enqueueWrite("doseStatus", {
-            medication_id: medId,
-            scheduled_time: schedTime,
-            status: "taken",
-            taken_at: nowStr,
-            dose_id: canonicalDoseKey,
-            id: canonicalDoseKey,
-          }).catch(() => {});
+    if (!medId && isMedAction && !normActionId.includes("WATER") && !normActionId.includes("YOGA")) {
+      try {
+        const cachedDoses = (await get<any[]>(K.doses(todayDate))) || [];
+        const pending = cachedDoses.find((d: any) => d && d.status !== "taken" && d.status !== "skipped");
+        if (pending) {
+          medId = pending.medication_id || pending.medication?.id;
+          schedTime = pending.scheduled_time || schedTime;
+        } else {
+          const cachedMeds = (await get<any[]>(K.medications)) || [];
+          const activeMed = cachedMeds.find((m: any) => m && m.active !== false);
+          if (activeMed) {
+            medId = activeMed.id || activeMed._id;
+            if (Array.isArray(activeMed.times) && activeMed.times.length > 0) {
+              schedTime = activeMed.times[0];
+            }
+          }
         }
-
-        // 3. Update cached doses array idempotently
-        const key = K.doses(todayDate);
-        const cached = (await get<any[]>(key)) || [];
-        if (cached.length) {
-          const updated = cached.map((d: any) =>
-            (d.id === canonicalDoseKey || (d.medication_id === medId && (!schedTime || d.scheduled_time === schedTime)))
-              ? { ...d, status: "taken", taken_at: nowStr }
-              : d
-          );
-          await set(key, updated);
-        }
-
-        // 4. Track telemetry
-        api.trackEvent("notification_action_tapped", {
-          action_id: "MARK_TAKEN",
-          medication_id: medId,
-          scheduled_time: schedTime,
-        }).catch(() => {});
-
-        // 5. Navigate to Today tab for instant confirmation visual feedback
-        navCallback?.("/(tabs)/today");
+      } catch {}
+      if (!medId) {
+        medId = "test_medication";
+        schedTime = schedTime || "08:00";
       }
+    }
+
+    // Action 1: MARK_TAKEN
+    if (normActionId === "MARK_TAKEN" || normActionId === "MARK_DONE" || normActionId === "TAKEN") {
+      const canonicalDoseKey = getCanonicalDoseId(String(medId), todayDate, schedTime);
+
+      // 1. Mark local persistent taken registry (instant local-first write)
+      await recordTaken(canonicalDoseKey, todayDate, nowStr, String(medId), schedTime);
+
+      // 2. Call backend endpoint to mark dose as taken, or queue offline write
+      try {
+        await api.markTakenByMedication(String(medId), schedTime, nowStr);
+      } catch (err) {
+        console.warn("API markTakenByMedication failed, queueing offline write:", err);
+        const { enqueueWrite } = require("./sync");
+        await enqueueWrite("doseStatus", {
+          medication_id: String(medId),
+          scheduled_time: schedTime,
+          status: "taken",
+          taken_at: nowStr,
+          dose_id: canonicalDoseKey,
+          id: canonicalDoseKey,
+        }).catch(() => {});
+      }
+
+      // 3. Update cached doses array idempotently (synthesizing if array was empty)
+      const key = K.doses(todayDate);
+      let cached = (await get<any[]>(key)) || [];
+      if (!cached || cached.length === 0) {
+        const cachedMeds = (await get<any[]>(K.medications)) || [];
+        if (cachedMeds.length > 0) {
+          cached = cachedMeds.flatMap((m: any) =>
+            (m.times || ["08:00"]).map((t: string) => ({
+              id: getCanonicalDoseId(m.id || m._id, todayDate, t),
+              medication_id: m.id || m._id,
+              medication: m,
+              date: todayDate,
+              scheduled_time: t,
+              status: "pending",
+              is_local: true,
+            }))
+          );
+        }
+      }
+      if (cached.length) {
+        const updated = cached.map((d: any) =>
+          (d.id === canonicalDoseKey || (d.medication_id === String(medId) && (!schedTime || d.scheduled_time === schedTime)))
+            ? { ...d, status: "taken", taken_at: nowStr }
+            : d
+        );
+        await set(key, updated);
+      }
+
+      // 4. Native visual feedback & inter-tab event emit
+      showNativeToast("✓ Dose marked as taken");
+      DeviceEventEmitter.emit("DOSE_STATUS_CHANGED", { doseId: canonicalDoseKey, status: "taken", medId, schedTime });
+      notifyActionListeners("MARK_TAKEN", { medId, schedTime, canonicalDoseKey });
+
+      // 5. Track telemetry
+      api.trackEvent("notification_action_tapped", {
+        action_id: "MARK_TAKEN",
+        medication_id: String(medId),
+        scheduled_time: schedTime,
+      }).catch(() => {});
+
+      // 6. Navigate to Today tab for instant confirmation visual feedback
+      navCallback?.("/(tabs)/today");
     }
 
     // Action 2: SKIP_DOSE
-    else if (actionId === "SKIP_DOSE") {
-      if (data.medicationId) {
-        const medId = String(data.medicationId);
-        const schedTime = data.scheduledTime ? String(data.scheduledTime) : undefined;
-        const nowStr = new Date().toISOString();
-        const todayDate = localDateStr();
-        const canonicalDoseKey = getCanonicalDoseId(medId, todayDate, schedTime);
+    else if (normActionId === "SKIP_DOSE" || normActionId === "SKIP" || normActionId === "MARK_SKIPPED") {
+      const canonicalDoseKey = getCanonicalDoseId(String(medId), todayDate, schedTime);
 
-        // 1. Mark local persistent skipped registry
-        await recordSkipped(canonicalDoseKey, todayDate, nowStr, medId, schedTime);
+      // 1. Mark local persistent skipped registry
+      await recordSkipped(canonicalDoseKey, todayDate, nowStr, String(medId), schedTime);
 
-        // 2. Call backend endpoint to mark dose as skipped or queue offline write
-        try {
-          await api.setDoseStatus(canonicalDoseKey, "skipped");
-        } catch (err) {
-          console.warn("API setDoseStatus failed, queueing offline write:", err);
-          const { enqueueWrite } = require("./sync");
-          await enqueueWrite("doseStatus", {
-            medication_id: medId,
-            scheduled_time: schedTime,
-            status: "skipped",
-            dose_id: canonicalDoseKey,
-            id: canonicalDoseKey,
-          }).catch(() => {});
-        }
-
-        // 3. Update cached doses array idempotently
-        const key = K.doses(todayDate);
-        const cached = (await get<any[]>(key)) || [];
-        if (cached.length) {
-          const updated = cached.map((d: any) =>
-            (d.id === canonicalDoseKey || (d.medication_id === medId && (!schedTime || d.scheduled_time === schedTime)))
-              ? { ...d, status: "skipped" }
-              : d
-          );
-          await set(key, updated);
-        }
-
-        // 4. Track telemetry
-        api.trackEvent("notification_action_tapped", {
-          action_id: "SKIP_DOSE",
-          medication_id: medId,
+      // 2. Call backend endpoint to mark dose as skipped or queue offline write
+      try {
+        await api.setDoseStatus(canonicalDoseKey, "skipped");
+      } catch (err) {
+        console.warn("API setDoseStatus failed, queueing offline write:", err);
+        const { enqueueWrite } = require("./sync");
+        await enqueueWrite("doseStatus", {
+          medication_id: String(medId),
           scheduled_time: schedTime,
+          status: "skipped",
+          dose_id: canonicalDoseKey,
+          id: canonicalDoseKey,
         }).catch(() => {});
-
-        // 5. Navigate to Today tab for instant confirmation visual feedback
-        navCallback?.("/(tabs)/today");
       }
+
+      // 3. Update cached doses array idempotently
+      const key = K.doses(todayDate);
+      let cached = (await get<any[]>(key)) || [];
+      if (!cached || cached.length === 0) {
+        const cachedMeds = (await get<any[]>(K.medications)) || [];
+        if (cachedMeds.length > 0) {
+          cached = cachedMeds.flatMap((m: any) =>
+            (m.times || ["08:00"]).map((t: string) => ({
+              id: getCanonicalDoseId(m.id || m._id, todayDate, t),
+              medication_id: m.id || m._id,
+              medication: m,
+              date: todayDate,
+              scheduled_time: t,
+              status: "pending",
+              is_local: true,
+            }))
+          );
+        }
+      }
+      if (cached.length) {
+        const updated = cached.map((d: any) =>
+          (d.id === canonicalDoseKey || (d.medication_id === String(medId) && (!schedTime || d.scheduled_time === schedTime)))
+            ? { ...d, status: "skipped" }
+            : d
+        );
+        await set(key, updated);
+      }
+
+      // 4. Native visual feedback & inter-tab event emit
+      showNativeToast("✕ Dose marked as skipped");
+      DeviceEventEmitter.emit("DOSE_STATUS_CHANGED", { doseId: canonicalDoseKey, status: "skipped", medId, schedTime });
+      notifyActionListeners("SKIP_DOSE", { medId, schedTime, canonicalDoseKey });
+
+      // 5. Track telemetry
+      api.trackEvent("notification_action_tapped", {
+        action_id: "SKIP_DOSE",
+        medication_id: String(medId),
+        scheduled_time: schedTime,
+      }).catch(() => {});
+
+      // 6. Navigate to Today tab for instant confirmation visual feedback
+      navCallback?.("/(tabs)/today");
     }
 
     // Action 3: SNOOZE_10 (10 minutes)
-    else if (actionId === "SNOOZE_10" || actionId === "SNOOZE_15") {
+    else if (normActionId === "SNOOZE_10" || normActionId === "SNOOZE_15" || normActionId === "SNOOZE") {
       const snoozeSecs = 600;
-      const medId = data.medicationId ? String(data.medicationId) : "general";
-      const baseTitle = response.notification.request.content.title || "PillCare Reminder";
-      const baseBody = response.notification.request.content.body || "";
+      const targetMedId = medId ? String(medId) : "general";
+      const baseTitle = response.notification?.request?.content?.title || "PillCare Reminder";
+      const baseBody = response.notification?.request?.content?.body || "";
 
       await Notifications.scheduleNotificationAsync({
-        identifier: `snooze_med_${medId}_${Date.now()}`,
+        identifier: `snooze_med_${targetMedId}_${Date.now()}`,
         content: {
           title: baseTitle,
-          body: `[Snoozed 10m] ${baseBody}`,
-          data: { ...data, isSnooze: true },
+          body: `[Snoozed 10m] ${baseBody.replace(/\[Snoozed[^\]]*\]\s*/g, "")}`,
+          data: { ...data, isSnooze: true, medicationId: targetMedId, scheduledTime: schedTime },
           categoryIdentifier: MEDICATION_CATEGORY,
           sound: "default",
           channelId: "medication-reminders",
@@ -395,25 +520,29 @@ export async function handleNotificationResponse(
         },
       });
 
+      showNativeToast("⏱ Dose reminder snoozed for 10 minutes");
+      DeviceEventEmitter.emit("DOSE_STATUS_CHANGED", { status: "snoozed", duration: 10 });
+      notifyActionListeners("SNOOZE_10", { medId: targetMedId });
+
       api.trackEvent("notification_action_tapped", {
         action_id: "SNOOZE_10",
-        medication_id: medId,
+        medication_id: targetMedId,
       }).catch(() => {});
     }
 
     // Action 4: SNOOZE_60 (1 hour)
-    else if (actionId === "SNOOZE_60") {
+    else if (normActionId === "SNOOZE_60" || normActionId === "SNOOZE_1H") {
       const snoozeSecs = 3600;
-      const medId = data.medicationId ? String(data.medicationId) : "general";
-      const baseTitle = response.notification.request.content.title || "PillCare Reminder";
-      const baseBody = response.notification.request.content.body || "";
+      const targetMedId = medId ? String(medId) : "general";
+      const baseTitle = response.notification?.request?.content?.title || "PillCare Reminder";
+      const baseBody = response.notification?.request?.content?.body || "";
 
       await Notifications.scheduleNotificationAsync({
-        identifier: `snooze_med_${medId}_${Date.now()}`,
+        identifier: `snooze_med_${targetMedId}_${Date.now()}`,
         content: {
           title: baseTitle,
-          body: `[Snoozed 1h] ${baseBody}`,
-          data: { ...data, isSnooze: true },
+          body: `[Snoozed 1h] ${baseBody.replace(/\[Snoozed[^\]]*\]\s*/g, "")}`,
+          data: { ...data, isSnooze: true, medicationId: targetMedId, scheduledTime: schedTime },
           categoryIdentifier: MEDICATION_CATEGORY,
           sound: "default",
           channelId: "medication-reminders",
@@ -425,28 +554,38 @@ export async function handleNotificationResponse(
         },
       });
 
+      showNativeToast("⏱ Dose reminder snoozed for 1 hour");
+      DeviceEventEmitter.emit("DOSE_STATUS_CHANGED", { status: "snoozed", duration: 60 });
+      notifyActionListeners("SNOOZE_60", { medId: targetMedId });
+
       api.trackEvent("notification_action_tapped", {
         action_id: "SNOOZE_60",
-        medication_id: medId,
+        medication_id: targetMedId,
       }).catch(() => {});
     }
 
     // Hydration Action: LOG_250ML
-    else if (actionId === "LOG_250ML") {
+    else if (normActionId === "LOG_250ML" || normActionId === "250ML" || normActionId === "LOG_WATER_250") {
       await handleLogWaterFromNotification(250, fallbackTag);
+      showNativeToast("💧 Logged 250mL water");
+      DeviceEventEmitter.emit("WATER_LOGGED", { amount: 250 });
+      notifyActionListeners("LOG_250ML", { amount: 250 });
       api.trackEvent("notification_action_tapped", { action_id: "LOG_250ML" }).catch(() => {});
       navCallback?.("/(tabs)/today?focus=water");
     }
 
     // Hydration Action: LOG_500ML
-    else if (actionId === "LOG_500ML") {
+    else if (normActionId === "LOG_500ML" || normActionId === "500ML" || normActionId === "LOG_WATER_500") {
       await handleLogWaterFromNotification(500, fallbackTag);
+      showNativeToast("💧 Logged 500mL water");
+      DeviceEventEmitter.emit("WATER_LOGGED", { amount: 500 });
+      notifyActionListeners("LOG_500ML", { amount: 500 });
       api.trackEvent("notification_action_tapped", { action_id: "LOG_500ML" }).catch(() => {});
       navCallback?.("/(tabs)/today?focus=water");
     }
 
     // Hydration Action: SNOOZE_WATER_30 (30 minutes)
-    else if (actionId === "SNOOZE_WATER_30" || actionId === "SNOOZE_WATER_10") {
+    else if (normActionId === "SNOOZE_WATER_30" || normActionId === "SNOOZE_WATER_10") {
       await Notifications.scheduleNotificationAsync({
         identifier: `snooze_water_${Date.now()}`,
         content: {
@@ -463,11 +602,12 @@ export async function handleNotificationResponse(
           seconds: 1800,
         },
       });
+      showNativeToast("⏱ Water reminder snoozed for 30 minutes");
       api.trackEvent("notification_action_tapped", { action_id: "SNOOZE_WATER_30" }).catch(() => {});
     }
 
     // Yoga Action: MARK_YOGA_DONE
-    else if (actionId === "MARK_YOGA_DONE") {
+    else if (normActionId === "MARK_YOGA_DONE" || normActionId === "YOGA_DONE") {
       const todayStr = localDateStr();
       const yogaDoneKey = `yoga_done_${todayStr}`;
       const steps = [1, 2, 3, 4, 5];
@@ -475,14 +615,18 @@ export async function handleNotificationResponse(
       for (const s of steps) {
         api.yogaComplete(s, `Yoga Pose #${s}`, "https://www.youtube.com/watch?v=QPjwawKxuLw").catch(() => {});
       }
+      showNativeToast("🧘 Yoga therapy marked as complete");
+      DeviceEventEmitter.emit("YOGA_STATUS_CHANGED", { done: true });
+      notifyActionListeners("MARK_YOGA_DONE", {});
       api.trackEvent("notification_action_tapped", { action_id: "MARK_YOGA_DONE" }).catch(() => {});
       navCallback?.("/(tabs)/yoga");
     }
 
     // Yoga Action: OPEN_YOGA
-    else if (actionId === "OPEN_YOGA") {
-      navCallback?.("/(tabs)/yoga");
+    else if (normActionId === "OPEN_YOGA") {
+      notifyActionListeners("OPEN_YOGA", {});
       api.trackEvent("notification_action_tapped", { action_id: "OPEN_YOGA" }).catch(() => {});
+      navCallback?.("/(tabs)/yoga");
     }
   } catch (e) {
     console.warn("Notification response processing error:", e);
@@ -518,22 +662,30 @@ try {
  */
 export function setupNotificationListeners(onNavigate?: (path: string) => void): () => void {
   ensureCategories().catch(() => {});
-  let lastHandledResponseId: string | null = null;
+  let lastHandledKey = "";
+  let lastHandledTs = 0;
 
-  const sub = Notifications.addNotificationResponseReceivedListener(async (response) => {
-    const notifId = response.notification.request.identifier;
-    lastHandledResponseId = notifId;
+  const handleSafely = async (response: Notifications.NotificationResponse) => {
+    if (!response) return;
+    const notifId = response.notification?.request?.identifier || "notif";
+    const actId = response.actionIdentifier || "default";
+    const key = `${notifId}_${actId}`;
+    const now = Date.now();
+    if (key === lastHandledKey && now - lastHandledTs < 1500) {
+      console.log("Debouncing rapid duplicate notification response:", key);
+      return;
+    }
+    lastHandledKey = key;
+    lastHandledTs = now;
     await handleNotificationResponse(response, onNavigate);
-  });
+  };
+
+  const sub = Notifications.addNotificationResponseReceivedListener(handleSafely);
 
   // Check cold start: if launched by tapping a notification while killed
   Notifications.getLastNotificationResponseAsync().then(async (initialResponse) => {
     if (initialResponse) {
-      const notifId = initialResponse.notification.request.identifier;
-      if (lastHandledResponseId !== notifId) {
-        lastHandledResponseId = notifId;
-        await handleNotificationResponse(initialResponse, onNavigate);
-      }
+      await handleSafely(initialResponse);
     }
   }).catch(() => {});
 
@@ -635,10 +787,38 @@ export async function sendTestNotificationNow(
   const profile = soundSet.categorySounds[category] || "default";
   const channelId = getChannelIdForCategory(category, profile, false, soundSet.vibrationEnabled);
 
+  // Discover real active medication from local store to wire up real test buttons
+  let testMedId = "test_medication";
+  let testSchedTime = "08:00";
+  try {
+    const cachedMeds = (await get<any[]>(K.medications)) || [];
+    const activeMed = cachedMeds.find((m: any) => m && m.active !== false);
+    if (activeMed) {
+      testMedId = activeMed.id || activeMed._id || testMedId;
+      if (Array.isArray(activeMed.times) && activeMed.times.length > 0) {
+        testSchedTime = activeMed.times[0];
+      }
+    }
+  } catch {}
+
+  const testData = category === "water"
+    ? { type: "water_reminder", isTest: true }
+    : category === "yoga"
+    ? { type: "yoga", isYogaReminder: true, isTest: true }
+    : {
+        medicationId: testMedId,
+        med_id: testMedId,
+        id: testMedId,
+        scheduledTime: testSchedTime,
+        isTest: true,
+      };
+
   await Notifications.scheduleNotificationAsync({
+    identifier: `test_notif_${category}_${Date.now()}`,
     content: {
       title,
       body,
+      data: testData,
       sound: getNotificationSoundParam(profile),
       channelId,
       priority: profile === "mute" ? Notifications.AndroidNotificationPriority.LOW : Notifications.AndroidNotificationPriority.MAX,
@@ -794,9 +974,17 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
         const label = med.dosage ? `${med.dosage} ${med.unit || ""}`.trim() : "";
         const title = `PillCare Reminder: ${med.name}`;
         const body = label ? `Time to take ${med.name} (${label}). Tap to confirm dose.` : `Time to take ${med.name}. Tap to confirm dose.`;
+        const medId = med.id || med._id || String(med.medication_id || "");
         const timeClean = t.replace(/[^a-zA-Z0-9]/g, "_");
-        const fallbackTag = `fallback_med_${med.id}_${timeClean}`;
-        const data = { medicationId: med.id, scheduledTime: t, isDailyRecurring: true, fallbackTag };
+        const fallbackTag = `fallback_med_${medId}_${timeClean}`;
+        const data = {
+          medicationId: medId,
+          med_id: medId,
+          id: medId,
+          scheduledTime: t,
+          isDailyRecurring: true,
+          fallbackTag,
+        };
 
         // 1. Calculate next upcoming occurrence (today if upcoming, or tomorrow if target time passed today)
         const nextOccurrence = new Date();
@@ -825,7 +1013,7 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             };
 
         await Notifications.scheduleNotificationAsync({
-          identifier: `med_daily_${med.id}_${parsed.hour}_${parsed.minute}`,
+          identifier: `med_daily_${medId}_${parsed.hour}_${parsed.minute}`,
           content: {
             title,
             body,
@@ -846,7 +1034,14 @@ export async function resyncReminders(overrideMeds?: any[]): Promise<void> {
             content: {
               title: `Dose Reminder: ${med.name}`,
               body: `[Follow-up +30m] Have you taken ${med.name}? Tap to confirm, skip, or snooze.`,
-              data: { medicationId: med.id, scheduledTime: t, isFallback: true, fallbackTag },
+              data: {
+                medicationId: medId,
+                med_id: medId,
+                id: medId,
+                scheduledTime: t,
+                isFallback: true,
+                fallbackTag,
+              },
               categoryIdentifier: MEDICATION_CATEGORY,
               sound: medSoundParam,
               channelId: medChannel,

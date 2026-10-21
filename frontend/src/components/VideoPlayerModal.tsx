@@ -65,6 +65,59 @@ const FEELING_OPTIONS = [
 
 const SPEED_OPTIONS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
 
+const CLEAN_YOUTUBE_WEB_JS = `
+  (function() {
+    function injectCleanStyles() {
+      try {
+        var style = document.getElementById('pillcare-yt-clean-style');
+        if (!style) {
+          style = document.createElement('style');
+          style.id = 'pillcare-yt-clean-style';
+          style.innerHTML = \`
+            header,
+            ytm-mobile-topbar-renderer,
+            .mobile-topbar-header,
+            ytm-pivot-bar-renderer,
+            ytm-feed-filter-chip-bar-renderer,
+            ytm-comment-section-renderer,
+            ytm-item-section-renderer[section-identifier="comment-item-section"],
+            ytm-promoted-sparkles-web-renderer,
+            #app-install-banner,
+            .yt-spec-bottom-sheet-layout-container-outer,
+            .watch-below-the-player {
+              display: none !important;
+            }
+            body, html {
+              background-color: #0B0D14 !important;
+              color: #F9FAFB !important;
+            }
+            .player-container {
+              background-color: #000 !important;
+            }
+          \`;
+          document.head.appendChild(style);
+        }
+      } catch(e) {}
+    }
+    injectCleanStyles();
+    setInterval(injectCleanStyles, 1000);
+
+    setTimeout(function() {
+      try {
+        var v = document.querySelector('video');
+        if (v) {
+          v.muted = false;
+          v.volume = 1.0;
+          v.play().catch(function(){});
+        }
+        var btn = document.querySelector('.ytp-large-play-button') || document.querySelector('button[aria-label="Play"]');
+        if (btn) btn.click();
+      } catch(e) {}
+    }, 800);
+  })();
+  true;
+`;
+
 export function VideoPlayerModal({
   visible,
   onClose,
@@ -140,7 +193,10 @@ export function VideoPlayerModal({
           setIsTimerActive(false);
         }
       } else if (data.type === "YT_ERROR") {
-        console.warn("YouTube player error:", data.code);
+        console.warn("YouTube player error:", data.code, "Auto-switching to clean YouTube Web stream");
+        // Error 150/152/101 indicates embedding restrictions by author or domain policy.
+        // Seamlessly fallback to the mobile web stream which has zero embedding limits.
+        setPlayerMode("youtube_web");
       }
     } catch (e) {}
   };
@@ -341,15 +397,15 @@ export function VideoPlayerModal({
             height: '100%',
             width: '100%',
             videoId: '${vidId}',
-            host: 'https://www.youtube.com',
             playerVars: {
               'autoplay': 1,
               'playsinline': 1,
               'enablejsapi': 1,
-              'origin': 'https://www.youtube.com',
               'rel': 0,
               'modestbranding': 1,
-              'controls': 1
+              'controls': 1,
+              'fs': 1,
+              'iv_load_policy': 3
             },
             events: {
               'onReady': onPlayerReady,
@@ -597,32 +653,28 @@ export function VideoPlayerModal({
           {WebView ? (
             <WebView
               ref={webViewRef}
-              source={{ html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }}
+              source={
+                playerMode === "focus"
+                  ? { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube-nocookie.com" }
+                  : { uri: `https://m.youtube.com/watch?v=${videoId}` }
+              }
+              userAgent={
+                playerMode === "youtube_web"
+                  ? "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                  : undefined
+              }
+              injectedJavaScript={playerMode === "youtube_web" ? CLEAN_YOUTUBE_WEB_JS : undefined}
+              injectedJavaScriptBeforeContentLoaded={playerMode === "youtube_web" ? CLEAN_YOUTUBE_WEB_JS : undefined}
               style={{ flex: 1, backgroundColor: "#000" }}
               allowsInlineMediaPlayback={true}
               allowsFullscreenVideo={true}
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled={true}
               domStorageEnabled={true}
+              androidLayerType="hardware"
               originWhitelist={["*"]}
               mixedContentMode="always"
-              onMessage={(event: any) => {
-                try {
-                  const data = JSON.parse(event.nativeEvent.data);
-                  if (data && data.type === "YT_STATE_CHANGE") {
-                    if (data.state === 1) {
-                      setIsPlaying(true);
-                      setIsTimerActive(true);
-                    } else if (data.state === 2) {
-                      setIsPlaying(false);
-                      setIsTimerActive(false);
-                    }
-                  } else if (data && data.type === "YT_ERROR") {
-                    console.warn("YouTube IFrame API returned error code:", data.code);
-                    setHasError(true);
-                  }
-                } catch {}
-              }}
+              onMessage={handleWebViewMessage}
             />
           ) : null}
         </View>
@@ -773,7 +825,7 @@ export function VideoPlayerModal({
                       ref={webViewRef}
                       source={
                         playerMode === "focus"
-                          ? { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube.com" }
+                          ? { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube-nocookie.com" }
                           : { uri: `https://m.youtube.com/watch?v=${videoId}` }
                       }
                       userAgent={
@@ -781,6 +833,8 @@ export function VideoPlayerModal({
                           ? "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
                           : undefined
                       }
+                      injectedJavaScript={playerMode === "youtube_web" ? CLEAN_YOUTUBE_WEB_JS : undefined}
+                      injectedJavaScriptBeforeContentLoaded={playerMode === "youtube_web" ? CLEAN_YOUTUBE_WEB_JS : undefined}
                       style={{ flex: 1, borderRadius: 12, backgroundColor: BG }}
                       allowsInlineMediaPlayback={true}
                       allowsFullscreenVideo={true}
@@ -795,7 +849,11 @@ export function VideoPlayerModal({
                       onMessage={handleWebViewMessage}
                       onError={() => {
                         console.warn("WebView error loading player");
-                        setHasError(true);
+                        if (playerMode === "focus") {
+                          setPlayerMode("youtube_web");
+                        } else {
+                          setHasError(true);
+                        }
                       }}
                       renderLoading={() => (
                         <View style={s.loadingContainer}>
@@ -929,6 +987,26 @@ export function VideoPlayerModal({
                         ))}
                       </View>
                     )}
+                  </View>
+                )}
+
+                {/* YouTube Web Compact Toolbar */}
+                {playerMode === "youtube_web" && (
+                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", marginBottom: 10 }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                      <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                      <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Live Official Stream</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <TouchableOpacity onPress={toggleMute} style={[s.ctrlIconBtn, { height: 32, paddingHorizontal: 10, flexDirection: "row", gap: 4 }]} activeOpacity={0.7}>
+                        <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={14} color={isMuted ? "#F59E0B" : "#4ade80"} />
+                        <Text style={[s.ctrlIconBtnText, { fontSize: 11, color: isMuted ? "#F59E0B" : "#4ade80" }]}>{isMuted ? "Muted" : "Sound"}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={toggleFullscreen} style={[s.ctrlIconBtn, { height: 32, paddingHorizontal: 10, flexDirection: "row", gap: 4 }]} activeOpacity={0.7}>
+                        <Ionicons name="expand" size={14} color="#A78BFA" />
+                        <Text style={[s.ctrlIconBtnText, { fontSize: 11, color: "#A78BFA" }]}>Rotate</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
 

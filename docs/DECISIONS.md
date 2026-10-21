@@ -186,5 +186,87 @@
 - **Trade-off**: Production URL is embedded as a code constant fallback.
 - **Revisit if**: Multi-tenant or dynamic on-premise backend switching is supported at runtime.
 
+---
+
+## D-013: Android Notification Shade Action Buttons Pipeline & Real-Time Sync
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: Medication reminder action buttons (`[ ✓ Taken ]`, `[ ✕ Skip ]`, `[ ⏱ 10 Min ]`, `[ ⏱ 1 Hour ]`, `[ 💧 250mL ]`) in the Android system notification bar were not updating dose state properly due to payload data inconsistency (empty `data` on test alerts, strict `data.medicationId` matching, missing notification dismissal, and no live UI re-render event).
+- **Options**:
+  1. Only update UI upon full app relaunch or manual pull-to-refresh; leave notification active in shade until user manually swipes it away.
+  2. Implement comprehensive notification action pipeline:
+     - Multi-level medication and dose ID normalization with nearest pending dose fallback.
+     - Immediate notification shade dismissal via `Notifications.dismissNotificationAsync()`.
+     - Instant native Android OS toasts (`ToastAndroid`) for immediate patient confirmation.
+     - Inter-tab `DeviceEventEmitter` & `addNotificationActionListener` for zero-latency screen updates.
+     - Enforce local dose registry overrides in `synthesizeDosesForDate` and `bootstrapUserDataset` (100% local-first consistency).
+- **Chosen**: Option 2.
+- **Why**: Patients rely heavily on interacting directly from the Android status bar without switching into the app. Immediate shade dismissal and OS toast confirmation reassure the patient that the dose was recorded, while local-first storage ensures the Today tab reflects the update instantly.
+- **Trade-off**: Requires listener lifecycle cleanup in tab components.
+- **Revisit if**: Android 16+ introduces breaking notification trampoline changes.
+
+---
+
+## D-014: Non-Blocking Status Bar Toast Alerts & Physical Device Action Button Verification
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: In `notification-settings.tsx`, test dispatches displayed an intrusive blocking OS `Alert.alert` modal dialog on screen that intercepted user touches and prevented direct interaction with the Android notification shade. Additionally, hydration action buttons (`[ ✓ 250 mL ]`) needed live hardware verification.
+- **Options**:
+  1. Keep `Alert.alert` modal dialog for all dispatches.
+  2. Use non-blocking `ToastAndroid.show()` on Android for test dispatch confirmations, preserving `Alert.alert` only on iOS; live-verify medication and hydration action buttons on real physical hardware (`CPH2767IN`).
+- **Chosen**: Option 2.
+- **Why**: Non-blocking Android toasts allow the user to immediately expand the notification shade and tap action buttons without having to dismiss an on-screen modal dialog first.
+- **Trade-off**: Toasts auto-dismiss after ~2 seconds on Android.
+- **Revisit if**: Custom animated in-app snackbar is implemented across platforms.
+
+---
+
+## D-015: End-to-End App QC, Symmetrical Dose Action Badges, & Dynamic Build Telemetry
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: During comprehensive QC across all application screens, three visual/UX issues were identified:
+  1. In `today.tsx`, marking a dose as `Skipped` displayed both `[ Skipped ]` and `[ Mark Taken ]` side by side, which expanded the row and overlapped the floating action button (FAB) on compact screens.
+  2. In `support.tsx`, the version footer was hardcoded to `v1.0.71 (Build 71)`.
+  3. In `treatment.tsx`, measurement and activity modals silently suppressed clicks when input was empty without providing user feedback.
+- **Options**:
+  1. Keep existing side-by-side buttons and require scrolling; leave footer static.
+  2. Standardize on symmetrical interactive badges:
+     - `today.tsx`: Render a single touchable `[ ✕ Skipped ]` badge (matching `[ ✓ Taken ]`) that toggles back to `pending` upon tap.
+     - `support.tsx`: Dynamically extract `Constants.expoConfig?.version` and `Constants.expoConfig?.android?.versionCode`.
+     - `treatment.tsx`: Provide immediate visual feedback (`opacity: 0.6`) and OS alerts on empty submissions.
+- **Chosen**: Option 2.
+- **Why**: Keeps dose cards clean and eliminates clipping or FAB collisions on all Android device screen sizes. Guarantees version telemetry matches Gradle build configs, and provides clear UX validation for patient data entry.
+- **Trade-off**: Requires users to tap once to un-skip before marking taken (mirroring the `Taken` undo interaction).
+- **Revisit if**: Swipe-to-action gesture replaces button badges.
+
+---
+
+## D-016: Yoga Section YouTube Video Player Resilience, Embed Auto-Fallback & Habit Logging
+
+- **Date**: 2026-10-21
+- **Model**: Antigravity / Gemini 2.5 Pro
+- **Context**: In the Yoga therapy tab (`frontend/app/(tabs)/yoga.tsx`), opening guided video poses (Swami Ramdev, AYUSH, Sadhguru) encountered multiple playback and state anomalies:
+  1. YouTube returned Error 152 / 150 inside Android WebView due to origin spoofing (`origin: 'https://www.youtube.com'`) and creator-level embedding restrictions.
+  2. The WebView JS bridge did not recover from `YT_ERROR`, leaving users stranded on an error placeholder.
+  3. Mobile web YouTube (`m.youtube.com/watch?v=...`) played reliably but displayed app headers, promo banners, and comment sections.
+  4. Completing a video session toggled pose completion, which inverted already-completed poses back to uncompleted.
+  5. Fullscreen landscape mode did not preserve the active player mode or clean CSS injection.
+- **Options**:
+  1. Force all YouTube playback into external browser or YouTube app via `Linking.openURL()`.
+  2. Implement hybrid player resilience:
+     - Remove spoofed origin/host headers in `getYouTubeEmbedHtml` and use `baseUrl: "https://www.youtube-nocookie.com"`.
+     - Automatically switch `playerMode` to `youtube_web` upon receiving any `YT_ERROR` code (150, 152, 101, 100, 2, 5).
+     - Inject clean styles (`CLEAN_YOUTUBE_WEB_JS`) via `injectedJavaScript` and `injectedJavaScriptBeforeContentLoaded` to hide headers, comments, and pivot bars for a distraction-free player.
+     - Add `forceDone = false` parameter to `toggleStepDone` so completing a session guarantees completion without accidental untoggling.
+     - Unify fullscreen view to mirror the active `playerMode` and maintain CSS cleaning.
+- **Chosen**: Option 2.
+- **Why**: Option 1 kicks the patient out of the app, losing session timer tracking and post-pose reflection insights. Option 2 provides a seamless, distraction-free in-app studio experience that plays 100% of YouTube yoga poses while preserving local-first habit logging.
+- **Trade-off**: Requires injecting CSS rules that target YouTube mobile DOM classes.
+- **Revisit if**: YouTube significantly updates mobile web class names or introduces strict Content Security Policies that block injected styles.
+
+
 
 

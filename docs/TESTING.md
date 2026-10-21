@@ -50,14 +50,19 @@ export PATH=$JAVA_HOME/bin:$PATH
 cd frontend/android && ./gradlew assembleRelease --no-daemon
 ```
 - **What a pass looks like**: `BUILD SUCCESSFUL`, `app-release.apk` generated (~113 MB) with zip integrity verified.
-- **Actual Verified Output (2026-10-18)**:
+- **Actual Verified Output (2026-10-21 v1.0.76 Notification Bar & Local-First Release)**:
   ```
-  BUILD SUCCESSFUL in 11m 31s
-  866 actionable tasks: 866 executed
+  BUILD SUCCESSFUL in 35s
+  866 actionable tasks: 81 executed, 785 up-to-date
   Output: frontend/android/app/build/outputs/apk/release/app-release.apk (113MB)
-  output-metadata.json: versionCode 74, versionName 1.0.74, single APK
-  Zip Integrity: No errors detected in compressed data
-  Copied to: PillCare-v1.0.74-release.apk (113MB) & build_artifacts/app-release/app-release.apk
+  output-metadata.json: versionCode 76, versionName 1.0.76, single APK
+  Pushed to ADB Device emulator-5554: Performing Streamed Install -> Success
+  Pushed to Physical Phone (OnePlus CPH2767 via Wi-Fi 192.168.1.109:36357): Performing Streamed Install -> Success
+  Package Verification: versionCode=76, versionName=1.0.76, running PID 21983
+  Physical Device Action Buttons Live Verified:
+    - [ ✓ Taken ] marked Crocin taken, dismissed shade alert, updated Today screen adherence to 100%.
+    - [ ✓ 250 mL ] logged 250 mL hydration, dismissed shade alert, incremented water tracker to 250/2500 mL, and locked pacing for 15m.
+  Runtime verification: App launched cleanly on both emulator & physical hardware, Today tab active, 0 crashes
   ```
 
 ### Command 5: Autonomous Sentinel Agent Diagnostic Audit
@@ -96,3 +101,48 @@ To verify the interactive notification and multi-device sync path:
    - Tap "Skip" on a pending dose.
    - **Expected Result**: Dose status immediately updates to "Skipped" in local UI; mutation queues in `sync_queue`.
    - Turn off Airplane Mode: Queue automatically flushes to `/api/doses/{id}/status`.
+
+---
+
+## 3. Real QC Test Log (v1.0.77 Release)
+
+- **Date**: 2026-10-21
+- **Target**: Android Emulator (`emulator-5554`) & Cloud Run backend (`https://pillcare-backend-1082668880575.europe-west1.run.app`)
+- **APK**: `PillCare-v1.0.77-release.apk` (`versionCode: 77`, `versionName: "1.0.77"`)
+- **Results**:
+  - `npx tsc --noEmit`: 0 errors (Code 0).
+  - Cloud Run `/health`: `{"status":"ok","db":"connected","v":"1.0.1"}`.
+  - Onboarding & Guest Auth: Step 1 -> Step 2 -> Step 3 completed with Metformin 500mg seeded into local SQLite AsyncStorage.
+  - Today Tab Doses: `[ Skip ]` -> `[ ✕ Skipped ]` badge; tapped `[ ✕ Skipped ]` -> reverted to `pending` with `[ Mark Taken ]` & `[ Skip ]`; tapped `[ Mark Taken ]` -> `[ ✓ Taken ]` with adherence streak updated.
+  - Treatment Tab: Verified empty measurement alert ("Enter Value: Please enter a valid numeric measurement value before saving"); logged Blood Pressure (120/80 mmHg) with immediate local-first list update.
+  - Yoga Tab: AYUSH & Ramdev routine poses marked complete; timer updated to 15 mins.
+  - Progress Tab: 30-day adherence chart & 70/100 wellness score rendered without artifacting.
+  - Support & Settings: Footer verified displaying `Android OS v37 (Target API 35)` & `PillCare App v1.0.77 (Build 77) • Release Build`.
+
+---
+
+## 4. Real QC Test Log (v1.0.78 Release - Yoga YouTube Studio & Video Playback)
+
+- **Date**: 2026-10-21
+- **Target**: Android Emulator (`emulator-5554`) & Cloud Run backend (`https://pillcare-backend-1082668880575.europe-west1.run.app`)
+- **APK**: `PillCare-v1.0.78-release.apk` (`versionCode: 78`, `versionName: "1.0.78"`)
+- **Results**:
+  - `npx tsc --noEmit`: 0 errors (Code 0).
+  - YouTube Video Embed Playback:
+    - Mandukasana (Swami Ramdev): Embed origin restriction bypassed; video played smoothly with live timer (`00:07` -> `01:38`), audio enabled, and scrubber progression (`0:03` -> `0:31`).
+    - Pawanmuktasana (Swami Ramdev): Video playback confirmed; scrubber at `0:07 / 1:27` with live session stopwatch.
+  - Mode Switching & Injected CSS:
+    - Switched to `[ 🌐 YouTube Web Page ]`: Cleaned mobile web view rendered video without mobile header clutter or comment distractions.
+    - Verified secondary toolbar with `[ Sound ]` toggle and `[ Rotate ]` fullscreen mode.
+    - Switched back to `[ 🎬 Focus Player Controls ]`: Restored playback without state resets.
+  - Fullscreen Landscape Support:
+    - Fullscreen edge-to-edge playback verified with persistent title badge, unmute control, and clean exit handler.
+  - Session Reflection & Habit Logging:
+    - Tapped `[ ✓ Finish & Reflect ]`: Displayed post-pose reflection modal with total practice time (`01:52`), feeling selectors (`Energized & Alert`, `Deeply Relaxed`, `Stiffness Relieved`, `Balanced & Calmer`), and dynamic clinical insight.
+    - Tapped `[ 🤍 Save Practice to Habit Log ]`: Mandukasana marked complete with green checkmark and `[ ✓ Completed ]` badge; Mindful Practice incremented from 15 mins to 17 mins; verified in Health Progress history list (`Yoga: Mandukasana` & `Yoga: Pawanmuktasana`).
+  - Guarded Pose State:
+    - Saving a video session for an already-completed pose preserved completion status without untoggling.
+  - Build Telemetry:
+    - Support tab footer verified displaying `PillCare App v1.0.78 (Build 78) • Release Build` on `Android OS v37 (Target API 35)`.
+
+

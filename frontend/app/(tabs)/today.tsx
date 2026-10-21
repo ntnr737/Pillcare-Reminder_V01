@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, RefreshControl, Modal, Alert, ActivityIndicator, DeviceEventEmitter } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router";
@@ -19,10 +19,10 @@ import { useTranslation } from "@/src/context/LanguageContext";
 import { getFeatures } from "@/src/lib/features";
 import { track, trackScreenView, type EventName } from "@/src/lib/analytics";
 import { api } from "@/src/lib/api";
-import { resyncReminders, scheduleHydrationPacingReminder, getCanonicalDoseId } from "@/src/lib/notifications";
+import { resyncReminders, scheduleHydrationPacingReminder, getCanonicalDoseId, addNotificationActionListener } from "@/src/lib/notifications";
 import { get, set, K } from "@/src/lib/store";
 import { getStoredUser } from "@/src/lib/auth";
-import { backgroundRefresh, enqueueWrite, flushQueue, getLastSyncTimestamp, getLastSyncTimestampAsync, bootstrapUserDataset, recordTaken, recordSkipped } from "@/src/lib/sync";
+import { backgroundRefresh, enqueueWrite, flushQueue, getLastSyncTimestamp, getLastSyncTimestampAsync, bootstrapUserDataset, recordTaken, recordSkipped, getLocalDoseStatuses } from "@/src/lib/sync";
 import { evaluateTodayStreakStatus } from "@/src/lib/streakEngine";
 
 function ds() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
@@ -93,13 +93,19 @@ function getBadgeFirstName(profile?: any, authUser?: any): string {
   return parts[0].toUpperCase();
 }
 
-function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: any[] = []): any[] {
+function synthesizeDosesForDate(
+  meds: any[],
+  targetDate: string,
+  existingDoses: any[] = [],
+  localStatuses: Record<string, any> = {}
+): any[] {
   if (!Array.isArray(meds) || meds.length === 0) return existingDoses || [];
 
   const medStockMap = new Map<string, number>();
   meds.forEach((m) => {
-    if (m && m.id && typeof m.stock === "number") {
-      medStockMap.set(m.id, m.stock);
+    const mId = m?.id || m?._id;
+    if (mId && typeof m.stock === "number") {
+      medStockMap.set(mId, m.stock);
     }
   });
 
@@ -136,14 +142,15 @@ function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: 
       } catch {}
     }
 
+    const mId = m.id || m._id;
     const times: string[] = Array.isArray(m.times) ? m.times : [];
     for (const t of times) {
-      const key = `${m.id}_${t}`;
+      const key = `${mId}_${t}`;
       if (!existingMap.has(key)) {
         const synthDose = {
-          id: getCanonicalDoseId(m.id, targetDate, t),
+          id: getCanonicalDoseId(mId, targetDate, t),
           user_id: m.user_id || "local",
-          medication_id: m.id,
+          medication_id: mId,
           medication: m,
           date: targetDate,
           scheduled_time: t,
@@ -156,8 +163,34 @@ function synthesizeDosesForDate(meds: any[], targetDate: string, existingDoses: 
     }
   }
 
-  result.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""));
-  return result;
+  // Apply persistent local dose statuses (taken/skipped) - guaranteed local-first consistency
+  const mergedResult = result.map((d) => {
+    const medId = d.medication_id || d.medication?.id;
+    const sched = d.scheduled_time;
+    const cleanTime = sched ? sched.replace(/[^a-zA-Z0-9]/g, "") : "";
+    const canonicalKey = medId && sched ? getCanonicalDoseId(medId, targetDate, sched) : "";
+
+    const rec =
+      (canonicalKey && localStatuses[canonicalKey]) ||
+      (d.id && localStatuses[d.id]) ||
+      (medId && sched && localStatuses[`${medId}_${sched}`]) ||
+      (medId && sched && localStatuses[`dose_${medId}_${targetDate}_${cleanTime}`]) ||
+      (medId && sched && localStatuses[`local_dose_${medId}_${targetDate}_${cleanTime}`]) ||
+      (medId && sched && localStatuses[`med_${medId}_${targetDate}_${sched}`]);
+
+    if (rec && rec.status) {
+      return {
+        ...d,
+        status: rec.status,
+        taken_at: rec.status === "taken" ? rec.timestamp : d.taken_at,
+        skipped_at: rec.status === "skipped" ? rec.timestamp : d.skipped_at,
+      };
+    }
+    return d;
+  });
+
+  mergedResult.sort((a, b) => (a.scheduled_time || "").localeCompare(b.scheduled_time || ""));
+  return mergedResult;
 }
 
 export default function Today() {
@@ -337,13 +370,14 @@ export default function Today() {
 
   const hydrateFromLocalCache = async (targetDate: string) => {
     try {
-      const [cachedProf, cachedMeds, cachedDoses, cachedW, cachedWLogs, cachedStrk] = await Promise.all([
+      const [cachedProf, cachedMeds, cachedDoses, cachedW, cachedWLogs, cachedStrk, localStatuses] = await Promise.all([
         get<any>(K.profile).catch(() => null),
         get<any[]>(K.medications).catch(() => []),
         get<any[]>(K.doses(targetDate)).catch(() => []),
         get<number>(`water_${targetDate}`).catch(() => 0),
         get<any[]>(`water_logs_${targetDate}`).catch(() => []),
         get<number>(K.streak).catch(() => null),
+        getLocalDoseStatuses(targetDate).catch(() => ({})),
       ]);
 
       if (cachedProf) setProfile(cachedProf);
@@ -355,7 +389,7 @@ export default function Today() {
       if (medsArr.length > 0) setMedications(medsArr);
       const dosesArr = Array.isArray(cachedDoses) ? cachedDoses : [];
       if (medsArr.length > 0 || dosesArr.length > 0) {
-        const localSynth = synthesizeDosesForDate(medsArr, targetDate, dosesArr);
+        const localSynth = synthesizeDosesForDate(medsArr, targetDate, dosesArr, localStatuses || {});
         setDoses(localSynth);
       }
     } catch {}
@@ -375,7 +409,8 @@ export default function Today() {
         if (Array.isArray(syncResult.waterLogs)) setWaterLogs(syncResult.waterLogs);
         if (Array.isArray(syncResult.medications)) setMedications(syncResult.medications);
         if (Array.isArray(syncResult.doses)) {
-          const finalDoses = synthesizeDosesForDate(syncResult.medications, date, syncResult.doses);
+          const localStatuses = await getLocalDoseStatuses(date).catch(() => ({}));
+          const finalDoses = synthesizeDosesForDate(syncResult.medications, date, syncResult.doses, localStatuses || {});
           setDoses(finalDoses);
           await set(K.doses(date), finalDoses).catch(() => {});
         }
@@ -420,6 +455,23 @@ export default function Today() {
     trackScreenView("today");
     return () => { active = false; };
   }, [date]));
+
+  useEffect(() => {
+    const sub1 = DeviceEventEmitter.addListener("DOSE_STATUS_CHANGED", () => {
+      hydrateFromLocalCache(date).catch(() => {});
+    });
+    const sub2 = DeviceEventEmitter.addListener("WATER_LOGGED", () => {
+      hydrateFromLocalCache(date).catch(() => {});
+    });
+    const unsub = addNotificationActionListener(() => {
+      hydrateFromLocalCache(date).catch(() => {});
+    });
+    return () => {
+      sub1.remove();
+      sub2.remove();
+      unsub();
+    };
+  }, [date]);
 
   useEffect(() => {
     const d = new Date().getDay();
@@ -1043,17 +1095,13 @@ export default function Today() {
                         </TouchableOpacity>
                       );
                       if (ms || sk) return (
-                        <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>
-                          <View style={s.bSk}>
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : t("today.skipped", "Skipped")}</Text>
-                          </View>
-                          <TouchableOpacity
-                            style={[s.bP, { backgroundColor: theme.accent, paddingHorizontal: 10, paddingVertical: 5 }]}
-                            onPress={() => mark(dose.id, st, "taken")}
-                          >
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: "#FFF" }}>{t("today.markTaken", "Taken")}</Text>
-                          </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity
+                          style={[s.bSk, { flexDirection: "row", alignItems: "center", paddingHorizontal: 10, paddingVertical: 5, borderWidth: 1, borderColor: "rgba(229,133,133,0.3)" }]}
+                          onPress={() => mark(dose.id, st, "pending")}
+                        >
+                          <Ionicons name="close-circle" size={13} color="#e58585" style={{ marginRight: 3 }} />
+                          <Text style={{ fontSize: 11, fontWeight: "700", color: "#e58585" }}>{ms ? "Missed" : t("today.skipped", "Skipped")}</Text>
+                        </TouchableOpacity>
                       );
                       return (
                         <View style={{ flexDirection: "row", gap: 6, alignItems: "center" }}>

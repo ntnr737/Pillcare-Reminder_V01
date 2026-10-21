@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter, useFocusEffect } from "expo-router";
 import * as Location from "expo-location";
 import * as WebBrowser from "expo-web-browser";
+import Constants from "expo-constants";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { get, set, K } from "@/src/lib/store";
@@ -546,7 +547,7 @@ export default function Support() {
             </Text>
           </View>
           <Text style={{ fontSize: 11, color: theme.textSecondary, fontWeight: "500" }}>
-            PillCare App v1.0.71 (Build 71) • Release Build
+            {`PillCare App v${Constants.expoConfig?.version || "1.0.78"} (Build ${Constants.expoConfig?.android?.versionCode || 78}) • Release Build`}
           </Text>
         </View>
       </ScrollView>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform, Linking, ToastAndroid } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -155,10 +155,14 @@ export default function NotificationSettingsScreen() {
         `Testing sound profile: ${SOUND_PROFILE_LABELS[settings.categorySounds[category]]?.label}`,
         category
       );
-      Alert.alert(
-        "Test Alert Dispatched",
-        "Check your device status bar for the PillCare test pop-up alert & sound!"
-      );
+      if (Platform.OS === "android") {
+        ToastAndroid.show("PillCare test alert dispatched to status bar!", ToastAndroid.SHORT);
+      } else {
+        Alert.alert(
+          "Test Alert Dispatched",
+          "Check your device status bar for the PillCare test pop-up alert & sound!"
+        );
+      }
     } catch (e: any) {
       Alert.alert("Permission Required", e?.message || "Could not dispatch test notification. Please ensure notification permissions are granted.");
       await checkPermissions();

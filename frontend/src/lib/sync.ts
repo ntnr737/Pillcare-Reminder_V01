@@ -371,9 +371,10 @@ export async function bootstrapUserDataset(targetDate?: string): Promise<{
     if (Array.isArray(data.medications)) {
       await set(K.medications, data.medications);
     }
+    let mergedDoses = data.doses || [];
     if (Array.isArray(data.doses)) {
-      const merged = await mergeDoses(data.doses, d);
-      await set(K.doses(d), merged);
+      mergedDoses = await mergeDoses(data.doses, d);
+      await set(K.doses(d), mergedDoses);
     }
     if (typeof data.water_logged_ml === "number") {
       await set(`water_${d}`, data.water_logged_ml);
@@ -395,7 +396,7 @@ export async function bootstrapUserDataset(targetDate?: string): Promise<{
     return {
       profile: data.profile,
       medications: data.medications || [],
-      doses: data.doses || [],
+      doses: mergedDoses,
       waterLogged: data.water_logged_ml || 0,
       waterLogs: data.water_logs || [],
       yogaSteps: data.yoga_completed_steps || [],
@@ -416,9 +417,10 @@ export async function bootstrapUserDataset(targetDate?: string): Promise<{
 
       if (prof) await set(K.profile, prof);
       if (Array.isArray(meds) && meds.length) await set(K.medications, meds);
+      let mergedFallbackDoses = doses || [];
       if (Array.isArray(doses)) {
-        const merged = await mergeDoses(doses, d);
-        await set(K.doses(d), merged);
+        mergedFallbackDoses = await mergeDoses(doses, d);
+        await set(K.doses(d), mergedFallbackDoses);
       }
       let waterMl = 0;
       if (Array.isArray(waterActivities)) {
@@ -433,7 +435,7 @@ export async function bootstrapUserDataset(targetDate?: string): Promise<{
       return {
         profile: prof,
         medications: meds || [],
-        doses: doses || [],
+        doses: mergedFallbackDoses || [],
         waterLogged: waterMl,
         waterLogs: [],
         yogaSteps: [],

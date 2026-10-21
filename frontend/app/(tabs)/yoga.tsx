@@ -486,10 +486,17 @@ export default function YogaTabScreen() {
 
   const isStepDone = (num: number) => safeCompletedSteps.includes(num);
 
-  const toggleStepDone = async (step: YogaPose, watchedSecs?: number, feeling?: string) => {
+  const toggleStepDone = async (step: YogaPose, watchedSecs?: number, feeling?: string, forceDone = false) => {
     const num = step.num;
     const isDone = isStepDone(num);
-    const next = isDone ? safeCompletedSteps.filter((n) => n !== num) : [...safeCompletedSteps, num];
+    if (forceDone && isDone) {
+      if (watchedSecs && watchedSecs > 0) {
+        const addMins = Math.max(1, Math.round(watchedSecs / 60));
+        setMindfulMins((prev) => prev + addMins);
+      }
+      return;
+    }
+    const next = isDone && !forceDone ? safeCompletedSteps.filter((n) => n !== num) : [...safeCompletedSteps, num];
     setCompletedSteps(next);
     await set(getYogaDoneKey(currentRoutine.id), next);
 
@@ -852,7 +859,7 @@ export default function YogaTabScreen() {
         benefit={activeVideo?.benefit}
         onCompleteSession={(watchedSeconds, feeling) => {
           if (activeVideo?.step) {
-            toggleStepDone(activeVideo.step, watchedSeconds, feeling);
+            toggleStepDone(activeVideo.step, watchedSeconds, feeling, true);
           }
         }}
       />

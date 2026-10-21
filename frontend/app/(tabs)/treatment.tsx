@@ -136,10 +136,11 @@ export default function Treatment() {
       else setCompletedSteps([]);
     });
   }, []);
-  const toggleStepDone = async (step: any) => {
+  const toggleStepDone = async (step: any, forceDone = false) => {
     const num = step.num;
     const isDone = isStepDone(num);
-    const next = isDone ? safeCompletedSteps.filter(n => n !== num) : [...safeCompletedSteps, num];
+    if (forceDone && isDone) return;
+    const next = isDone && !forceDone ? safeCompletedSteps.filter(n => n !== num) : [...safeCompletedSteps, num];
     setCompletedSteps(next);
     await set(yogaDoneKey(), next);
 
@@ -253,12 +254,17 @@ export default function Treatment() {
   };
 
   const saveMeasure = async () => {
-    if (!mModal.type || !vP) return;
+    if (!mModal.type) return;
+    const val = vP.trim();
+    if (!val || isNaN(parseFloat(val))) {
+      Alert.alert("Enter Value", "Please enter a valid numeric measurement value before saving.");
+      return;
+    }
     setSaving(true);
     const payload = {
       type: mModal.type.key,
-      value: parseFloat(vP),
-      value_secondary: vS ? parseFloat(vS) : undefined,
+      value: parseFloat(val),
+      value_secondary: vS && !isNaN(parseFloat(vS.trim())) ? parseFloat(vS.trim()) : undefined,
       unit: selectedMUnit || mModal.type.unit || "unit",
       note: vN || undefined,
       created_at: new Date().toISOString(),
@@ -278,11 +284,16 @@ export default function Treatment() {
   };
 
   const saveActivity = async () => {
-    if (!aModal.type || !vP) return;
+    if (!aModal.type) return;
+    const val = vP.trim();
+    if (!val || isNaN(parseFloat(val))) {
+      Alert.alert("Enter Value", "Please enter a valid duration or count for this activity.");
+      return;
+    }
     setSaving(true);
     const payload = {
       type: aModal.type.key,
-      value: parseFloat(vP),
+      value: parseFloat(val),
       unit: selectedAUnit || aModal.type.unit || "unit",
       note: vN || undefined,
       created_at: new Date().toISOString(),
@@ -952,7 +963,7 @@ export default function Treatment() {
               </View>
             )}
             <TextInput value={vN} onChangeText={setVN} placeholder="Notes / Observations (optional)" placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
-            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent }]} onPress={saveMeasure} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent, opacity: (!vP.trim() || saving) ? 0.6 : 1 }]} onPress={saveMeasure} disabled={saving}><Text style={s.subT}>{saving ? "Saving…" : "Save Measurement"}</Text></TouchableOpacity>
             <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setMModal({ open: false, type: null })}><Text style={{ color: theme.textSecondary }}>Cancel</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -982,7 +993,7 @@ export default function Treatment() {
               <TextInput value={vP} onChangeText={setVP} keyboardType="decimal-pad" placeholder={`Enter amount in ${selectedAUnit || aModal.type?.unit || ""}`} placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
             </View>
             <TextInput value={vN} onChangeText={setVN} placeholder="Notes (optional)" placeholderTextColor={theme.textDisabled} style={[s.inp, { backgroundColor: isDark ? "#1e2030" : "#f8fafc", color: theme.textPrimary, borderColor: theme.surfaceBorder }]} />
-            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent }]} onPress={saveActivity} disabled={saving || !vP}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
+            <TouchableOpacity style={[s.subBtn, { backgroundColor: theme.accent, opacity: (!vP.trim() || saving) ? 0.6 : 1 }]} onPress={saveActivity} disabled={saving}><Text style={s.subT}>{saving ? "Saving…" : "Save Activity"}</Text></TouchableOpacity>
             <TouchableOpacity style={{ padding: 10, alignItems: "center" }} onPress={() => setAModal({ open: false, type: null })}><Text style={{ color: theme.textSecondary }}>Cancel</Text></TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1000,7 +1011,7 @@ export default function Treatment() {
         benefit={activeVideo?.benefit}
         onCompleteSession={() => {
           if (activeVideo?.step) {
-            toggleStepDone(activeVideo.step);
+            toggleStepDone(activeVideo.step, true);
           }
         }}
       />
