@@ -50,6 +50,63 @@ export interface YogaRoutine {
 
 const BUILTIN_YOGA_ROUTINES: YogaRoutine[] = [
   {
+    id: "sadhguru_isha",
+    category: "Sadhguru (Isha Yoga)",
+    title: "Sadhguru — Classical Hatha & Upa-Yoga",
+    duration: "18 min",
+    level: "All Levels",
+    description:
+      "Authentic classical yoga, Upa-Yoga, pranayama, and guided meditation directly from Sadhguru (Isha Foundation, Padma Vibhushan). Proven to enhance lung immunity, relieve back stiffness, and cultivate inner peace.",
+    steps: [
+      {
+        num: 1,
+        name: "Yoga Namaskar (Spinal & Sacral Stretch)",
+        duration: "10 min",
+        benefit: "Stretches spine, relieves lower back tension, and activates lumbar circulation.",
+        channel: "Sadhguru",
+        youtube_video: "https://www.youtube.com/watch?v=EVb7mE9VtW8",
+      },
+      {
+        num: 2,
+        name: "Nadi Shuddhi (Pranayama for Peace)",
+        duration: "5 min",
+        benefit: "Harmonizes left/right autonomic channels, lowers cortisol, and brings mental calm.",
+        channel: "Sadhguru",
+        youtube_video: "https://www.youtube.com/watch?v=q5m6tMjcF8k",
+      },
+      {
+        num: 3,
+        name: "Simha Kriya (Lung Immunity & Cleanse)",
+        duration: "5 min",
+        benefit: "Expands chest cavity, increases lung vital capacity, and boosts cellular immunity.",
+        channel: "Sadhguru",
+        youtube_video: "https://www.youtube.com/watch?v=lP1Y1bk1YgU",
+      },
+      {
+        num: 4,
+        name: "Isha Kriya (Clarity & Inner Balance)",
+        duration: "15 min",
+        benefit: "Guided meditation creating distance between you and your physical/mental burdens.",
+        channel: "Sadhguru",
+        youtube_video: "https://www.youtube.com/watch?v=EwQkfoKxRvo",
+      },
+      {
+        num: 5,
+        name: "Morning Meditation for Ease",
+        duration: "5 min",
+        benefit: "Centers consciousness and sets an effortless, vibrant tone for your day.",
+        channel: "Sadhguru",
+        youtube_video: "https://www.youtube.com/watch?v=C_xsXnRd_uc",
+      },
+    ],
+    channels: [
+      { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true },
+      { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
+      { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+    ],
+    disclaimer: "Practice on an empty or light stomach. Sadhguru's Upa-Yoga practices are designed for safe practice by all age groups.",
+  },
+  {
     id: "diabetes",
     category: "Diabetes & Sugar",
     title: "Diabetes & Blood Sugar Control Yoga",
@@ -66,6 +123,7 @@ const BUILTIN_YOGA_ROUTINES: YogaRoutine[] = [
     ],
     channels: [
       { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
+      { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true },
       { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
     ],
     disclaimer: "Monitor your blood glucose regularly and consult your physician for medication adjustments.",
@@ -191,6 +249,7 @@ const BUILTIN_YOGA_ROUTINES: YogaRoutine[] = [
       },
     ],
     channels: [
+      { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true },
       { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
       { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
     ],
@@ -239,6 +298,7 @@ const BUILTIN_YOGA_ROUTINES: YogaRoutine[] = [
       },
     ],
     channels: [
+      { name: "Sadhguru — Isha Foundation", url: "https://www.youtube.com/@sadhguru", verified: true },
       { name: "Swami Ramdev — Patanjali Yogpeeth", url: "https://www.youtube.com/@SwamiRamdevOfficial", verified: true },
       { name: "Ministry of AYUSH, Govt. of India", url: "https://www.youtube.com/@ministryofayushofficial", verified: true },
     ],
@@ -289,6 +349,7 @@ const BUILTIN_YOGA_ROUTINES: YogaRoutine[] = [
 const CATEGORIES = [
   "All",
   "AI Recommended",
+  "Sadhguru (Isha Yoga)",
   "Diabetes & Sugar",
   "Hypertension & Heart",
   "Thyroid & Metabolism",
@@ -397,12 +458,22 @@ export default function YogaTabScreen() {
       }
 
       const historyCache = (await get<any[]>(K.history)) || [];
-      let totalLogs = 0;
-      historyCache.forEach((day: any) => {
-        const yogaEntries = (day.entries || []).filter((e: any) => e.status === "yoga_completed" || e.name?.startsWith("Yoga:"));
-        totalLogs += yogaEntries.length;
-      });
-      setMindfulMins(Math.max(15, totalLogs * 15));
+      let storedMindfulSecs = (await get<number>(K.mindfulSeconds)) || 0;
+      if (!storedMindfulSecs) {
+        let computedSecs = 0;
+        historyCache.forEach((day: any) => {
+          (day.entries || []).forEach((e: any) => {
+            if (e.status === "yoga_completed" || e.name?.startsWith("Yoga:")) {
+              computedSecs += (e.duration_seconds || 180);
+            }
+          });
+        });
+        storedMindfulSecs = computedSecs;
+        if (storedMindfulSecs > 0) {
+          await set(K.mindfulSeconds, storedMindfulSecs).catch(() => {});
+        }
+      }
+      setMindfulMins(Math.round(storedMindfulSecs / 60));
     } catch {
       // Keep state
     }
@@ -489,10 +560,14 @@ export default function YogaTabScreen() {
   const toggleStepDone = async (step: YogaPose, watchedSecs?: number, feeling?: string, forceDone = false) => {
     const num = step.num;
     const isDone = isStepDone(num);
+    const addSecs = watchedSecs && watchedSecs > 0 ? watchedSecs : 180;
+
     if (forceDone && isDone) {
       if (watchedSecs && watchedSecs > 0) {
-        const addMins = Math.max(1, Math.round(watchedSecs / 60));
-        setMindfulMins((prev) => prev + addMins);
+        const prevSecs = (await get<number>(K.mindfulSeconds)) || 0;
+        const updatedSecs = prevSecs + watchedSecs;
+        await set(K.mindfulSeconds, updatedSecs).catch(() => {});
+        setMindfulMins(Math.round(updatedSecs / 60));
       }
       return;
     }
@@ -501,8 +576,10 @@ export default function YogaTabScreen() {
     await set(getYogaDoneKey(currentRoutine.id), next);
 
     if (watchedSecs && watchedSecs > 0) {
-      const addMins = Math.max(1, Math.round(watchedSecs / 60));
-      setMindfulMins((prev) => prev + addMins);
+      const prevSecs = (await get<number>(K.mindfulSeconds)) || 0;
+      const updatedSecs = prevSecs + watchedSecs;
+      await set(K.mindfulSeconds, updatedSecs).catch(() => {});
+      setMindfulMins(Math.round(updatedSecs / 60));
     }
 
     const d = new Date();
@@ -517,13 +594,16 @@ export default function YogaTabScreen() {
     }
 
     if (!isDone) {
-      const secsText = watchedSecs ? `${Math.round(watchedSecs / 60)}m studio practice` : step.duration;
+      const minsVal = Math.floor(addSecs / 60);
+      const remSecs = addSecs % 60;
+      const secsText = minsVal > 0 ? `${minsVal}m ${remSecs}s studio practice` : `${remSecs}s studio practice`;
       const feelingText = feeling ? ` • Felt: ${feeling}` : "";
       const newEntry = {
         id: `yoga_${currentRoutine.id}_${num}_${Date.now()}`,
         name: `Yoga: ${step.name}`,
         generic_name: "AI Yoga Therapy",
-        dosage: "",
+        dosage: `${secsText}`,
+        duration_seconds: addSecs,
         unit: "",
         time: hStr,
         status: "yoga_completed",
@@ -532,8 +612,8 @@ export default function YogaTabScreen() {
       if (!dayItem.entries.some((e: any) => e.name === newEntry.name)) {
         dayItem.entries.push(newEntry);
       }
-      track("yoga_done", { routine: currentRoutine.id, pose: step.name, watchedSecs, feeling });
-      api.yogaComplete(num, step.name, step.youtube_video).catch(() => {});
+      track("yoga_done", { routine: currentRoutine.id, pose: step.name, watchedSecs: addSecs, feeling });
+      api.yogaComplete(num, step.name, step.youtube_video, addSecs, feeling).catch(() => {});
     } else {
       dayItem.entries = dayItem.entries.filter((e: any) => e.name !== `Yoga: ${step.name}`);
       api.yogaUncomplete(num, step.name).catch(() => {});
@@ -857,9 +937,53 @@ export default function YogaTabScreen() {
         title={activeVideo?.title}
         channel={activeVideo?.channel}
         benefit={activeVideo?.benefit}
+        suggestions={[
+          ...(currentRoutine?.steps?.map((st) => ({
+            title: st.name,
+            channel: st.channel,
+            url: st.youtube_video,
+            duration: st.duration,
+            benefit: st.benefit,
+          })) || []),
+          {
+            title: "Yoga Namaskar (Full Body Vitality)",
+            channel: "Sadhguru",
+            url: "https://www.youtube.com/watch?v=EVb7mE9VtW8",
+            duration: "10 min",
+            benefit: "Strengthens lumbar spine and activates sacral energy pathways.",
+          },
+          {
+            title: "Nadi Shuddhi (Pranayama for Peace)",
+            channel: "Sadhguru",
+            url: "https://www.youtube.com/watch?v=q5m6tMjcF8k",
+            duration: "5 min",
+            benefit: "Clears subtle energy pathways, lowers heart rate, and brings tranquility.",
+          },
+          {
+            title: "Simha Kriya (Immunity & Lung Power)",
+            channel: "Sadhguru",
+            url: "https://www.youtube.com/watch?v=lP1Y1bk1YgU",
+            duration: "5 min",
+            benefit: "Expands respiratory volume and enhances cellular lung immunity.",
+          },
+          {
+            title: "Isha Kriya (Clarity & Inner Balance)",
+            channel: "Sadhguru",
+            url: "https://www.youtube.com/watch?v=EwQkfoKxRvo",
+            duration: "15 min",
+            benefit: "Deep guided meditation for profound mental clarity.",
+          },
+        ]}
         onCompleteSession={(watchedSeconds, feeling) => {
           if (activeVideo?.step) {
             toggleStepDone(activeVideo.step, watchedSeconds, feeling, true);
+          } else {
+            const addSecs = watchedSeconds > 0 ? watchedSeconds : 180;
+            get<number>(K.mindfulSeconds).then((prev) => {
+              const updated = (prev || 0) + addSecs;
+              set(K.mindfulSeconds, updated).catch(() => {});
+              setMindfulMins(Math.round(updated / 60));
+            });
           }
         }}
       />

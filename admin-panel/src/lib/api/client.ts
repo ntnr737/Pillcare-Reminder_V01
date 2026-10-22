@@ -340,6 +340,9 @@ export async function fetchStreakDashboard(): Promise<StreakDashboardAnalytics> 
         avgStreakDays: json.avgStreakDays || 0,
         maxStreakDays: json.maxStreakDays || 0,
         atRiskCount: json.atRiskCount || 0,
+        totalMindfulMinutes: json.totalMindfulMinutes || 0,
+        avgMindfulMinutes: json.avgMindfulMinutes || 0,
+        totalMindfulSessions: json.totalMindfulSessions || 0,
         streakBrackets: json.streakBrackets || { '1-3d': 0, '4-7d': 0, '8-14d': 0, '15-30d': 0, '30d+': 0 },
         competitions: json.competitions || [],
         leaderboard: json.leaderboard || [],
@@ -353,6 +356,9 @@ export async function fetchStreakDashboard(): Promise<StreakDashboardAnalytics> 
     avgStreakDays: 8.4,
     maxStreakDays: 45,
     atRiskCount: 182,
+    totalMindfulMinutes: 3840,
+    avgMindfulMinutes: 24.5,
+    totalMindfulSessions: 260,
     streakBrackets: { '1-3d': 540, '4-7d': 420, '8-14d': 280, '15-30d': 130, '30d+': 50 },
     competitions: [
       {
@@ -386,11 +392,11 @@ export async function fetchStreakDashboard(): Promise<StreakDashboardAnalytics> 
       },
     ],
     leaderboard: [
-      { rank: 1, userId: 'usr_01', name: 'Dr. Priya Sharma', email: 'priya.sharma@aims.org', streakDays: 28, adherenceRate: 99.2, points: 3050, tier: 'Adherence Legend', shieldActive: true, plan: 'Enterprise', lastActive: 'Just now' },
-      { rank: 2, userId: 'usr_02', name: 'Rajesh Kumar', email: 'rajesh.k@gmail.com', streakDays: 24, adherenceRate: 97.5, points: 2680, tier: 'Adherence Legend', shieldActive: false, plan: 'Premium', lastActive: '15m ago' },
-      { rank: 3, userId: 'usr_03', name: 'Anita Verma', email: 'anita.verma@yahoo.co.in', streakDays: 21, adherenceRate: 96.0, points: 2340, tier: 'Adherence Legend', shieldActive: true, plan: 'Premium', lastActive: '1h ago' },
-      { rank: 4, userId: 'usr_04', name: 'Amit Patel', email: 'amit.patel99@gmail.com', streakDays: 18, adherenceRate: 94.8, points: 2010, tier: 'Adherence Legend', shieldActive: false, plan: 'Basic', lastActive: '3h ago' },
-      { rank: 5, userId: 'usr_05', name: 'Sunita Rao', email: 'sunita.rao@healthnet.in', streakDays: 15, adherenceRate: 93.1, points: 1720, tier: 'Adherence Legend', shieldActive: false, plan: 'Premium', lastActive: '4h ago' },
+      { rank: 1, userId: 'usr_01', name: 'Dr. Priya Sharma', email: 'priya.sharma@aims.org', streakDays: 28, adherenceRate: 99.2, mindfulMinutes: 145.0, points: 3050, tier: 'Adherence Legend', shieldActive: true, plan: 'Enterprise', lastActive: 'Just now' },
+      { rank: 2, userId: 'usr_02', name: 'Rajesh Kumar', email: 'rajesh.k@gmail.com', streakDays: 24, adherenceRate: 97.5, mindfulMinutes: 110.5, points: 2680, tier: 'Adherence Legend', shieldActive: false, plan: 'Premium', lastActive: '15m ago' },
+      { rank: 3, userId: 'usr_03', name: 'Anita Verma', email: 'anita.verma@yahoo.co.in', streakDays: 21, adherenceRate: 96.0, mindfulMinutes: 95.0, points: 2340, tier: 'Adherence Legend', shieldActive: true, plan: 'Premium', lastActive: '1h ago' },
+      { rank: 4, userId: 'usr_04', name: 'Amit Patel', email: 'amit.patel99@gmail.com', streakDays: 18, adherenceRate: 94.8, mindfulMinutes: 80.0, points: 2010, tier: 'Adherence Legend', shieldActive: false, plan: 'Basic', lastActive: '3h ago' },
+      { rank: 5, userId: 'usr_05', name: 'Sunita Rao', email: 'sunita.rao@healthnet.in', streakDays: 15, adherenceRate: 93.1, mindfulMinutes: 65.5, points: 1720, tier: 'Adherence Legend', shieldActive: false, plan: 'Premium', lastActive: '4h ago' },
     ],
   };
 }

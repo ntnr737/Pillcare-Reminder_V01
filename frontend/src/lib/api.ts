@@ -96,8 +96,8 @@ export const api = {
     }
     return res.text();
   },
-  yogaComplete: (step_num: number, step_name: string, video_url?: string) =>
-    req<any>("/yoga/complete", { method: "POST", body: JSON.stringify({ step_num, step_name, video_url, local_date: localDateStr() }) }),
+  yogaComplete: (step_num: number, step_name: string, video_url?: string, duration_seconds?: number, feeling?: string) =>
+    req<any>("/yoga/complete", { method: "POST", body: JSON.stringify({ step_num, step_name, video_url, duration_seconds: duration_seconds || 0, feeling, local_date: localDateStr() }) }),
   yogaUncomplete: (step_num: number, step_name: string) =>
     req<any>("/yoga/uncomplete", { method: "POST", body: JSON.stringify({ step_num, step_name, local_date: localDateStr() }) }),
   yogaLog: (days: number = 30) => req<any[]>(`/yoga/log?days=${days}`),

@@ -41,6 +41,7 @@ export const K = {
   yogaTip: "yoga_tip",
   yogaReminderTime: "yoga_reminder_time",
   appointments: "appointments",
+  mindfulSeconds: "mindful_practice_seconds",
   writeQueue: "write_queue",
   seenNotifIds: "seen_notif_ids",
   firstInstalledAt: "first_installed_at",

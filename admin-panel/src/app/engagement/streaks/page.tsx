@@ -47,7 +47,7 @@ export default function StreakCompetitionPage() {
   const [toastMsg, setToastMsg] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTier, setSelectedTier] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'streak' | 'adherence' | 'points' | 'name'>('streak');
+  const [sortBy, setSortBy] = useState<'streak' | 'adherence' | 'mindful' | 'points' | 'name'>('streak');
 
   // Modals state
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -190,6 +190,7 @@ export default function StreakCompetitionPage() {
     .sort((a, b) => {
       if (sortBy === 'streak') return b.streakDays - a.streakDays || b.points - a.points;
       if (sortBy === 'adherence') return b.adherenceRate - a.adherenceRate || b.streakDays - a.streakDays;
+      if (sortBy === 'mindful') return (b.mindfulMinutes || 0) - (a.mindfulMinutes || 0) || b.streakDays - a.streakDays;
       if (sortBy === 'points') return b.points - a.points;
       if (sortBy === 'name') return a.name.localeCompare(b.name);
       return 0;
@@ -258,8 +259,8 @@ export default function StreakCompetitionPage() {
           </div>
         )}
 
-        {/* 4 Core KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 5 Core KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* Active Streaks */}
           <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
@@ -313,6 +314,20 @@ export default function StreakCompetitionPage() {
                 {loading ? '...' : (data?.atRiskCount || 0).toLocaleString()}
               </div>
               <span className="text-[10px] text-rose-400 font-medium">Pending doses before 23:59</span>
+            </div>
+          </div>
+
+          {/* Mindful Practice (Yoga Focus) */}
+          <div className="p-4 rounded-2xl bg-slate-900/70 border border-emerald-900/30 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0 text-xl">
+              🧘
+            </div>
+            <div>
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Mindful Practice</span>
+              <div className="text-2xl font-bold text-emerald-300 tracking-tight">
+                {loading ? '...' : `${data?.totalMindfulMinutes || 0}m`}
+              </div>
+              <span className="text-[10px] text-emerald-400 font-medium">Avg {data?.avgMindfulMinutes || 0}m · {data?.totalMindfulSessions || 0} sessions</span>
             </div>
           </div>
         </div>
@@ -486,6 +501,7 @@ export default function StreakCompetitionPage() {
               >
                 <option value="streak">Sort: Streak Days</option>
                 <option value="adherence">Sort: Adherence %</option>
+                <option value="mindful">Sort: Mindful Practice</option>
                 <option value="points">Sort: Health XP</option>
                 <option value="name">Sort: Name (A-Z)</option>
               </select>
@@ -502,6 +518,7 @@ export default function StreakCompetitionPage() {
                   <th className="py-2.5 px-3">Current Streak</th>
                   <th className="py-2.5 px-3">Adherence Rate</th>
                   <th className="py-2.5 px-3">Health XP</th>
+                  <th className="py-2.5 px-3">Mindful Practice</th>
                   <th className="py-2.5 px-3">Rank Tier</th>
                   <th className="py-2.5 px-3">Streak Shield</th>
                   <th className="py-2.5 px-3 text-right">Actions</th>
@@ -568,6 +585,13 @@ export default function StreakCompetitionPage() {
                       {/* Health XP */}
                       <td className="py-3 px-3 font-mono text-slate-300 font-bold">
                         {user.points.toLocaleString()} XP
+                      </td>
+
+                      {/* Mindful Practice */}
+                      <td className="py-3 px-3">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 font-bold border border-emerald-500/20 font-mono text-[11px]">
+                          🧘 {user.mindfulMinutes ?? 0}m
+                        </span>
                       </td>
 
                       {/* Tier */}

@@ -19,6 +19,7 @@ ADMIN_HEADERS = {"x-admin-secret": "pillcare_admin_secret_key_2026"}
 @pytest.fixture(autouse=True)
 def setup_mock_db():
     server.JWT_SECRET = "test_jwt_secret_for_qc_audit_contracts_2026"
+    server.ADMIN_SECRET = "pillcare_admin_secret_key_2026"
     server.TEST_DEMO_ENABLED = True
     mock_client = mongomock_motor.AsyncMongoMockClient()
     server.db = mock_client["pillcare"]
@@ -294,6 +295,70 @@ async def test_qc_drug_food_guide_dynamic_lookup_contract():
         r_anon = await ac.get("/treatment/drug-food-guide")
         assert r_anon.status_code == 200
         assert r_anon.json().get("has_medications") is False
+
+
+@pytest.mark.anyio
+async def test_qc_yoga_mindful_practice_contract():
+    """Verify PillCare Yoga Focus mindful practice tracking and admin telemetry contract:
+    1. Complete a yoga step with exact duration_seconds.
+    2. Confirm persistence in db.yoga_log and profile increment.
+    3. Confirm admin streaks telemetry surfaces total mindful minutes & sessions.
+    4. Confirm dedicated admin /admin/mindful/metrics endpoint.
+    """
+    user_id = "yoga_user_1"
+    token = server._create_session_token(user_id)
+    auth_headers = {"Authorization": f"Bearer {token}"}
+    await server.db.profile.insert_one({
+        "id": user_id,
+        "name": "Yogi Tester",
+        "streak_days": 5,
+        "mindful_practice_seconds": 600,
+    })
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as ac:
+        # 1. Log yoga completion with duration_seconds = 300 (5 mins)
+        payload = {
+            "step_num": 1,
+            "step_name": "Yoga Namaskar (Sadhguru)",
+            "video_url": "https://www.youtube.com/watch?v=EVb7mE9VtW8",
+            "duration_seconds": 300,
+            "feeling": "focused",
+        }
+        r_comp = await ac.post("/api/yoga/complete", json=payload, headers=auth_headers)
+        assert r_comp.status_code == 200
+        assert r_comp.json()["ok"] is True
+        assert r_comp.json()["duration_seconds"] == 300
+
+        # 2. Check persistence in db.yoga_log
+        log_entry = await server.db.yoga_log.find_one({"user_id": user_id, "step_num": 1})
+        assert log_entry is not None
+        assert log_entry["duration_seconds"] == 300
+        assert log_entry["duration_minutes"] == 5.0
+        assert log_entry["feeling"] == "focused"
+
+        # Check profile increment (600 + 300 = 900)
+        prof = await server.db.profile.find_one({"id": user_id})
+        assert prof["mindful_practice_seconds"] == 900
+
+        # 3. Check /admin/streaks exposes mindful metrics
+        r_streaks = await ac.get("/admin/streaks", headers=ADMIN_HEADERS)
+        assert r_streaks.status_code == 200
+        streaks_data = r_streaks.json()
+        assert "totalMindfulMinutes" in streaks_data
+        assert "totalMindfulSessions" in streaks_data
+        assert "avgMindfulMinutes" in streaks_data
+        assert streaks_data["totalMindfulMinutes"] > 0
+        assert len(streaks_data["leaderboard"]) > 0
+        assert "mindfulMinutes" in streaks_data["leaderboard"][0]
+
+        # 4. Check dedicated /admin/mindful/metrics
+        r_mindful = await ac.get("/admin/mindful/metrics", headers=ADMIN_HEADERS)
+        assert r_mindful.status_code == 200
+        mindful_data = r_mindful.json()
+        assert "totalMindfulMinutes" in mindful_data
+        assert "totalMindfulSessions" in mindful_data
+        assert len(mindful_data.get("recentSessions", [])) >= 1
+
 
 
 

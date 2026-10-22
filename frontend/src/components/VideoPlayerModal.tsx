@@ -41,8 +41,54 @@ export interface VideoPlayerModalProps {
   title?: string;
   channel?: string;
   benefit?: string;
+  suggestions?: Array<{ title: string; channel: string; url: string; duration?: string; benefit?: string }>;
   onCompleteSession?: (watchedSeconds: number, feeling: string) => void;
 }
+
+export const DEFAULT_VERIFIED_SUGGESTIONS = [
+  {
+    title: "Yoga Namaskar (Full Body Vitality)",
+    channel: "Sadhguru",
+    url: "https://www.youtube.com/watch?v=EVb7mE9VtW8",
+    duration: "10 min",
+    benefit: "Strengthens lumbar spine and activates sacral energy pathways.",
+  },
+  {
+    title: "Nadi Shuddhi (Pranayama for Peace)",
+    channel: "Sadhguru",
+    url: "https://www.youtube.com/watch?v=q5m6tMjcF8k",
+    duration: "5 min",
+    benefit: "Clears subtle energy pathways, lowers heart rate, and brings tranquility.",
+  },
+  {
+    title: "Simha Kriya (Immunity & Lung Power)",
+    channel: "Sadhguru",
+    url: "https://www.youtube.com/watch?v=lP1Y1bk1YgU",
+    duration: "5 min",
+    benefit: "Expands respiratory volume and enhances cellular lung immunity.",
+  },
+  {
+    title: "Isha Kriya (Clarity & Inner Balance)",
+    channel: "Sadhguru",
+    url: "https://www.youtube.com/watch?v=EwQkfoKxRvo",
+    duration: "15 min",
+    benefit: "Deep guided meditation for profound mental clarity and detachment from stress.",
+  },
+  {
+    title: "Mandukasana (Frog Pose)",
+    channel: "Swami Ramdev",
+    url: "https://www.youtube.com/watch?v=aqjnv0dZhNc",
+    duration: "3 min",
+    benefit: "Compresses pancreas and stimulates natural insulin secretion.",
+  },
+  {
+    title: "Common Yoga Protocol Official",
+    channel: "Ministry of AYUSH",
+    url: "https://www.youtube.com/watch?v=v7AYKMP6rOE",
+    duration: "15 min",
+    benefit: "Clinical standardized wellness sequence certified by Govt. of India.",
+  },
+];
 
 export function extractYouTubeId(url?: string): string {
   if (!url) return "v7AYKMP6rOE";
@@ -125,6 +171,7 @@ export function VideoPlayerModal({
   title,
   channel,
   benefit,
+  suggestions,
   onCompleteSession,
 }: VideoPlayerModalProps) {
   const insets = useSafeAreaInsets();
@@ -138,7 +185,23 @@ export function VideoPlayerModal({
   const [modalStep, setModalStep] = useState<"player" | "feedback">("player");
   const [selectedFeeling, setSelectedFeeling] = useState<string>("energized");
 
-  // YouTube Full Feature States
+  // Active Video State with in-modal switching support
+  const [activeUrl, setActiveUrl] = useState(videoUrl || "");
+  const [activeTitle, setActiveTitle] = useState(title || "");
+  const [activeChannel, setActiveChannel] = useState(channel || "");
+  const [activeBenefit, setActiveBenefit] = useState(benefit || "");
+
+  const allSuggestions = suggestions && suggestions.length > 0 ? suggestions : DEFAULT_VERIFIED_SUGGESTIONS;
+
+  const switchVideo = (sug: { url: string; title: string; channel: string; benefit?: string }) => {
+    setActiveUrl(sug.url);
+    setActiveTitle(sug.title);
+    setActiveChannel(sug.channel);
+    if (sug.benefit) setActiveBenefit(sug.benefit);
+    setHasError(false);
+  };
+
+  // YouTube Focus Player States
   const [playerMode, setPlayerMode] = useState<"focus" | "youtube_web">("focus");
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -149,6 +212,10 @@ export function VideoPlayerModal({
     if (visible) {
       setHasError(false);
       setPlayerMode("focus");
+      setActiveUrl(videoUrl || "");
+      setActiveTitle(title || "");
+      setActiveChannel(channel || "");
+      setActiveBenefit(benefit || "");
       setSecondsWatched(0);
       setCurrentTime(0);
       setDuration(0);
@@ -172,7 +239,7 @@ export function VideoPlayerModal({
         } catch {}
       }
     }
-  }, [visible, videoUrl]);
+  }, [visible, videoUrl, title, channel, benefit]);
 
   // Handle messages from WebView JS Bridge
   const handleWebViewMessage = (event: any) => {
@@ -260,7 +327,7 @@ export function VideoPlayerModal({
       const mins = Math.floor(watchedSecs / 60);
       const secs = watchedSecs % 60;
       const durationLabel = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-      const poseTitle = title || "Yoga Practice";
+      const poseTitle = activeTitle || title || "Yoga Practice";
 
       const selectedFeelingObj = FEELING_OPTIONS.find((f) => f.id === feeling);
       const feelingText = selectedFeelingObj ? ` · Felt: ${selectedFeelingObj.label}` : feeling ? ` · Felt: ${feeling}` : "";
@@ -269,8 +336,9 @@ export function VideoPlayerModal({
       const newEntry = {
         id: logId,
         name: `Yoga: ${poseTitle}`,
-        generic_name: channel || "Guided Yoga Practice",
+        generic_name: activeChannel || channel || "Guided Yoga Practice",
         dosage: `${durationLabel} video played`,
+        duration_seconds: watchedSecs,
         unit: "",
         time: hStr,
         status: "yoga_completed",
@@ -287,7 +355,12 @@ export function VideoPlayerModal({
       }
 
       await set(K.history, [...historyCache]);
-      api.yogaComplete(0, poseTitle, videoUrl).catch(() => {});
+
+      // Atomically update cumulative mindful practice seconds
+      const prevSecs = (await get<number>(K.mindfulSeconds)) || 0;
+      await set(K.mindfulSeconds, prevSecs + watchedSecs);
+
+      api.yogaComplete(0, poseTitle, activeUrl || videoUrl, watchedSecs, feeling).catch(() => {});
     } catch (err) {
       console.warn("Failed to save yoga video playback log:", err);
     }
@@ -364,7 +437,7 @@ export function VideoPlayerModal({
     setIsTimerActive((prev) => !prev);
   };
 
-  const videoId = extractYouTubeId(videoUrl);
+  const videoId = extractYouTubeId(activeUrl || videoUrl);
   const directEmbedUri = `https://www.youtube-nocookie.com/embed/${videoId}?autoplay=1&playsinline=1&enablejsapi=1&origin=https://www.youtube.com&widget_referrer=https://www.youtube.com&rel=0&modestbranding=1`;
   const mobileWatchUri = `https://m.youtube.com/watch?v=${videoId}`;
   const [useMobileWeb, setUseMobileWeb] = useState(false);
@@ -532,7 +605,7 @@ export function VideoPlayerModal({
   };
 
   const handleExternalOpen = () => {
-    const rawUrl = videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
+    const rawUrl = activeUrl || videoUrl || `https://www.youtube.com/watch?v=${videoId}`;
     Linking.openURL(rawUrl).catch(() => {});
   };
 
@@ -872,149 +945,83 @@ export function VideoPlayerModal({
                   )}
                 </View>
 
-                {/* Player Mode Switcher Tabs */}
-                <View style={{ flexDirection: "row", backgroundColor: "rgba(255,255,255,0.05)", borderRadius: 10, padding: 3, marginBottom: 10 }}>
-                  <TouchableOpacity
-                    onPress={() => setPlayerMode("focus")}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 6,
-                      alignItems: "center",
-                      borderRadius: 8,
-                      backgroundColor: playerMode === "focus" ? A3 : "transparent",
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: "700", color: playerMode === "focus" ? "#FFF" : TM }}>
-                      🎬 Focus Player Controls
+                {/* PillCare Yoga Focus Status Bar */}
+                <View style={s.pillcareFocusBar}>
+                  <View style={s.focusBadgeLeft}>
+                    <View style={s.liveFocusIndicator} />
+                    <Ionicons name="sparkles" size={13} color={A3} />
+                    <Text style={s.focusBadgeTitle}>PillCare Yoga Focus</Text>
+                  </View>
+                  <View style={s.mindfulTimerPill}>
+                    <Ionicons name="stopwatch-outline" size={13} color="#10B981" />
+                    <Text style={s.mindfulTimerPillText}>
+                      {formatTimer(secondsWatched)} Mindful Practice
                     </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => setPlayerMode("youtube_web")}
-                    style={{
-                      flex: 1,
-                      paddingVertical: 6,
-                      alignItems: "center",
-                      borderRadius: 8,
-                      backgroundColor: playerMode === "youtube_web" ? "#FF0000" : "transparent",
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: "700", color: playerMode === "youtube_web" ? "#FFF" : TM }}>
-                      🌐 YouTube Web Page
-                    </Text>
-                  </TouchableOpacity>
+                  </View>
                 </View>
 
-                {/* Focus Controls Bar: Play/Pause, Seek, Speed, Mute, Fullscreen */}
-                {playerMode === "focus" && (
-                  <View style={{ backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 14, padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", marginBottom: 10 }}>
-                    {/* Time Progress Display */}
-                    {duration > 0 && (
-                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <Text style={{ fontSize: 11, color: A3, fontWeight: "600" }}>
-                          {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, "0")} / {Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, "0")}
-                        </Text>
-                        <Text style={{ fontSize: 11, color: TM }}>
-                          {playbackRate !== 1.0 ? `${playbackRate}x Speed` : "Normal Speed"}
-                        </Text>
+                {/* Verified Practice Suggestions Shelf (Featuring Sadhguru, Swami Ramdev, Ministry of AYUSH) */}
+                {allSuggestions && allSuggestions.length > 0 && (
+                  <View style={s.suggestedShelfWrapper}>
+                    <View style={s.suggestedShelfHeader}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                        <Ionicons name="film-outline" size={13} color={A3} />
+                        <Text style={s.suggestedShelfTitle}>VERIFIED PRACTICE SUGGESTIONS</Text>
                       </View>
-                    )}
-
-                    {/* Primary Controls Row */}
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-around" }}>
-                      {/* Rewind 10s */}
-                      <TouchableOpacity onPress={() => seekRelative(-10)} style={s.ctrlIconBtn} activeOpacity={0.7}>
-                        <Ionicons name="refresh-outline" size={18} color="#A78BFA" />
-                        <Text style={s.ctrlIconBtnText}>-10s</Text>
-                      </TouchableOpacity>
-
-                      {/* Play / Pause Toggle */}
-                      <TouchableOpacity onPress={togglePlayPausePlayer} style={[s.ctrlIconBtn, { backgroundColor: A3, paddingHorizontal: 16 }]} activeOpacity={0.8}>
-                        <Ionicons name={isPlaying ? "pause" : "play"} size={20} color="#FFF" />
-                        <Text style={[s.ctrlIconBtnText, { color: "#FFF", fontWeight: "700" }]}>
-                          {isPlaying ? "Pause" : "Play"}
-                        </Text>
-                      </TouchableOpacity>
-
-                      {/* Forward 10s */}
-                      <TouchableOpacity onPress={() => seekRelative(10)} style={s.ctrlIconBtn} activeOpacity={0.7}>
-                        <Ionicons name="reload-outline" size={18} color="#A78BFA" />
-                        <Text style={s.ctrlIconBtnText}>+10s</Text>
-                      </TouchableOpacity>
-
-                      {/* Speed Selector Toggle */}
-                      <TouchableOpacity onPress={() => setShowSpeedMenu((prev) => !prev)} style={[s.ctrlIconBtn, playbackRate !== 1.0 && { borderColor: A3 }]} activeOpacity={0.7}>
-                        <Ionicons name="speedometer-outline" size={18} color={playbackRate !== 1.0 ? A3 : TM} />
-                        <Text style={[s.ctrlIconBtnText, playbackRate !== 1.0 && { color: A3 }]}>
-                          {playbackRate}x
-                        </Text>
-                      </TouchableOpacity>
-
-                      {/* Sound Toggle */}
-                      <TouchableOpacity onPress={toggleMute} style={s.ctrlIconBtn} activeOpacity={0.7}>
-                        <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={18} color={isMuted ? "#F59E0B" : "#4ade80"} />
-                        <Text style={[s.ctrlIconBtnText, { color: isMuted ? "#F59E0B" : "#4ade80" }]}>
-                          {isMuted ? "Muted" : "Audio"}
-                        </Text>
-                      </TouchableOpacity>
-
-                      {/* Fullscreen & Rotate */}
-                      <TouchableOpacity onPress={toggleFullscreen} style={s.ctrlIconBtn} activeOpacity={0.7}>
-                        <Ionicons name="expand" size={18} color="#A78BFA" />
-                        <Text style={[s.ctrlIconBtnText, { color: "#A78BFA" }]}>Rotate</Text>
-                      </TouchableOpacity>
+                      <Text style={s.suggestedShelfSub}>Tap to switch instructor</Text>
                     </View>
-
-                    {/* Speed Selector Popup Menu */}
-                    {showSpeedMenu && (
-                      <View style={{ flexDirection: "row", justifyContent: "space-around", marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: "rgba(255,255,255,0.08)" }}>
-                        {SPEED_OPTIONS.map((rate) => (
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={false}
+                      contentContainerStyle={s.suggestedShelfScroll}
+                    >
+                      {allSuggestions.map((sug, idx) => {
+                        const isThisActive = extractYouTubeId(sug.url) === videoId;
+                        const isSadhguru = sug.channel?.toLowerCase().includes("sadhguru");
+                        return (
                           <TouchableOpacity
-                            key={rate}
-                            onPress={() => setSpeed(rate)}
-                            style={{
-                              paddingHorizontal: 8,
-                              paddingVertical: 4,
-                              borderRadius: 6,
-                              backgroundColor: playbackRate === rate ? A3 : "rgba(255,255,255,0.08)",
-                            }}
+                            key={`${sug.url}_${idx}`}
+                            style={[s.sugCard, isThisActive && s.sugCardActive]}
+                            onPress={() => switchVideo(sug)}
+                            activeOpacity={0.75}
                           >
-                            <Text style={{ fontSize: 11, fontWeight: "700", color: playbackRate === rate ? "#FFF" : TM }}>
-                              {rate}x
+                            <View style={s.sugCardTop}>
+                              <Ionicons
+                                name="logo-youtube"
+                                size={14}
+                                color={isSadhguru ? "#F59E0B" : "#FF0000"}
+                              />
+                              <Text style={s.sugChannelName} numberOfLines={1}>
+                                {sug.channel}
+                              </Text>
+                              {isSadhguru && (
+                                <View style={s.ishaTag}>
+                                  <Text style={s.ishaTagText}>ISHA</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text
+                              style={[
+                                s.sugTitle,
+                                isThisActive && { color: "#FFFFFF", fontWeight: "700" },
+                              ]}
+                              numberOfLines={1}
+                            >
+                              {sug.title}
                             </Text>
+                            <Text style={s.sugDuration}>{sug.duration || "Guided Studio"}</Text>
                           </TouchableOpacity>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                )}
-
-                {/* YouTube Web Compact Toolbar */}
-                {playerMode === "youtube_web" && (
-                  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: "rgba(255,255,255,0.03)", borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "rgba(255,255,255,0.08)", marginBottom: 10 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                      <Ionicons name="checkmark-circle" size={14} color="#10B981" />
-                      <Text style={{ fontSize: 11, color: TM, fontWeight: "600" }}>Live Official Stream</Text>
-                    </View>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <TouchableOpacity onPress={toggleMute} style={[s.ctrlIconBtn, { height: 32, paddingHorizontal: 10, flexDirection: "row", gap: 4 }]} activeOpacity={0.7}>
-                        <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={14} color={isMuted ? "#F59E0B" : "#4ade80"} />
-                        <Text style={[s.ctrlIconBtnText, { fontSize: 11, color: isMuted ? "#F59E0B" : "#4ade80" }]}>{isMuted ? "Muted" : "Sound"}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={toggleFullscreen} style={[s.ctrlIconBtn, { height: 32, paddingHorizontal: 10, flexDirection: "row", gap: 4 }]} activeOpacity={0.7}>
-                        <Ionicons name="expand" size={14} color="#A78BFA" />
-                        <Text style={[s.ctrlIconBtnText, { fontSize: 11, color: "#A78BFA" }]}>Rotate</Text>
-                      </TouchableOpacity>
-                    </View>
+                        );
+                      })}
+                    </ScrollView>
                   </View>
                 )}
 
                 {/* Clinical Benefit Callout */}
-                {benefit ? (
+                {activeBenefit ? (
                   <View style={s.benefitCard}>
                     <Ionicons name="bulb-outline" size={16} color={A3} />
-                    <Text style={s.benefitText}>{benefit}</Text>
+                    <Text style={s.benefitText}>{activeBenefit}</Text>
                   </View>
                 ) : null}
 
@@ -1425,5 +1432,118 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: "#FFF",
     fontWeight: "700",
+  },
+  pillcareFocusBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(167, 139, 250, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(167, 139, 250, 0.25)",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  focusBadgeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  liveFocusIndicator: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: "#10B981",
+  },
+  focusBadgeTitle: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#FFFFFF",
+    letterSpacing: 0.3,
+  },
+  mindfulTimerPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  mindfulTimerPillText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#10B981",
+  },
+  suggestedShelfWrapper: {
+    marginBottom: 10,
+  },
+  suggestedShelfHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+    paddingHorizontal: 2,
+  },
+  suggestedShelfTitle: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: A3,
+    letterSpacing: 0.5,
+  },
+  suggestedShelfSub: {
+    fontSize: 10,
+    color: TM,
+    fontWeight: "500",
+  },
+  suggestedShelfScroll: {
+    gap: 8,
+    paddingBottom: 2,
+  },
+  sugCard: {
+    width: 160,
+    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    padding: 8,
+    gap: 4,
+  },
+  sugCardActive: {
+    borderColor: A3,
+    backgroundColor: "rgba(167, 139, 250, 0.12)",
+  },
+  sugCardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  sugChannelName: {
+    flex: 1,
+    fontSize: 10,
+    color: TM,
+    fontWeight: "600",
+  },
+  ishaTag: {
+    backgroundColor: "rgba(245, 158, 11, 0.2)",
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 3,
+  },
+  ishaTagText: {
+    fontSize: 8,
+    fontWeight: "800",
+    color: "#F59E0B",
+  },
+  sugTitle: {
+    fontSize: 11,
+    color: "rgba(255, 255, 255, 0.85)",
+    fontWeight: "600",
+  },
+  sugDuration: {
+    fontSize: 10,
+    color: A3,
+    fontWeight: "500",
   },
 });

@@ -354,6 +354,7 @@ export interface StreakLeaderboardEntry {
   email: string;
   streakDays: number;
   adherenceRate: number;
+  mindfulMinutes?: number;
   points: number;
   tier: string;
   shieldActive: boolean;
@@ -366,6 +367,9 @@ export interface StreakDashboardAnalytics {
   avgStreakDays: number;
   maxStreakDays: number;
   atRiskCount: number;
+  totalMindfulMinutes?: number;
+  avgMindfulMinutes?: number;
+  totalMindfulSessions?: number;
   streakBrackets: Record<string, number>;
   competitions: StreakCompetitionRecord[];
   leaderboard: StreakLeaderboardEntry[];
