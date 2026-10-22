@@ -6609,8 +6609,86 @@ async def admin_filter_analytics(
     return {"users": results}
 
 @app.get("/admin/export/users")
-async def admin_export_users(_: None = Depends(require_admin)):
-    """Export all users to Excel with full analytics."""
+@app.get("/api/admin/export/users")
+@app.get("/admin/users/export")
+@app.get("/api/admin/users/export")
+async def admin_export_users(format: Optional[str] = "xlsx", _: None = Depends(require_admin)):
+    """Export all users to Excel or CSV with lightning-fast batch aggregation."""
+    profiles = await db.profile.find({}, PROJECTION).to_list(10000)
+    uids = [u.get("user_id") or u.get("id", "") for u in profiles if (u.get("user_id") or u.get("id"))]
+
+    med_task = db.medications.aggregate([
+        {"$match": {"user_id": {"$in": uids}, "active": True}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    taken_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}, "status": "taken"}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    missed_task = db.doses.aggregate([
+        {"$match": {"user_id": {"$in": uids}, "status": "missed"}},
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list(len(uids))
+
+    sub_task = db.subscriptions.find({"user_id": {"$in": uids}}, PROJECTION).to_list(len(uids))
+
+    audit_task = db.audit_log.aggregate([
+        {"$match": {"user_id": {"$in": uids}}},
+        {"$sort": {"ts": -1}},
+        {"$group": {"_id": "$user_id", "ts": {"$first": "$ts"}}}
+    ]).to_list(len(uids))
+
+    med_counts, taken_counts, missed_counts, subs, audits = await asyncio.gather(
+        med_task, taken_task, missed_task, sub_task, audit_task
+    )
+
+    med_map = {m["_id"]: m["count"] for m in med_counts if m.get("_id")}
+    taken_map = {t["_id"]: t["count"] for t in taken_counts if t.get("_id")}
+    missed_map = {mi["_id"]: mi["count"] for mi in missed_counts if mi.get("_id")}
+    sub_map = {s["user_id"]: s for s in subs if s.get("user_id")}
+    audit_map = {a["_id"]: a["ts"] for a in audits if a.get("_id")}
+
+    current_year = datetime.now(timezone.utc).year
+    headers = ["Name", "Email", "Gender", "Birth Year", "Age", "City", "State", "Phone", "Caregiver", "Plan", "Medications", "Doses Taken", "Doses Missed", "Adherence %", "Last Login", "Joined"]
+
+    if format and format.lower() == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        for u in profiles:
+            uid = u.get("user_id") or u.get("id", "")
+            yob = u.get("year_of_birth")
+            age = current_year - int(yob) if yob else ""
+            med_count = med_map.get(uid, 0)
+            taken = taken_map.get(uid, 0)
+            missed = missed_map.get(uid, 0)
+            adh = round(taken / (taken + missed) * 100, 1) if (taken + missed) > 0 else ""
+            sub = sub_map.get(uid, {})
+            last_ts = audit_map.get(uid)
+            writer.writerow([
+                u.get("nickname") or u.get("name", ""),
+                u.get("email", ""),
+                u.get("gender", ""),
+                yob, age,
+                u.get("location_city", ""),
+                u.get("location_state", ""),
+                u.get("phone", ""),
+                u.get("caregiver_phone", ""),
+                sub.get("plan", "free"),
+                med_count, taken, missed, adh,
+                last_ts.strftime("%Y-%m-%d %H:%M") if last_ts else "",
+                u.get("created_at", ""),
+            ])
+        output.seek(0)
+        filename = f"pillcare_users_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M')}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
     if not EXCEL_OK:
         raise HTTPException(500, "Excel export not available - openpyxl not installed")
 
@@ -6621,25 +6699,22 @@ async def admin_export_users(_: None = Depends(require_admin)):
     ws.title = "Users"
     header_fill = PatternFill("solid", fgColor="9184d9")
     header_font = Font(bold=True, color="FFFFFF")
-    headers = ["Name", "Email", "Gender", "Birth Year", "Age", "City", "State", "Phone", "Caregiver", "Plan", "Medications", "Doses Taken", "Doses Missed", "Adherence %", "Last Login", "Joined"]
     for col, h in enumerate(headers, 1):
         cell = ws.cell(row=1, column=col, value=h)
         cell.fill = header_fill
         cell.font = header_font
         cell.alignment = Alignment(horizontal="center")
 
-    profiles = await db.profile.find({}).to_list(10000)
-    current_year = datetime.now(timezone.utc).year
     for row_idx, u in enumerate(profiles, 2):
         uid = u.get("user_id") or u.get("id", "")
         yob = u.get("year_of_birth")
         age = current_year - int(yob) if yob else ""
-        med_count = await db.medications.count_documents({"user_id": uid, "active": True})
-        taken = await db.doses.count_documents({"user_id": uid, "status": "taken"})
-        missed = await db.doses.count_documents({"user_id": uid, "status": "missed"})
+        med_count = med_map.get(uid, 0)
+        taken = taken_map.get(uid, 0)
+        missed = missed_map.get(uid, 0)
         adh = round(taken / (taken + missed) * 100, 1) if (taken + missed) > 0 else ""
-        sub = await db.subscriptions.find_one({"user_id": uid}) or {}
-        last_login = await db.audit_log.find_one({"user_id": uid}, sort=[("ts", -1)])
+        sub = sub_map.get(uid, {})
+        last_ts = audit_map.get(uid)
         row_data = [
             u.get("nickname") or u.get("name", ""),
             u.get("email", ""),
@@ -6651,7 +6726,7 @@ async def admin_export_users(_: None = Depends(require_admin)):
             u.get("caregiver_phone", ""),
             sub.get("plan", "free"),
             med_count, taken, missed, adh,
-            last_login["ts"].strftime("%Y-%m-%d %H:%M") if last_login else "",
+            last_ts.strftime("%Y-%m-%d %H:%M") if last_ts else "",
             u.get("created_at", ""),
         ]
         for col, val in enumerate(row_data, 1):
