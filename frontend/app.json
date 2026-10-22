@@ -37,7 +37,8 @@
       ],
       "jsEngine": "hermes",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 82
+      "versionCode": 82,
+      "allowBackup": false
     },
     "web": {
       "bundler": "metro",

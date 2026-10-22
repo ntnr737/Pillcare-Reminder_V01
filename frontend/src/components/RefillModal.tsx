@@ -66,6 +66,31 @@ export function RefillModal({ visible, medication, onClose, onRefilled }: Props)
   };
 
   const handleOpenEPharmacy = (provider: string, url: string) => {
+    // Security Vector: Deep Link & Scheme Validation (anti open-redirect / intent hijacking)
+    try {
+      if (!url.startsWith("https://")) {
+        Alert.alert("Security Notice", "Insecure or invalid URL scheme detected.");
+        return;
+      }
+      const allowedHosts = [
+        "www.1mg.com", "1mg.com",
+        "www.apollo247.com", "apollo247.com",
+        "www.pharmeasy.in", "pharmeasy.in",
+        "www.amazon.com", "amazon.com",
+        "www.amazon.in", "amazon.in"
+      ];
+      // URL parsing validation
+      const match = url.match(/^https:\/\/([^\/?#]+)(?:[\/?#]|$)/i);
+      const host = match ? match[1].toLowerCase() : "";
+      if (!allowedHosts.includes(host)) {
+        Alert.alert("Security Notice", "Untrusted pharmacy provider domain blocked.");
+        return;
+      }
+    } catch {
+      Alert.alert("Security Notice", "Malformed URL encountered.");
+      return;
+    }
+
     try {
       api.trackEvent("refill_epharmacy_click", { provider, medication: medication?.name });
     } catch {}

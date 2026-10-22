@@ -3469,7 +3469,7 @@ async def export_doctor_pass(request: Request, user_id: str = Depends(get_curren
     recent_doses = await db.doses.find({"user_id": user_id}, PROJECTION).sort([("date", -1), ("scheduled_time", 1)]).to_list(25)
     med_map = {m["id"]: m for m in all_meds}
 
-    patient_name = profile.get("nickname") or user_doc.get("name") or "Verified Patient"
+    patient_name = html.escape(str(profile.get("nickname") or user_doc.get("name") or "Verified Patient"))
     today_code = datetime.now(timezone.utc).strftime("%Y%m%d")
     doc_id = f"PLC-MED-{hashlib.md5(f'{user_id}-{today_code}'.encode()).hexdigest()[:8].upper()}"
     report_date = datetime.now(timezone.utc).strftime("%d %B %Y, %H:%M UTC")
@@ -3477,15 +3477,21 @@ async def export_doctor_pass(request: Request, user_id: str = Depends(get_curren
     med_rows = ""
     for m in all_meds:
         status_label = "Completed" if m.get("completed") else ("Active" if m.get("active", True) else "Archived")
-        sched_times = ", ".join(m.get("times", [])) or "Daily"
+        sched_times = html.escape(", ".join(str(t) for t in m.get("times", [])) or "Daily")
+        med_name = html.escape(str(m.get('name', 'Medication')))
+        generic_name = html.escape(str(m.get('generic_name', '')))
+        dosage_info = html.escape(f"{m.get('dosage', '')} {m.get('unit', '')}".strip())
+        instructions = html.escape(str(m.get('instructions') or 'As directed'))
+        stock_cnt = int(m.get('stock', 0) or 0)
+        status_color = '#15803d' if status_label == 'Active' else '#64748b'
         med_rows += f"""
         <tr>
-            <td><strong>{m.get('name', 'Medication')}</strong><br><span style="color:#64748b;font-size:10.5px;">{m.get('generic_name', '')}</span></td>
-            <td>{m.get('dosage', '')} {m.get('unit', '')}</td>
+            <td><strong>{med_name}</strong><br><span style="color:#64748b;font-size:10.5px;">{generic_name}</span></td>
+            <td>{dosage_info}</td>
             <td>{sched_times}</td>
-            <td>{m.get('instructions') or 'As directed'}</td>
-            <td>{m.get('stock', 0)} pills</td>
-            <td><span style="font-weight:700;color:{'#15803d' if status_label=='Active' else '#64748b'};">{status_label}</span></td>
+            <td>{instructions}</td>
+            <td>{stock_cnt} pills</td>
+            <td><span style="font-weight:700;color:{status_color};">{html.escape(status_label)}</span></td>
         </tr>
         """
     if not med_rows:
@@ -3494,17 +3500,20 @@ async def export_doctor_pass(request: Request, user_id: str = Depends(get_curren
     vitals_rows = ""
     for v in vitals:
         rec = v.get("recorded_at")
-        rec_str = rec.strftime("%d %b %Y %H:%M") if isinstance(rec, datetime) else str(rec or "")[:16]
+        rec_str = html.escape(rec.strftime("%d %b %Y %H:%M") if isinstance(rec, datetime) else str(rec or "")[:16])
         val_str = f"{v.get('value', '')}"
         if v.get("value_secondary"):
             val_str += f" / {v.get('value_secondary')}"
         val_str += f" {v.get('unit', '')}"
+        val_str = html.escape(val_str.strip())
+        v_type = html.escape(str(v.get('type', '')).replace('_', ' ').title())
+        v_note = html.escape(str(v.get('note', '') or '—'))
         vitals_rows += f"""
         <tr>
             <td>{rec_str}</td>
-            <td><strong>{str(v.get('type', '')).replace('_', ' ').title()}</strong></td>
+            <td><strong>{v_type}</strong></td>
             <td>{val_str}</td>
-            <td>{v.get('note', '') or '—'}</td>
+            <td>{v_note}</td>
         </tr>
         """
     if not vitals_rows:
@@ -3513,25 +3522,30 @@ async def export_doctor_pass(request: Request, user_id: str = Depends(get_curren
     dose_rows = ""
     for d in recent_doses:
         m = med_map.get(d.get("medication_id"), {})
-        dose_name = d.get("medication_name") or m.get("name") or "Medication"
-        st = d.get("status", "pending")
+        dose_name = html.escape(str(d.get("medication_name") or m.get("name") or "Medication"))
+        st = str(d.get("status", "pending")).lower()
         st_class = "status-taken" if st == "taken" else ("status-missed" if st == "missed" else "status-pending")
         act_ts = d.get("action_time") or d.get("created_at")
-        act_str = act_ts.strftime("%H:%M") if isinstance(act_ts, datetime) else str(act_ts or "")[-5:]
+        act_str = html.escape(act_ts.strftime("%H:%M") if isinstance(act_ts, datetime) else str(act_ts or "")[-5:])
+        d_date = html.escape(str(d.get('date', '')))
+        d_time = html.escape(str(d.get('scheduled_time', '')))
+        d_note = html.escape(str(d.get('note') or '—'))
         dose_rows += f"""
         <tr>
-            <td>{d.get('date', '')}</td>
-            <td>{d.get('scheduled_time', '')}</td>
+            <td>{d_date}</td>
+            <td>{d_time}</td>
             <td><strong>{dose_name}</strong></td>
-            <td><span class="{st_class}">{st.upper()}</span></td>
+            <td><span class="{st_class}">{html.escape(st.upper())}</span></td>
             <td>{act_str or '—'}</td>
-            <td>{d.get('note') or '—'}</td>
+            <td>{d_note}</td>
         </tr>
         """
     if not dose_rows:
         dose_rows = "<tr><td colspan='6' style='text-align:center;color:#64748b;padding:12px;'>No dose history logged in current period.</td></tr>"
 
-    caregiver_contact = profile.get("caregiver_phone") or (profile.get("caregivers") or ["None"])[0]
+    caregiver_contact = html.escape(str(profile.get("caregiver_phone") or (profile.get("caregivers") or ["None"])[0]))
+    patient_yob = html.escape(str(profile.get('year_of_birth', '—')))
+    patient_gender = html.escape(str(profile.get('gender', '—')).title())
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -3694,7 +3708,7 @@ async def export_doctor_pass(request: Request, user_id: str = Depends(get_curren
       </div>
       <div class="info-item">
         <div class="info-label">Age / Gender</div>
-        <div class="info-val">{profile.get('year_of_birth', '—')} • {str(profile.get('gender', '—')).title()}</div>
+        <div class="info-val">{patient_yob} • {patient_gender}</div>
       </div>
       <div class="info-item">
         <div class="info-label">Caregiver Contact</div>
