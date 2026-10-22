@@ -259,8 +259,8 @@ export default function StreakCompetitionPage() {
           </div>
         )}
 
-        {/* 5 Core KPI Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        {/* 6 Core KPI Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
           {/* Active Streaks */}
           <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 flex items-center gap-4">
             <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0">
@@ -314,6 +314,20 @@ export default function StreakCompetitionPage() {
                 {loading ? '...' : (data?.atRiskCount || 0).toLocaleString()}
               </div>
               <span className="text-[10px] text-rose-400 font-medium">Pending doses before 23:59</span>
+            </div>
+          </div>
+
+          {/* Hydration Baseline Threshold */}
+          <div className="p-4 rounded-2xl bg-slate-900/70 border border-cyan-900/30 flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 text-xl">
+              💧
+            </div>
+            <div>
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Hydration Baseline</span>
+              <div className="text-2xl font-bold text-cyan-300 tracking-tight">
+                {loading ? '...' : `${data?.waterStreakThresholdMl || 1250} mL`}
+              </div>
+              <span className="text-[10px] text-cyan-400 font-medium">5 glasses · {data?.hydratedTodayCount || 0} qualified</span>
             </div>
           </div>
 

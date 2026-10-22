@@ -3,12 +3,12 @@
  * Core Streak Qualification Engine & Retention Manager for PillCare.
  * 
  * Rules:
- * 1. MANDATORY Water Intake: Logged water >= 1500 mL or >= Daily Goal.
+ * 1. MANDATORY Water Intake: Logged water >= 1,250 mL (5 standard 250mL cups) or >= Daily Goal.
  * 2. Medication Adherence: Scheduled doses taken. If no doses scheduled, water alone qualifies.
  * 3. Bonus Activities: Yoga, steps, measurements add Streak XP points.
  */
 
-export const MANDATORY_WATER_THRESHOLD_ML = 1500;
+export const MANDATORY_WATER_THRESHOLD_ML = 1250;
 
 export type TodayStreakStatus = {
   isWaterQualified: boolean;
@@ -48,12 +48,12 @@ export function evaluateTodayStreakStatus(
     streakStatusMessage = "Today's Streak Secured! Great job maintaining your health habits.";
   } else if (!isWaterQualified && !isMedsQualified) {
     const neededMl = targetWater - waterLoggedMl;
-    streakStatusMessage = `Log ${neededMl} mL more water & mark doses taken to save today's streak.`;
+    streakStatusMessage = `Log ${neededMl} mL more water (reach 1,250 mL) & mark doses taken to save today's streak.`;
   } else if (!isWaterQualified) {
     const neededMl = targetWater - waterLoggedMl;
-    streakStatusMessage = `Log ${neededMl} mL more water to complete today's mandatory hydration streak.`;
+    streakStatusMessage = `Log ${neededMl} mL more water (reach 1,250 mL) to complete today's mandatory hydration streak.`;
   } else {
-    streakStatusMessage = "Mark your scheduled medication dose taken to complete today's streak.";
+    streakStatusMessage = "Hydration goal qualified (1,250 mL Met ✓)! Mark your remaining scheduled medication doses taken to secure today's streak.";
   }
 
   return {
@@ -74,7 +74,7 @@ export const STREAK_RULES_EXPLANATION = [
     icon: "water-outline",
     color: "#0284c7",
     title: "Mandatory Daily Hydration",
-    desc: "Log at least 1,500 mL of water daily (or reach your daily goal). Water is mandatory every single day to maintain your active streak.",
+    desc: "Log at least 1,250 mL of water daily (5 standard glasses or reach your daily goal). Water is mandatory every single day to maintain your active streak.",
   },
   {
     step: "2",

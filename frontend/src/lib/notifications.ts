@@ -204,20 +204,17 @@ export async function ensureCategories(): Promise<void> {
 
 /**
  * Helper to log water intake directly from notification bar actions using local date (NTF-08)
- * Debounced with 5-second threshold to guarantee idempotency against rapid double taps
+ * Debounced and guarded with strict clinical absorption pacing (15m/30m spacing & 1,000 mL/hr limit)
  */
 let lastWaterLogTime = 0;
-async function handleLogWaterFromNotification(amount: number, fallbackTag?: string): Promise<void> {
+async function handleLogWaterFromNotification(amount: number, fallbackTag?: string): Promise<{ success: boolean; reason?: string }> {
   const now = Date.now();
-  if (now - lastWaterLogTime < 5000) {
+  if (now - lastWaterLogTime < 3000) {
     console.log("Debouncing rapid duplicate water log from notification bar");
-    return;
+    return { success: false, reason: "DEBOUNCE" };
   }
   lastWaterLogTime = now;
   try {
-    if (fallbackTag) {
-      await cancelFallbackForTag(fallbackTag);
-    }
     const todayDate = localDateStr();
     const wKey = `water_${todayDate}`;
     const wLoggedKey = `water_logged_${todayDate}`;
@@ -225,6 +222,37 @@ async function handleLogWaterFromNotification(amount: number, fallbackTag?: stri
 
     const currentLogged = (await get<number>(wLoggedKey)) || (await get<number>(wKey)) || 0;
     const currentLogs = (await get<Array<{ amount: number; ts: number }>>(wLogsKey)) || [];
+
+    // 1. Spacing cooldown guard (15m for 250ml, 30m for 500ml)
+    const lastLog = currentLogs.length > 0 ? currentLogs[currentLogs.length - 1] : null;
+    const reqCooldown = lastLog ? (lastLog.amount >= 500 ? 30 * 60 * 1000 : 15 * 60 * 1000) : 0;
+    if (lastLog && (now - lastLog.ts) < reqCooldown) {
+      const waitMins = Math.ceil((reqCooldown - (now - lastLog.ts)) / 60000);
+      return { success: false, reason: `COOLDOWN:${waitMins}` };
+    }
+
+    // 2. Rolling 30-minute safety limit (max 750 mL)
+    const thirtyMinLogs = currentLogs.filter((l) => now - l.ts < 30 * 60 * 1000);
+    const thirtyMinTotal = thirtyMinLogs.reduce((sum, l) => sum + l.amount, 0);
+    if (thirtyMinTotal + amount > 750) {
+      return { success: false, reason: "RAPID_INTAKE_30M" };
+    }
+
+    // 3. Rolling 60-minute hourly limit (max 1,000 mL)
+    const hourLogs = currentLogs.filter((l) => now - l.ts < 60 * 60 * 1000);
+    const hourTotal = hourLogs.reduce((sum, l) => sum + l.amount, 0);
+    if (hourTotal + amount > 1000) {
+      return { success: false, reason: "HOURLY_LIMIT_1000" };
+    }
+
+    // 4. Daily hydration ceiling (4,000 mL)
+    if (currentLogged + amount > 4000) {
+      return { success: false, reason: "DAILY_CEILING" };
+    }
+
+    if (fallbackTag) {
+      await cancelFallbackForTag(fallbackTag);
+    }
 
     const newAmount = currentLogged + amount;
     const newLogs = [...currentLogs, { amount, ts: now }];
@@ -255,8 +283,11 @@ async function handleLogWaterFromNotification(amount: number, fallbackTag?: stri
         });
       } catch {}
     });
+
+    return { success: true };
   } catch (err) {
     console.warn("Failed to log water from notification bar action:", err);
+    return { success: false, reason: "ERROR" };
   }
 }
 
@@ -565,21 +596,43 @@ export async function handleNotificationResponse(
 
     // Hydration Action: LOG_250ML
     else if (normActionId === "LOG_250ML" || normActionId === "250ML" || normActionId === "LOG_WATER_250") {
-      await handleLogWaterFromNotification(250, fallbackTag);
-      showNativeToast("💧 Logged 250mL water");
-      DeviceEventEmitter.emit("WATER_LOGGED", { amount: 250 });
-      notifyActionListeners("LOG_250ML", { amount: 250 });
-      api.trackEvent("notification_action_tapped", { action_id: "LOG_250ML" }).catch(() => {});
+      const res = await handleLogWaterFromNotification(250, fallbackTag);
+      if (res.success) {
+        showNativeToast("💧 Logged 250mL water");
+        DeviceEventEmitter.emit("WATER_LOGGED", { amount: 250 });
+        notifyActionListeners("LOG_250ML", { amount: 250 });
+        api.trackEvent("notification_action_tapped", { action_id: "LOG_250ML" }).catch(() => {});
+      } else if (res.reason?.startsWith("COOLDOWN:")) {
+        const mins = res.reason.split(":")[1];
+        showNativeToast(`⏳ Absorption cooldown active. Wait ${mins}m for safe pacing.`);
+      } else if (res.reason === "RAPID_INTAKE_30M") {
+        showNativeToast("⚠️ Intake limit reached (max 750 mL per 30m). Please space drinking.");
+      } else if (res.reason === "HOURLY_LIMIT_1000") {
+        showNativeToast("⚠️ Hourly limit reached (1,000 mL/hr). Kidneys require safe clearance time.");
+      } else if (res.reason === "DAILY_CEILING") {
+        showNativeToast("⚠️ Daily hydration ceiling reached (4,000 mL).");
+      }
       navCallback?.("/(tabs)/today?focus=water");
     }
 
     // Hydration Action: LOG_500ML
     else if (normActionId === "LOG_500ML" || normActionId === "500ML" || normActionId === "LOG_WATER_500") {
-      await handleLogWaterFromNotification(500, fallbackTag);
-      showNativeToast("💧 Logged 500mL water");
-      DeviceEventEmitter.emit("WATER_LOGGED", { amount: 500 });
-      notifyActionListeners("LOG_500ML", { amount: 500 });
-      api.trackEvent("notification_action_tapped", { action_id: "LOG_500ML" }).catch(() => {});
+      const res = await handleLogWaterFromNotification(500, fallbackTag);
+      if (res.success) {
+        showNativeToast("💧 Logged 500mL water");
+        DeviceEventEmitter.emit("WATER_LOGGED", { amount: 500 });
+        notifyActionListeners("LOG_500ML", { amount: 500 });
+        api.trackEvent("notification_action_tapped", { action_id: "LOG_500ML" }).catch(() => {});
+      } else if (res.reason?.startsWith("COOLDOWN:")) {
+        const mins = res.reason.split(":")[1];
+        showNativeToast(`⏳ Absorption cooldown active. Wait ${mins}m for safe pacing.`);
+      } else if (res.reason === "RAPID_INTAKE_30M") {
+        showNativeToast("⚠️ Intake limit reached (max 750 mL per 30m). Please space drinking.");
+      } else if (res.reason === "HOURLY_LIMIT_1000") {
+        showNativeToast("⚠️ Hourly limit reached (1,000 mL/hr). Kidneys require safe clearance time.");
+      } else if (res.reason === "DAILY_CEILING") {
+        showNativeToast("⚠️ Daily hydration ceiling reached (4,000 mL).");
+      }
       navCallback?.("/(tabs)/today?focus=water");
     }
 

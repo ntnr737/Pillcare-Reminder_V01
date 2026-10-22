@@ -435,6 +435,8 @@ export interface StreakDashboardAnalytics {
   avgStreakDays: number;
   maxStreakDays: number;
   atRiskCount: number;
+  waterStreakThresholdMl?: number;
+  hydratedTodayCount?: number;
   totalMindfulMinutes?: number;
   avgMindfulMinutes?: number;
   totalMindfulSessions?: number;

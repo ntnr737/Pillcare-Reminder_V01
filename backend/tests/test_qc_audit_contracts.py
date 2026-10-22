@@ -152,7 +152,7 @@ async def test_qc_audit_acceptance_pipeline():
 @pytest.mark.anyio
 async def test_qc_streak_calculation_contract():
     """Verify strict adherence contracts for streak calculation:
-    1. Mandatory water >= 1500ml (1400ml fails).
+    1. Mandatory water >= 1250ml (1200ml fails, 1250ml succeeds).
     2. 100% medication adherence (partial taken fails).
     3. Mandatory both meds AND water when meds exist.
     4. Water alone qualifies when total doses == 0.
@@ -179,35 +179,87 @@ async def test_qc_streak_calculation_contract():
     res = await server._adherence_for_user(user_id, days=7, local_date=today_str)
     assert res["streak"] == 0, f"Expected streak 0 for incomplete doses, got {res['streak']}"
 
-    # Case 2: Update second dose to taken, but water is only 1400ml (< 1500ml).
+    # Case 2: Update second dose to taken, but water is only 1200ml (< 1250ml threshold).
     # Result must be FAIL (streak 0) because water threshold is not met.
     await server.db.doses.update_one({"id": "d2"}, {"$set": {"status": "taken"}})
     await server.db.activities.delete_many({"user_id": user_id})
     await server.db.activities.insert_one(
-        {"user_id": user_id, "type": "water", "value": 1400, "date": yesterday_str}
+        {"user_id": user_id, "type": "water", "value": 1200, "date": yesterday_str}
     )
 
     res2 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
-    assert res2["streak"] == 0, f"Expected streak 0 for water < 1500ml, got {res2['streak']}"
+    assert res2["streak"] == 0, f"Expected streak 0 for water < 1250ml, got {res2['streak']}"
 
-    # Case 3: Update water to 1500ml. Both conditions met for yesterday!
+    # Case 3: Update water to 1250ml (5 standard 250ml glasses). Both conditions met for yesterday!
     # Result must be streak 1!
     await server.db.activities.delete_many({"user_id": user_id})
     await server.db.activities.insert_one(
-        {"user_id": user_id, "type": "water", "value": 1500, "date": yesterday_str}
+        {"user_id": user_id, "type": "water", "value": 1250, "date": yesterday_str}
     )
 
     res3 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
-    assert res3["streak"] == 1, f"Expected streak 1 when 100% doses and >=1500ml water, got {res3['streak']}"
+    assert res3["streak"] == 1, f"Expected streak 1 when 100% doses and >=1250ml water, got {res3['streak']}"
 
-    # Case 4: Day before yesterday had 0 doses, but user logged 1600ml water.
+    # Case 4: Day before yesterday had 0 doses, but user logged 1250ml water.
     # Result should extend streak to 2 days!
     await server.db.activities.insert_one(
-        {"user_id": user_id, "type": "water", "value": 1600, "date": day_before_str}
+        {"user_id": user_id, "type": "water", "value": 1250, "date": day_before_str}
     )
 
     res4 = await server._adherence_for_user(user_id, days=7, local_date=today_str)
     assert res4["streak"] == 2, f"Expected streak 2 when prior zero-med day had water, got {res4['streak']}"
+
+
+@pytest.mark.anyio
+async def test_qc_water_intake_pacing_and_renal_safety():
+    """Verify backend safety contracts for water logging:
+    1. Single intake > 500 mL rejected (422).
+    2. Single intake < 50 mL rejected (422).
+    3. Rolling 30-min intake > 750 mL rejected (422).
+    4. Rolling 60-min intake > 1000 mL rejected (422).
+    5. Daily cumulative intake > 4000 mL rejected (422).
+    """
+    from fastapi import HTTPException
+    user_id = f"user_water_safety_{uuid.uuid4().hex[:8]}"
+    now_dt = datetime.now(timezone.utc)
+    today_iso = now_dt.strftime("%Y-%m-%d")
+
+    # 1. Single intake > 500 mL rejected
+    with pytest.raises(HTTPException) as exc_info:
+        await server.create_activity(
+            server.ActivityCreate(type="water", value=600, unit="ml", date=today_iso),
+            user_id=user_id
+        )
+    assert exc_info.value.status_code == 422
+    assert "Single fluid intake cannot exceed 500 mL" in exc_info.value.detail
+
+    # 2. Single intake < 50 mL rejected
+    with pytest.raises(HTTPException) as exc_info:
+        await server.create_activity(
+            server.ActivityCreate(type="water", value=30, unit="ml", date=today_iso),
+            user_id=user_id
+        )
+    assert exc_info.value.status_code == 422
+    assert "at least 50 mL" in exc_info.value.detail
+
+    # 3. Valid intake 1: 500 mL
+    res1 = await server.create_activity(
+        server.ActivityCreate(type="water", value=500, unit="ml", date=today_iso, timestamp=now_dt.isoformat()),
+        user_id=user_id
+    )
+    assert res1["value"] == 500
+
+    # 4. Rapid second intake of 300 mL within 30 min (500 + 300 = 800 > 750) -> Rejected!
+    with pytest.raises(HTTPException) as exc_info:
+        await server.create_activity(
+            server.ActivityCreate(type="water", value=300, unit="ml", date=today_iso, timestamp=now_dt.isoformat()),
+            user_id=user_id
+        )
+    assert exc_info.value.status_code == 422
+    assert "Rolling 30-minute fluid intake cannot exceed 750 mL" in exc_info.value.detail
+
+    # 5. Clean up test user activities
+    await server.db.activities.delete_many({"user_id": user_id})
 
 
 @pytest.mark.anyio

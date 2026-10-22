@@ -261,6 +261,10 @@ MEASUREMENT_CATALOG = [
     {"key": "hemoglobin", "label": "Hemoglobin", "unit": "g/dL"},
 ]
 
+# Clinical Hydration & Adherence Standards:
+# Minimum baseline hydration required for daily streak qualification is 1,250 mL (5 x 250 mL glasses, 50% of 2.5L optimal target).
+MANDATORY_WATER_STREAK_THRESHOLD_ML = 1250
+
 ACTIVITY_CATALOG = [
     {"key": "steps", "label": "Steps", "unit": "steps"},
     {"key": "exercise", "label": "Exercise", "unit": "minutes"},
@@ -691,10 +695,10 @@ async def _adherence_for_user(user_id: str, days: int = 7, local_date: str = Non
         taken_doses = sum(1 for x in d_list if x["status"] == "taken")
 
         water_ml = water_by_date.get(e_date, 0)
-        is_water_ok = water_ml >= 1500
+        is_water_ok = water_ml >= MANDATORY_WATER_STREAK_THRESHOLD_ML
 
         if total_doses > 0:
-            # Scheduled doses present: all doses must be taken, AND mandatory hydration (>= 1500ml) met
+            # Scheduled doses present: all doses must be taken, AND mandatory hydration (>= 1,250 mL / 5 glasses) met
             is_meds_ok = (taken_doses >= total_doses)
             is_active = is_meds_ok and is_water_ok
         else:
@@ -1784,9 +1788,91 @@ async def create_activity(payload: ActivityCreate, user_id: str = Depends(get_cu
             rec_at = datetime.now(timezone.utc)
     if not data.get("date"):
         data["date"] = rec_at.strftime("%Y-%m-%d") if isinstance(rec_at, datetime) else str(rec_at)[:10]
+
+    # Clinical & renal safety guards for water intake
+    if data.get("type") == "water":
+        val = float(data.get("value") or 0)
+        if val > 500:
+            raise HTTPException(
+                status_code=422,
+                detail="Single fluid intake cannot exceed 500 mL for gastric absorption safety."
+            )
+        if val < 50:
+            raise HTTPException(
+                status_code=422,
+                detail="Water intake entry must be at least 50 mL."
+            )
+
+        # Enforce rolling 30-minute and 60-minute intake boundaries on backend
+        rec_dt = rec_at if isinstance(rec_at, datetime) else datetime.now(timezone.utc)
+        if rec_dt.tzinfo is None:
+            rec_dt = rec_dt.replace(tzinfo=timezone.utc)
+
+        window_start_30 = rec_dt - timedelta(minutes=30)
+        window_start_60 = rec_dt - timedelta(minutes=60)
+        recent_logs = await db.activities.find(
+            {
+                "user_id": user_id,
+                "type": "water",
+                "recorded_at": {"$gte": window_start_60.replace(tzinfo=None), "$lte": (rec_dt + timedelta(minutes=5)).replace(tzinfo=None)}
+            },
+            {"value": 1, "recorded_at": 1}
+        ).to_list(100)
+
+        def _get_utc(d_val):
+            if isinstance(d_val, str):
+                try:
+                    d_val = datetime.fromisoformat(d_val.replace("Z", "+00:00"))
+                except Exception:
+                    return datetime.now(timezone.utc)
+            if isinstance(d_val, datetime):
+                return d_val.replace(tzinfo=timezone.utc) if d_val.tzinfo is None else d_val.astimezone(timezone.utc)
+            return datetime.now(timezone.utc)
+
+        intake_30m = sum(float(x.get("value", 0)) for x in recent_logs if _get_utc(x.get("recorded_at")) >= window_start_30)
+        intake_60m = sum(float(x.get("value", 0)) for x in recent_logs)
+
+        if intake_30m + val > 750:
+            raise HTTPException(
+                status_code=422,
+                detail="Rolling 30-minute fluid intake cannot exceed 750 mL to prevent acute gastric distension."
+            )
+
+        if intake_60m + val > 1000:
+            raise HTTPException(
+                status_code=422,
+                detail="Hourly renal pacing limit exceeded (max 1,000 mL/hr). Please space water intake."
+            )
+
+        # Check daily ceiling (4,000 mL)
+        target_date = data["date"]
+        day_logs = await db.activities.find(
+            {"user_id": user_id, "type": "water", "date": target_date},
+            {"value": 1}
+        ).to_list(200)
+        day_total = sum(float(x.get("value", 0)) for x in day_logs)
+        if day_total + val > 4000:
+            raise HTTPException(
+                status_code=422,
+                detail="Daily fluid intake ceiling reached (4,000 mL). Recommended daily optimal is 2,000–3,500 mL."
+            )
+
     a = Activity(user_id=user_id, recorded_at=rec_at, **data)
     await db.activities.insert_one(a.model_dump())
-    return _clean(a.model_dump())
+
+    # Automatically recompute and synchronize streak if water was logged
+    updated_streak = None
+    if data.get("type") == "water":
+        try:
+            adh = await _adherence_for_user(user_id, days=30, local_date=data.get("date"))
+            updated_streak = adh.get("streak")
+        except Exception:
+            pass
+
+    res = _clean(a.model_dump())
+    if updated_streak is not None:
+        res["updated_streak"] = updated_streak
+    return res
 
 
 @api.delete("/activities/{a_id}")
@@ -6328,6 +6414,13 @@ async def admin_get_streaks(_: None = Depends(require_admin)):
     today_iso = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     
     taken_today_users = set(await db.doses.distinct("user_id", {"date": today_iso, "status": "taken"}))
+    water_today_activities = await db.activities.find({"date": today_iso, "type": "water"}, {"user_id": 1, "value": 1}).to_list(5000)
+    water_today_by_user = {}
+    for wa in water_today_activities:
+        uid = str(wa.get("user_id") or "")
+        if uid:
+            water_today_by_user[uid] = water_today_by_user.get(uid, 0) + (wa.get("value") or 0)
+    hydrated_today_users = {uid for uid, vol in water_today_by_user.items() if vol >= MANDATORY_WATER_STREAK_THRESHOLD_ML}
     
     # Aggregate mindful practice from db.yoga_log and db.profile
     try:
@@ -6370,7 +6463,7 @@ async def admin_get_streaks(_: None = Depends(require_admin)):
             elif streak <= 30: brackets["15-30d"] += 1
             else: brackets["30d+"] += 1
             
-            if uid and uid not in taken_today_users:
+            if uid and uid not in taken_today_users and uid not in hydrated_today_users:
                 users_at_risk += 1
                 
         if streak > 0 or uid:
@@ -6432,6 +6525,8 @@ async def admin_get_streaks(_: None = Depends(require_admin)):
         "totalMindfulMinutes": total_mindful_minutes,
         "avgMindfulMinutes": avg_mindful_minutes,
         "totalMindfulSessions": total_mindful_sessions,
+        "waterStreakThresholdMl": MANDATORY_WATER_STREAK_THRESHOLD_ML,
+        "hydratedTodayCount": len(hydrated_today_users),
         "streakBrackets": brackets,
         "competitions": db_comps,
         "leaderboard": combined_leaderboard[:25],

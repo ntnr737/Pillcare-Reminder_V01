@@ -513,11 +513,24 @@ export default function Today() {
     set(`water_logged_${date}`, next);
     set(`water_logs_${date}`, updatedLogs);
 
+    // Optimistically unlock today's streak if 1,250 mL streak milestone reached and doses satisfied
+    if (next >= 1250 && (doses.length === 0 || doses.filter((d: any) => d.status === "taken").length >= doses.length)) {
+      const optimisticStreak = Math.max((serverStreak || cachedStreak || 0) + 1, 1);
+      setCachedStreak(optimisticStreak);
+      set(K.streak, optimisticStreak).catch(() => {});
+      setProfile((p: any) => (p ? { ...p, streak_days: optimisticStreak } : { streak_days: optimisticStreak }));
+    }
+
     scheduleHydrationPacingReminder(10);
 
     // Sync water activity to backend and refresh streak, with offline write queue fallback
     api.createActivity({ type: "water", value: amount, unit: "ml", date, timestamp: new Date(timestamp).toISOString() })
-      .then(() => {
+      .then((res: any) => {
+        if (res && typeof res.updated_streak === "number") {
+          setCachedStreak(res.updated_streak);
+          set(K.streak, res.updated_streak).catch(() => {});
+          setProfile((p: any) => (p ? { ...p, streak_days: res.updated_streak } : { streak_days: res.updated_streak }));
+        }
         api.adherence(30).then((data: any) => {
           if (data && typeof data.streak === "number") {
             setCachedStreak(data.streak);
@@ -544,10 +557,19 @@ export default function Today() {
     const reqCooldown = lastLog ? (lastLog.amount >= 500 ? 30 * 60 * 1000 : 15 * 60 * 1000) : 0;
     const timeSinceLast = lastLog ? (curNow - lastLog.ts) : Infinity;
 
+    // 1. Rapid 30-minute pacing limit (max 750 mL per 30 minutes)
+    const thirtyMinLogs = waterLogs.filter((l) => curNow - l.ts < 30 * 60 * 1000);
+    const thirtyMinTotal = thirtyMinLogs.reduce((sum, l) => sum + l.amount, 0);
+    if (thirtyMinTotal + amount > 750) {
+      setAttemptedAmount(amount);
+      setPacingLockReason("THIRTY_MIN_LIMIT");
+      setPacingModalOpen(true);
+      return;
+    }
+
+    // 2. Hydration Safety Pacing: Hourly limit (Max 1000 mL/hr safe absorption clearance)
     const hourLogs = waterLogs.filter((l) => curNow - l.ts < 60 * 60 * 1000);
     const hourTotal = hourLogs.reduce((sum, l) => sum + l.amount, 0);
-
-    // Hydration Safety Pacing: Hourly limit (Max 1000 mL/hr safe absorption clearance)
     if (hourTotal + amount > 1000) {
       setAttemptedAmount(amount);
       setPacingLockReason("HOURLY_LIMIT");
@@ -555,7 +577,7 @@ export default function Today() {
       return;
     }
 
-    // Hydration Safety Pacing: Spacing cooldown active (15m for 250mL, 30m for 500mL)
+    // 3. Hydration Safety Pacing: Spacing cooldown active (15m for 250mL, 30m for 500mL)
     if (lastLog && timeSinceLast < reqCooldown) {
       setAttemptedAmount(amount);
       setPacingLockReason("SPACING_COOLDOWN");
@@ -563,7 +585,7 @@ export default function Today() {
       return;
     }
 
-    // Absolute Safety Limit: Max 4000 mL per day
+    // 4. Absolute Safety Limit: Max 4000 mL per day
     if (waterLogged + amount > 4000) {
       Alert.alert(
         "Daily Hydration Safety Ceiling",
@@ -577,14 +599,22 @@ export default function Today() {
 
   const handleRetroactiveLog = () => {
     const now = Date.now();
-    // 1. Guard: At most one past-intake entry allowed per rolling hour to prevent rapid override abuse
+    // 1. Guard: At most one past-intake entry allowed per 4 hours to prevent rapid override abuse
     const hasRecentPastLog = waterLogs.some(
-      (l: any) => l.isRetroactive && (now - (l.loggedAt || l.ts)) < 60 * 60 * 1000
+      (l: any) => l.isRetroactive && (now - (l.loggedAt || l.ts)) < 4 * 60 * 60 * 1000
     );
     if (hasRecentPastLog) {
       Alert.alert(
-        "Hourly Pacing Guard",
-        "Only one past-intake correction is permitted per rolling hour to maintain clinically safe pacing."
+        "Pacing Safety Guard",
+        "Only one past-intake correction is permitted every 4 hours to preserve authentic physiological pacing."
+      );
+      return;
+    }
+
+    if (attemptedAmount > 500) {
+      Alert.alert(
+        "Pacing Guard",
+        "Single past intake correction cannot exceed 500 mL."
       );
       return;
     }
@@ -715,6 +745,8 @@ export default function Today() {
     elapsedMs,
     isCooldownActive,
     cooldownRemainingSecs,
+    thirtyMinIntake,
+    isThirtyMinLimitReached,
     hourlyIntake,
     isHourlyLimitReached,
     isWaterLocked,
@@ -727,6 +759,11 @@ export default function Today() {
     const elMs = last ? (nowTs - last.ts) : Infinity;
     const cdActive = last ? elMs < cdMs : false;
     const cdRemSecs = cdActive ? Math.max(0, Math.ceil((cdMs - elMs) / 1000)) : 0;
+
+    const thirtyMinMs = 30 * 60 * 1000;
+    const logsPast30m = waterLogs.filter((l) => nowTs - l.ts < thirtyMinMs);
+    const tIntake = logsPast30m.reduce((sum, l) => sum + l.amount, 0);
+    const tLimit = tIntake >= 750;
 
     const oneHourMs = 60 * 60 * 1000;
     const logsPastHr = waterLogs.filter((l) => nowTs - l.ts < oneHourMs);
@@ -741,9 +778,11 @@ export default function Today() {
       elapsedMs: elMs,
       isCooldownActive: cdActive,
       cooldownRemainingSecs: cdRemSecs,
+      thirtyMinIntake: tIntake,
+      isThirtyMinLimitReached: tLimit,
       hourlyIntake: hIntake,
       isHourlyLimitReached: hLimit,
-      isWaterLocked: cdActive || hLimit,
+      isWaterLocked: cdActive || tLimit || hLimit,
     };
   }, [waterLogs, nowTs]);
 
@@ -855,15 +894,34 @@ export default function Today() {
                 {waterLogged} <Text style={{ fontSize: 12, fontWeight: "500", color: theme.textSecondary }}>/ {waterGoal} mL</Text>
               </Text>
 
+              {/* Streak Hydration Milestone Badge (1,250 mL / 5 glasses) */}
+              {waterLogged >= 1250 ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: isDark ? "rgba(16,185,129,0.18)" : "rgba(16,185,129,0.12)", borderWidth: 1, borderColor: "rgba(16,185,129,0.35)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 4 }}>
+                  <Ionicons name="checkmark-done-circle" size={14} color="#10B981" />
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: "#10B981" }}>
+                    Daily Streak Hydration Qualified (1,250 mL Met ✓)
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: isDark ? "rgba(2,132,199,0.15)" : "rgba(2,132,199,0.08)", borderWidth: 1, borderColor: "rgba(2,132,199,0.25)", borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, marginTop: 4 }}>
+                  <Ionicons name="flame-outline" size={13} color="#0284C7" />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: "#0284C7" }}>
+                    Streak Target: Log {1250 - waterLogged} mL more for daily streak qualification
+                  </Text>
+                </View>
+              )}
+
               {/* WHO Pacing Badge */}
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 4 }}>
                 <Ionicons
                   name={isWaterLocked ? "timer-outline" : "checkmark-circle"}
                   size={11}
                   color={isWaterLocked ? "#EF4444" : "#10B981"}
                 />
                 <Text style={{ fontSize: 11, fontWeight: "700", color: isWaterLocked ? "#EF4444" : "#10B981" }}>
-                  {isHourlyLimitReached
+                  {isThirtyMinLimitReached
+                    ? `30m Limit (750 mL / 30m reached)`
+                    : isHourlyLimitReached
                     ? `Hourly Limit (1,000 mL/hr reached)`
                     : isCooldownActive
                     ? `Pacing Lockout (Unlocks in ${formatCountdown(cooldownRemainingSecs)})`
@@ -896,14 +954,23 @@ export default function Today() {
             </View>
           </View>
 
-          {/* Progress bar */}
-          <View style={{ height: 6, borderRadius: 3, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", overflow: "hidden", marginBottom: 8 }}>
-            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 4000 ? "#f87171" : waterLogged >= waterGoal ? "#4ade80" : "#38bdf8", borderRadius: 3 }} />
+          {/* Progress bar with 1,250 mL Streak Target Marker */}
+          <View style={{ position: "relative", height: 8, borderRadius: 4, backgroundColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)", overflow: "hidden", marginBottom: 4 }}>
+            <View style={{ height: "100%", width: `${Math.min(100, Math.round((waterLogged / waterGoal) * 100))}%`, backgroundColor: waterLogged >= 4000 ? "#f87171" : waterLogged >= 1250 ? "#10B981" : "#38bdf8", borderRadius: 4 }} />
+            {/* 1,250 mL milestone vertical marker */}
+            <View style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 2, backgroundColor: isDark ? "rgba(255,255,255,0.5)" : "rgba(0,0,0,0.35)" }} />
+          </View>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 8 }}>
+            <Text style={{ fontSize: 9, color: theme.textSecondary }}>0 mL</Text>
+            <Text style={{ fontSize: 9, fontWeight: "700", color: waterLogged >= 1250 ? "#10B981" : "#0284C7" }}>
+              {waterLogged >= 1250 ? "✓ 1,250 mL Streak Qualified" : "▲ 1,250 mL Streak Milestone"}
+            </Text>
+            <Text style={{ fontSize: 9, color: theme.textSecondary }}>2,500 mL Optimal Goal</Text>
           </View>
 
           {/* Guideline Advice */}
           <Text style={{ fontSize: 10, color: theme.textSecondary, fontStyle: "italic", marginBottom: 10 }}>
-            Renal Pacing Rule: Max 1,000 mL/hr renal capacity. Space 250mL intake by 15m & 500mL by 30m.
+            Clinical Renal Pacing: Max 750 mL/30m and 1,000 mL/hr safe clearance. Space 250mL by 15m & 500mL by 30m.
           </Text>
 
           {/* Action buttons with WHO Hard Lockout */}
@@ -1181,10 +1248,16 @@ export default function Today() {
             </View>
 
             <Text style={[s.mTitle, { color: theme.textPrimary, textAlign: "center" }]}>
-              {pacingLockReason === "HOURLY_LIMIT" ? "WHO Hourly Limit Reached (1,000 mL)" : "WHO Gastric Absorption Cooldown"}
+              {pacingLockReason === "THIRTY_MIN_LIMIT"
+                ? "Rapid Intake Limit (750 mL / 30m)"
+                : pacingLockReason === "HOURLY_LIMIT"
+                ? "WHO Hourly Limit Reached (1,000 mL)"
+                : "WHO Gastric Absorption Cooldown"}
             </Text>
             <Text style={{ fontSize: 13, color: theme.textSecondary, textAlign: "center", marginTop: 6, lineHeight: 19 }}>
-              {pacingLockReason === "HOURLY_LIMIT"
+              {pacingLockReason === "THIRTY_MIN_LIMIT"
+                ? `You have logged ${thirtyMinIntake} mL in the past 30 minutes. Drinking more than 750 mL in 30 minutes overwhelms stomach emptying rate (25 mL/min) and causes acute gastric distension.`
+                : pacingLockReason === "HOURLY_LIMIT"
                 ? `You have logged ${hourlyIntake} mL in the past 60 minutes. Human kidneys can filter a maximum of 800–1,000 mL per hour.`
                 : `You recently logged a glass of water. WHO & clinical guidelines require spacing 250–500 mL intake by 15–30 minutes for proper cellular hydration.`}
             </Text>
@@ -1202,7 +1275,9 @@ export default function Today() {
             <View style={{ backgroundColor: isDark ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.03)", borderRadius: 12, padding: 12, marginVertical: 10, gap: 4 }}>
               <Text style={{ fontSize: 11, fontWeight: "700", color: "#F59E0B" }}>🩺 Why This Rule Matters (Clinical Science):</Text>
               <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 16 }}>
-                {pacingLockReason === "HOURLY_LIMIT"
+                {pacingLockReason === "THIRTY_MIN_LIMIT"
+                  ? "Consuming over 750 mL in 30 minutes exceeds the gastric emptying rate (25 mL/min), causing abdominal distension and rapid electrolyte dilution."
+                  : pacingLockReason === "HOURLY_LIMIT"
                   ? "Exceeding 1,000 mL/hr causes rapid renal flushing and acute hyponatremia (water intoxication). Spacing water intake preserves blood sodium balance."
                   : "Drinking large volumes faster than stomach emptying rate (25 mL/min) causes gastric bloating and rapid excretion without absorbing water into tissues."}
               </Text>
