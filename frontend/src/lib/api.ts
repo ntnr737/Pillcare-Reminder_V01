@@ -120,6 +120,10 @@ export const api = {
   createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
   verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
   exportExcel: () => req<any>("/export/excel"),
+  getDoctorPassUrl: async () => {
+    const token = await getStoredToken();
+    return `${BASE}/export/doctor-pass${token ? `?token=${encodeURIComponent(token)}` : ""}`;
+  },
   getLeaderboard: () => req<any>("/leaderboard"),
   syncState: (localDate?: string) =>
     req<any>(`/me/sync-state${localDate ? `?local_date=${encodeURIComponent(localDate)}` : ""}`),

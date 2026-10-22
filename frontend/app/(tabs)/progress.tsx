@@ -40,6 +40,19 @@ export default function Progress() {
   const [selectedDay, setSelectedDay] = useState<any>(null);
   const [exporting, setExporting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  const handleOpenDoctorPass = async () => {
+    if (!getFeatures().export_data) {
+      setShowUpgrade(true);
+      return;
+    }
+    try {
+      const url = await api.getDoctorPassUrl();
+      await Linking.openURL(url);
+    } catch (err: any) {
+      Alert.alert("Notice", err?.message || "Could not open Doctor Pass.");
+    }
+  };
   const [hcStatus, setHcStatus] = useState<"unknown" | "unavailable" | "not-granted" | "granted">("unknown");
   const [hcSnapshot, setHcSnapshot] = useState<HealthSnapshot | null>(null);
   const [hcLoading, setHcLoading] = useState(false);
@@ -354,6 +367,30 @@ export default function Progress() {
               </View>
             );
           })()}
+
+          {/* Doctor-Ready Clinical Health Pass */}
+          <View style={[s.card, { backgroundColor: isDark ? "rgba(2, 132, 199, 0.08)" : "rgba(2, 132, 199, 0.05)", borderColor: isDark ? "rgba(2, 132, 199, 0.3)" : "rgba(2, 132, 199, 0.2)", gap: 10 }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Ionicons name="document-text" size={18} color="#0284C7" />
+                <Text style={{ fontSize: 13, fontWeight: "700", color: theme.textPrimary }}>Doctor-Ready Health Pass (PDF)</Text>
+              </View>
+              <View style={{ backgroundColor: "rgba(2, 132, 199, 0.15)", paddingHorizontal: 7, paddingVertical: 2, borderRadius: 6 }}>
+                <Text style={{ fontSize: 9.5, fontWeight: "800", color: "#0284C7" }}>CLINICAL PASS</Text>
+              </View>
+            </View>
+            <Text style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 16 }}>
+              Take this official 30-day compliance report and vitals summary to your next doctor appointment. Formatted for fast physician review.
+            </Text>
+            <TouchableOpacity
+              style={{ backgroundColor: "#0284C7", borderRadius: 10, paddingVertical: 10, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
+              activeOpacity={0.8}
+              onPress={handleOpenDoctorPass}
+            >
+              <Ionicons name="open-outline" size={15} color="#FFFFFF" />
+              <Text style={{ color: "#FFFFFF", fontSize: 12.5, fontWeight: "700" }}>Open Clinical Health Pass (Print / PDF)</Text>
+            </TouchableOpacity>
+          </View>
 
           <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
             <View style={s.cH}>

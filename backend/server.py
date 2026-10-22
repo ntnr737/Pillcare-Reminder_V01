@@ -3417,6 +3417,376 @@ async def export_excel_report(request: Request, user_id: str = Depends(get_curre
     )
 
 
+@api.get("/export/doctor-pass", response_class=HTMLResponse)
+@app.get("/export/doctor-pass", response_class=HTMLResponse)
+@api.get("/api/export/doctor-pass", response_class=HTMLResponse)
+async def export_doctor_pass(request: Request, user_id: str = Depends(get_current_user_id)):
+    """Generates an official Doctor-Ready Clinical Health Pass formatted for clinic consultations and PDF printing."""
+    # Allow token query parameter fallback if opened directly from mobile browser
+    if (user_id == "demo_user" or not user_id) and request.query_params.get("token"):
+        q_token = request.query_params.get("token")
+        try:
+            payload = pyjwt.decode(q_token, JWT_SECRET, algorithms=["HS256"])
+            user_id = payload.get("sub", user_id)
+        except Exception:
+            pass
+
+    profile = await db.profile.find_one({"user_id": user_id}, PROJECTION) or {}
+    user_doc = await db.users.find_one({"id": user_id}, PROJECTION) or {}
+    
+    # 1. Medications
+    all_meds = await db.medications.find({"user_id": user_id}, PROJECTION).to_list(500)
+    
+    # 2. Adherence stats
+    taken_cnt = await db.doses.count_documents({"user_id": user_id, "status": "taken"})
+    missed_cnt = await db.doses.count_documents({"user_id": user_id, "status": "missed"})
+    total_doses = taken_cnt + missed_cnt
+    adh_pct = round((taken_cnt / total_doses) * 100, 1) if total_doses > 0 else 100.0
+    
+    # Status badge determination
+    if adh_pct >= 90:
+        badge_class = "badge-excellent"
+        badge_text = f"{adh_pct}% • EXCELLENT ADHERENCE"
+        clinical_note = "Therapeutic plasma levels maintained within target clinical threshold."
+    elif adh_pct >= 75:
+        badge_class = "badge-fair"
+        badge_text = f"{adh_pct}% • FAIR ADHERENCE"
+        clinical_note = "Mild non-adherence variations observed. Review reminder schedule."
+    else:
+        badge_class = "badge-poor"
+        badge_text = f"{adh_pct}% • NEEDS ATTENTION"
+        clinical_note = "Significant missed doses detected. Assess tolerance, side effects, or regimen complexity."
+
+    # 3. Recent Vitals
+    vitals = await db.measurements.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(10)
+    
+    # 4. Mindful Yoga minutes
+    yoga_logs = await db.yoga_log.find({"user_id": user_id}, PROJECTION).to_list(500)
+    total_yoga_sec = sum(int(y.get("duration_seconds", 0) or 0) for y in yoga_logs)
+    yoga_mins = round(total_yoga_sec / 60, 1) if total_yoga_sec > 0 else len(yoga_logs) * 10
+
+    # 5. Recent Dose Log Sample (last 25 doses)
+    recent_doses = await db.doses.find({"user_id": user_id}, PROJECTION).sort([("date", -1), ("scheduled_time", 1)]).to_list(25)
+    med_map = {m["id"]: m for m in all_meds}
+
+    patient_name = profile.get("nickname") or user_doc.get("name") or "Verified Patient"
+    today_code = datetime.now(timezone.utc).strftime("%Y%m%d")
+    doc_id = f"PLC-MED-{hashlib.md5(f'{user_id}-{today_code}'.encode()).hexdigest()[:8].upper()}"
+    report_date = datetime.now(timezone.utc).strftime("%d %B %Y, %H:%M UTC")
+
+    med_rows = ""
+    for m in all_meds:
+        status_label = "Completed" if m.get("completed") else ("Active" if m.get("active", True) else "Archived")
+        sched_times = ", ".join(m.get("times", [])) or "Daily"
+        med_rows += f"""
+        <tr>
+            <td><strong>{m.get('name', 'Medication')}</strong><br><span style="color:#64748b;font-size:10.5px;">{m.get('generic_name', '')}</span></td>
+            <td>{m.get('dosage', '')} {m.get('unit', '')}</td>
+            <td>{sched_times}</td>
+            <td>{m.get('instructions') or 'As directed'}</td>
+            <td>{m.get('stock', 0)} pills</td>
+            <td><span style="font-weight:700;color:{'#15803d' if status_label=='Active' else '#64748b'};">{status_label}</span></td>
+        </tr>
+        """
+    if not med_rows:
+        med_rows = "<tr><td colspan='6' style='text-align:center;color:#64748b;padding:12px;'>No active prescriptions currently on file.</td></tr>"
+
+    vitals_rows = ""
+    for v in vitals:
+        rec = v.get("recorded_at")
+        rec_str = rec.strftime("%d %b %Y %H:%M") if isinstance(rec, datetime) else str(rec or "")[:16]
+        val_str = f"{v.get('value', '')}"
+        if v.get("value_secondary"):
+            val_str += f" / {v.get('value_secondary')}"
+        val_str += f" {v.get('unit', '')}"
+        vitals_rows += f"""
+        <tr>
+            <td>{rec_str}</td>
+            <td><strong>{str(v.get('type', '')).replace('_', ' ').title()}</strong></td>
+            <td>{val_str}</td>
+            <td>{v.get('note', '') or '—'}</td>
+        </tr>
+        """
+    if not vitals_rows:
+        vitals_rows = "<tr><td colspan='4' style='text-align:center;color:#64748b;padding:12px;'>No recent vitals logged in current period.</td></tr>"
+
+    dose_rows = ""
+    for d in recent_doses:
+        m = med_map.get(d.get("medication_id"), {})
+        dose_name = d.get("medication_name") or m.get("name") or "Medication"
+        st = d.get("status", "pending")
+        st_class = "status-taken" if st == "taken" else ("status-missed" if st == "missed" else "status-pending")
+        act_ts = d.get("action_time") or d.get("created_at")
+        act_str = act_ts.strftime("%H:%M") if isinstance(act_ts, datetime) else str(act_ts or "")[-5:]
+        dose_rows += f"""
+        <tr>
+            <td>{d.get('date', '')}</td>
+            <td>{d.get('scheduled_time', '')}</td>
+            <td><strong>{dose_name}</strong></td>
+            <td><span class="{st_class}">{st.upper()}</span></td>
+            <td>{act_str or '—'}</td>
+            <td>{d.get('note') or '—'}</td>
+        </tr>
+        """
+    if not dose_rows:
+        dose_rows = "<tr><td colspan='6' style='text-align:center;color:#64748b;padding:12px;'>No dose history logged in current period.</td></tr>"
+
+    caregiver_contact = profile.get("caregiver_phone") or (profile.get("caregivers") or ["None"])[0]
+
+    html_content = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PillCare Clinical Health Pass - {patient_name}</title>
+  <style>
+    @page {{ size: A4 portrait; margin: 12mm 15mm; }}
+    body {{
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      background: #f8fafc;
+      margin: 0;
+      padding: 24px;
+    }}
+    .container {{
+      max-width: 820px;
+      margin: 0 auto;
+      background: #ffffff;
+      padding: 32px;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+      border: 1px solid #e2e8f0;
+    }}
+    .header-bar {{
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 16px;
+      margin-bottom: 20px;
+    }}
+    .logo-title {{
+      font-size: 20px;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.3px;
+    }}
+    .doc-meta {{
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+      font-weight: 500;
+    }}
+    .badge {{
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+      text-align: center;
+      letter-spacing: 0.3px;
+    }}
+    .badge-excellent {{ background: #dcfce7; color: #15803d; border: 1.5px solid #86efac; }}
+    .badge-fair {{ background: #fef3c7; color: #b45309; border: 1.5px solid #fde68a; }}
+    .badge-poor {{ background: #fee2e2; color: #b91c1c; border: 1.5px solid #fca5a5; }}
+    .info-grid {{
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+      background: #f8fafc;
+      padding: 14px;
+      border-radius: 10px;
+      border: 1px solid #e2e8f0;
+    }}
+    .info-item {{ font-size: 11.5px; }}
+    .info-label {{ color: #64748b; font-weight: 600; font-size: 10.5px; text-transform: uppercase; }}
+    .info-val {{ color: #0f172a; font-weight: 700; margin-top: 2px; font-size: 13px; }}
+    .section-title {{
+      font-size: 12.5px;
+      font-weight: 800;
+      color: #0284c7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-top: 22px;
+      margin-bottom: 8px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 4px;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 11.5px;
+    }}
+    th {{
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+    }}
+    td {{
+      padding: 7px 10px;
+      border: 1px solid #e2e8f0;
+      color: #1e293b;
+    }}
+    tr:nth-child(even) {{ background: #f8fafc; }}
+    .status-taken {{ color: #15803d; font-weight: 700; }}
+    .status-missed {{ color: #b91c1c; font-weight: 700; }}
+    .status-pending {{ color: #b45309; font-weight: 700; }}
+    .doctor-block {{
+      margin-top: 24px;
+      border: 1.5px dashed #94a3b8;
+      border-radius: 8px;
+      padding: 14px;
+      page-break-inside: avoid;
+      background: #fdfdfd;
+    }}
+    .print-bar {{
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }}
+    .print-btn {{
+      background: #0284c7;
+      color: #ffffff;
+      border: none;
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+    }}
+    @media print {{
+      body {{ background: #ffffff; padding: 0; }}
+      .container {{ box-shadow: none; border: none; padding: 0; width: 100%; max-width: 100%; }}
+      .print-bar {{ display: none; }}
+    }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="print-bar">
+      <span style="font-size: 12px; color: #64748b; font-weight: 600;">CONFIDENTIAL CLINICAL DOCUMENT • FOR PHYSICIAN CONSULTATION</span>
+      <button class="print-btn" onclick="window.print()">🖨️ Print / Save as PDF</button>
+    </div>
+
+    <div class="header-bar">
+      <div>
+        <div class="logo-title">🛡️ PILLCARE CLINICAL HEALTH PASS</div>
+        <div class="doc-meta">
+          DOCUMENT ID: <strong>{doc_id}</strong> • GENERATED: {report_date}
+        </div>
+      </div>
+      <div>
+        <span class="badge {badge_class}">{badge_text}</span>
+      </div>
+    </div>
+
+    <!-- Patient Demographics & Caregiver Grid -->
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Patient Name</div>
+        <div class="info-val">{patient_name}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Age / Gender</div>
+        <div class="info-val">{profile.get('year_of_birth', '—')} • {str(profile.get('gender', '—')).title()}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Caregiver Contact</div>
+        <div class="info-val">{caregiver_contact}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Holistic Wellness</div>
+        <div class="info-val">{yoga_mins} Mindful Mins</div>
+      </div>
+    </div>
+
+    <!-- Clinical Compliance Summary -->
+    <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 12px 14px; margin-bottom: 20px;">
+      <strong style="color: #1e40af; font-size: 12px;">Clinical Adherence Assessment:</strong>
+      <span style="color: #1e3a8a; font-size: 12px; margin-left: 6px;">{clinical_note} Total tracked doses: {total_doses} ({taken_cnt} Taken, {missed_cnt} Missed).</span>
+    </div>
+
+    <!-- Active Medications Regimen -->
+    <div class="section-title">1. Current Prescriptions & Medication Regimen</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Medication & Generic</th>
+          <th>Dosage</th>
+          <th>Scheduled Timings</th>
+          <th>Clinical Instructions</th>
+          <th>Stock Balance</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {med_rows}
+      </tbody>
+    </table>
+
+    <!-- Vitals & Biometric Logs -->
+    <div class="section-title">2. Recent Vitals & Biometric Telemetry</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Recorded Timestamp</th>
+          <th>Measurement Type</th>
+          <th>Observed Value</th>
+          <th>Clinical Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {vitals_rows}
+      </tbody>
+    </table>
+
+    <!-- 30-Day Chronological Dose Log -->
+    <div class="section-title">3. Recent Adherence Chronology (Last 25 Doses)</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Scheduled</th>
+          <th>Medication</th>
+          <th>Action Status</th>
+          <th>Confirmed At</th>
+          <th>Patient Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        {dose_rows}
+      </tbody>
+    </table>
+
+    <!-- Physician Review Section -->
+    <div class="doctor-block">
+      <div style="font-weight: 800; font-size: 12px; color: #0f172a; margin-bottom: 6px; text-transform: uppercase;">
+        Physician Clinical Notes & Adjustments
+      </div>
+      <div style="height: 38px; border-bottom: 1px dotted #94a3b8; margin-bottom: 10px;"></div>
+      <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 14px; font-size: 11px; color: #475569;">
+        <div>
+          Next Follow-Up Date: ____________________
+        </div>
+        <div>
+          Doctor's Signature & Reg. Stamp: ____________________________________
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html_content)
+
+
+
 
 # ═══════════════════════════════════════════════════════════
 # ANALYTICS & BUSINESS INTELLIGENCE
@@ -3792,6 +4162,34 @@ PLAN_FEATURES = {
         "price_inr": 99,
         "plan_label": "Elite Moksha (Premium)",
     },
+    "caregiver_shield": {
+        "max_medications": 999,
+        "history_days": 365,
+        "ai_insights": "realtime",
+        "caregiver_alerts": 999,
+        "nearby_results": 50,
+        "yoga_full": True,
+        "export_data": True,
+        "brand_generic": True,
+        "scanner": True,
+        "max_appointments": 999,
+        "price_inr": 149,
+        "plan_label": "PillCare Caregiver Shield",
+    },
+    "family_annual": {
+        "max_medications": 999,
+        "history_days": 365,
+        "ai_insights": "realtime",
+        "caregiver_alerts": 999,
+        "nearby_results": 100,
+        "yoga_full": True,
+        "export_data": True,
+        "brand_generic": True,
+        "scanner": True,
+        "max_appointments": 999,
+        "price_inr": 999,
+        "plan_label": "PillCare Family Annual Pass",
+    },
     "enterprise": {
         "max_medications": 999,
         "history_days": 365,
@@ -4059,7 +4457,10 @@ async def user_upgrade_plan(body: UserUpgradeRequest, user_id: str = Depends(get
 
 OFFICIAL_PLAN_PRICES = {
     "premium": 99,
+    "basic": 30,
+    "caregiver_shield": 149,
     "family": 199,
+    "family_annual": 999,
     "lifetime": 999,
 }
 

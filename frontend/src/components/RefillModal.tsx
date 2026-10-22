@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
+import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/context/ThemeContext";
 import { useTranslation } from "@/src/context/LanguageContext";
@@ -65,6 +65,15 @@ export function RefillModal({ visible, medication, onClose, onRefilled }: Props)
     }
   };
 
+  const handleOpenEPharmacy = (provider: string, url: string) => {
+    try {
+      api.trackEvent("refill_epharmacy_click", { provider, medication: medication?.name });
+    } catch {}
+    Linking.openURL(url).catch(() => {
+      Alert.alert("Notice", `Could not open ${provider}. Please check your browser or internet connection.`);
+    });
+  };
+
   if (!medication) return null;
 
   const currentStock = medication.stock ?? 0;
@@ -96,7 +105,53 @@ export function RefillModal({ visible, medication, onClose, onRefilled }: Props)
             </View>
           </View>
 
-          <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{t("refill.selectPreset", "Select Strip Size or Enter Quantity:")}</Text>
+          {/* Online E-Pharmacy 1-Tap Ordering Hub */}
+          <View style={[styles.onlineRefillCard, { backgroundColor: isDark ? "rgba(145,132,217,0.08)" : "rgba(145,132,217,0.05)", borderColor: theme.surfaceBorder }]}>
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons name="cart" size={15} color={theme.accent} />
+                <Text style={[styles.onlineRefillTitle, { color: theme.textPrimary }]}>Order Refill Online</Text>
+              </View>
+              <View style={styles.discountBadge}>
+                <Text style={styles.discountBadgeText}>Up to 20% OFF</Text>
+              </View>
+            </View>
+            <Text style={[styles.onlineRefillSub, { color: theme.textSecondary }]}>
+              Tap to order {medication.name} with fast doorstep delivery:
+            </Text>
+            <View style={styles.pharmacyBtnRow}>
+              <TouchableOpacity
+                style={[styles.pharmacyBtn, { backgroundColor: "#FF6F61" }]}
+                activeOpacity={0.8}
+                onPress={() => handleOpenEPharmacy("Tata 1mg", `https://www.1mg.com/search/all?name=${encodeURIComponent(medication.name)}&utm_source=pillcare&utm_medium=affiliate`)}
+              >
+                <Text style={styles.pharmacyBtnText}>Tata 1mg</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pharmacyBtn, { backgroundColor: "#0284C7" }]}
+                activeOpacity={0.8}
+                onPress={() => handleOpenEPharmacy("Apollo 24|7", `https://www.apollo247.com/search-medicines/${encodeURIComponent(medication.name)}?utm_source=pillcare`)}
+              >
+                <Text style={styles.pharmacyBtnText}>Apollo 24|7</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pharmacyBtn, { backgroundColor: "#10B981" }]}
+                activeOpacity={0.8}
+                onPress={() => handleOpenEPharmacy("PharmEasy", `https://pharmeasy.in/search/all?name=${encodeURIComponent(medication.name)}&utm_source=pillcare`)}
+              >
+                <Text style={styles.pharmacyBtnText}>PharmEasy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pharmacyBtn, { backgroundColor: "#D97706" }]}
+                activeOpacity={0.8}
+                onPress={() => handleOpenEPharmacy("Amazon Pharmacy", `https://www.amazon.com/s?k=${encodeURIComponent(medication.name)}+medication&tag=pillcare-20`)}
+              >
+                <Text style={styles.pharmacyBtnText}>Amazon</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Text style={[styles.sectionLabel, { color: theme.textSecondary }]}>{t("refill.selectPreset", "Or Record Stock Delivered Manually:")}</Text>
 
           {/* Preset Buttons */}
           <View style={styles.presetsRow}>
@@ -293,6 +348,49 @@ const styles = StyleSheet.create({
   confirmBtnText: {
     color: "#ffffff",
     fontSize: 15,
+    fontWeight: "700",
+  },
+  onlineRefillCard: {
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    gap: 8,
+  },
+  onlineRefillTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+  },
+  discountBadge: {
+    backgroundColor: "rgba(16, 185, 129, 0.15)",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  discountBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: "#10B981",
+  },
+  onlineRefillSub: {
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
+  pharmacyBtnRow: {
+    flexDirection: "row",
+    gap: 6,
+    marginTop: 2,
+  },
+  pharmacyBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pharmacyBtnText: {
+    color: "#ffffff",
+    fontSize: 11,
     fontWeight: "700",
   },
 });

@@ -6,8 +6,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { theme } from "@/src/lib/theme";
 import { Card, PrimaryButton } from "@/src/components/PrimaryButton";
 import { api } from "@/src/lib/api";
-import { getFeatures } from "@/src/lib/features";
+import { getFeatures, isPremium } from "@/src/lib/features";
 import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 export default function Caregiver() {
   const router = useRouter();
@@ -19,7 +20,9 @@ export default function Caregiver() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const limit = Math.max(5, getFeatures().caregiver_alerts || 5);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const premium = isPremium();
+  const limit = premium ? Math.max(5, getFeatures().caregiver_alerts || 5) : 1;
 
   useEffect(() => {
     api.getProfile().then((p) => {
@@ -93,6 +96,25 @@ export default function Caregiver() {
             </TouchableOpacity>
           </View>
         ))}
+        {caregivers.length >= limit && !premium && (
+          <TouchableOpacity
+            style={styles.upgradeCallout}
+            activeOpacity={0.8}
+            onPress={() => setShowUpgrade(true)}
+          >
+            <View style={styles.upgradeIconWrap}>
+              <Ionicons name="shield-checkmark" size={22} color="#9184d9" />
+            </View>
+            <View style={{ flex: 1, gap: 2 }}>
+              <Text style={styles.upgradeTitle}>Add More Family Caregivers</Text>
+              <Text style={styles.upgradeSub}>
+                Free plan supports 1 primary caregiver. Upgrade to Caregiver Shield for up to 5 family contacts with instant WhatsApp & SMS escalation.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#9184d9" />
+          </TouchableOpacity>
+        )}
+
         {caregivers.length < limit && (
           <View style={styles.addRow}>
             <CountryCodePicker
@@ -152,6 +174,13 @@ export default function Caregiver() {
           </Card>
         ))}
       </ScrollView>
+
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Caregiver Shield Circle"
+        description="Connect up to 5 family members to your Caregiver Circle. Adult children and family members get instant WhatsApp & SMS alerts whenever critical doses are missed."
+      />
     </SafeAreaView>
   );
 }
@@ -170,4 +199,33 @@ const styles = StyleSheet.create({
   caregiverPhone: { color: theme.colors.textPrimary, fontSize: 16 },
   addRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   addBtn: { width: 56, height: 56, borderRadius: 12, backgroundColor: theme.colors.brand, alignItems: "center", justifyContent: "center" },
+  upgradeCallout: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "rgba(145, 132, 217, 0.1)",
+    borderWidth: 1.5,
+    borderColor: "rgba(145, 132, 217, 0.4)",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+  },
+  upgradeIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(145, 132, 217, 0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  upgradeTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  upgradeSub: {
+    color: theme.colors.textSecondary,
+    fontSize: 11.5,
+    lineHeight: 16,
+  },
 });

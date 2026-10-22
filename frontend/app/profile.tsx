@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, ActivityIndicator, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -13,6 +13,8 @@ import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
 import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { signInWithGoogle, getStoredUser, isGuestUser, signOut, PillcareUser } from "@/src/lib/auth";
 import { get7DigitUserNumber } from "@/src/lib/userNumber";
+import { getFeatures, isPremium } from "@/src/lib/features";
+import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
   TM = "rgba(233,233,237,0.55)", AC = "#9184d9", A3 = "#a7a1db",
@@ -30,6 +32,25 @@ export default function Profile() {
   const [authUser, setAuthUser] = useState<PillcareUser | null>(null);
   const [isGuest, setIsGuest] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [loadingPass, setLoadingPass] = useState(false);
+  const premium = isPremium();
+
+  const handleOpenDoctorPass = async () => {
+    if (!premium) {
+      setShowUpgrade(true);
+      return;
+    }
+    setLoadingPass(true);
+    try {
+      const url = await api.getDoctorPassUrl();
+      await Linking.openURL(url);
+    } catch (err: any) {
+      Alert.alert("Notice", err?.message || "Could not open Doctor Pass. Please check your network.");
+    } finally {
+      setLoadingPass(false);
+    }
+  };
 
   const load = useCallback(async () => {
     let u: PillcareUser | null = null;
@@ -389,6 +410,66 @@ export default function Profile() {
           </View>
         </View>
 
+        {/* Membership & Caregiver Shield */}
+        <Text style={[s.secL, { color: theme.accent }]}>MEMBERSHIP & CAREGIVER SHIELD</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}>
+              <View style={[s.planIconCircle, { backgroundColor: premium ? "rgba(16,185,129,0.15)" : theme.accentBg }]}>
+                <Ionicons name={premium ? "shield-checkmark" : "shield-outline"} size={20} color={premium ? "#10B981" : theme.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[s.cT, { color: theme.textPrimary }]}>
+                  {premium ? "Caregiver Shield Active" : "Free Plan (Standard)"}
+                </Text>
+                <Text style={[s.cS, { color: theme.textSecondary, marginTop: 2 }]}>
+                  {premium ? "Unlimited family alerts & AI checks active" : "Basic reminders & 1 caregiver"}
+                </Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={[s.upgradePill, { backgroundColor: premium ? "rgba(16,185,129,0.15)" : theme.accent }]}
+              onPress={() => setShowUpgrade(true)}
+            >
+              <Text style={[s.upgradePillText, { color: premium ? "#10B981" : "#FFFFFF" }]}>
+                {premium ? "Plan Details" : "Upgrade"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Doctor-Ready Clinical Health Pass */}
+        <Text style={[s.secL, { color: theme.accent }]}>DOCTOR APPOINTMENTS & CLINICAL PASS</Text>
+        <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <View style={[s.planIconCircle, { backgroundColor: "rgba(2, 132, 199, 0.15)" }]}>
+              <Ionicons name="document-text" size={20} color="#0284C7" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.cT, { color: theme.textPrimary }]}>Doctor-Ready Health Pass (PDF)</Text>
+              <Text style={[s.cS, { color: theme.textSecondary, marginTop: 2, lineHeight: 15 }]}>
+                Generate a standardized 30-day compliance summary, vitals chronology, and doctor sign-off sheet for clinic appointments.
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={[s.doctorPassBtn, { backgroundColor: isDark ? "rgba(2,132,199,0.15)" : "rgba(2,132,199,0.08)", borderColor: "#0284C7" }]}
+            onPress={handleOpenDoctorPass}
+            disabled={loadingPass}
+          >
+            {loadingPass ? (
+              <ActivityIndicator color="#0284C7" />
+            ) : (
+              <>
+                <Ionicons name="open-outline" size={16} color="#0284C7" />
+                <Text style={s.doctorPassBtnText}>
+                  {premium ? "View & Print Clinical Health Pass" : "Unlock Doctor Health Pass (Caregiver Shield)"}
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Routine */}
         <Text style={[s.secL, { color: theme.accent }]}>MEDICATION ROUTINE</Text>
         <View style={[s.card, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}>
@@ -448,6 +529,13 @@ export default function Profile() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
+
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Caregiver Shield & Doctor Pass"
+        description="Unlock automated family alerts, clinical drug-food interaction checks, full yoga therapy, and 1-tap Doctor-Ready Health Pass (PDF)."
+      />
     </SafeAreaView>
   );
 }
@@ -505,6 +593,40 @@ const s = StyleSheet.create({
   googleSignInBtnText: {
     color: "#FFFFFF",
     fontSize: 13,
+    fontWeight: "700",
+  },
+  planIconCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  upgradePill: {
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  upgradePillText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  doctorPassBtn: {
+    marginTop: 4,
+    borderWidth: 1.5,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  doctorPassBtnText: {
+    color: "#0284C7",
+    fontSize: 12.5,
     fontWeight: "700",
   },
 });
