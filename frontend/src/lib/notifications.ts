@@ -77,7 +77,6 @@ export function getCanonicalDoseId(medId: string, date: string, time?: string): 
 try {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
-      shouldShowAlert: true,
       shouldPlaySound: true,
       shouldSetBadge: true,
       shouldShowBanner: true,

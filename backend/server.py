@@ -4146,6 +4146,7 @@ class FeatureOverride(BaseModel):
     value: object
 
 @app.post("/admin/users/{user_id}/subscription")
+@app.post("/api/admin/users/{user_id}/subscription")
 async def admin_set_subscription(user_id: str, body: SubscriptionUpdate, _: None = Depends(require_admin)):
     days = body.expires_days
     if body.billing_cycle == "annual":
@@ -4175,11 +4176,13 @@ async def admin_set_subscription(user_id: str, body: SubscriptionUpdate, _: None
     return {"ok": True, "plan": plan, "billing_cycle": cycle, "expires_at": expires.isoformat() if expires else None}
 
 @app.post("/admin/users/{user_id}/features")
+@app.post("/api/admin/users/{user_id}/features")
 async def admin_set_feature(user_id: str, body: FeatureOverride, _: None = Depends(require_admin)):
     await db.subscriptions.update_one({"user_id": user_id}, {"$set": {f"overrides.{body.feature}": body.value, "updated_at": datetime.now(timezone.utc)}}, upsert=True)
     return {"ok": True, "feature": body.feature, "value": body.value}
 
 @app.delete("/admin/users/{user_id}/features/{feature}")
+@app.delete("/api/admin/users/{user_id}/features/{feature}")
 async def admin_remove_feature(user_id: str, feature: str, _: None = Depends(require_admin)):
     await db.subscriptions.update_one({"user_id": user_id}, {"$unset": {f"overrides.{feature}": ""}})
     return {"ok": True}
@@ -4195,12 +4198,14 @@ GLOBAL_FEATURE_DEFAULTS = [
 ]
 
 @app.get("/admin/feature-flags")
+@app.get("/api/admin/feature-flags")
 async def admin_list_feature_flags(_: None = Depends(require_admin)):
     saved = await db.feature_flags.find({}, {"_id": 0}).to_list(500)
     by_key = {item.get("key"): item for item in saved}
     return [{**item, **by_key.get(item["key"], {})} for item in GLOBAL_FEATURE_DEFAULTS]
 
 @app.put("/admin/feature-flags/{key}")
+@app.put("/api/admin/feature-flags/{key}")
 async def admin_update_feature_flag(key: str, body: dict = Body(...), _: None = Depends(require_admin)):
     allowed = {"enabled", "rolloutPercentage", "countries", "platforms", "minAppVersion"}
     patch = {k: v for k, v in body.items() if k in allowed}
