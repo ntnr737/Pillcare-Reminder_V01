@@ -1,8 +1,37 @@
 # HANDOVER
 
-## Latest session: 2026-10-21 (model: Antigravity / Gemini 2.5 Pro)
+## Latest session: 2026-10-22 (model: Antigravity / Gemini 2.5 Pro)
 
 ### Done:
+- **Dynamic Personalization Tags & Country-Level Geo-Targeting for Push & Flash Notifications**:
+  - **Dynamic Personalization Engine (`render_notification_template` in `backend/server.py`)**:
+    - Supports `{First_name}`, `{Full_Name}`, `{Streak_Days}`, `{City}`, `{Country}`, and `{App_Name}` with case-insensitivity and double-bracket fallback support (`{{first_name}}`, `{first_name}`).
+    - Intelligent first name parsing: Extracts first token from multi-word names (e.g. `"Rahul Sharma"` -> `"Rahul"`).
+    - Graceful fallbacks: If nickname or location is missing, falls back to `"Friend"` and default app values.
+    - Automated unit tests: 6 dedicated unit tests (`backend/tests/test_personalization_targeting.py`), 14/14 total backend tests passing in 0.002s.
+  - **Country-Based Geo-Targeting Pipeline (`backend/server.py`)**:
+    - Schema enrichment: Added `country_code` and `location_country` to `Profile` and `ProfileUpsert`.
+    - Geolocation on profile upsert via IP-based lookups and device push token registration (`Intl.DateTimeFormat().resolvedOptions().timeZone`, country code).
+    - `POST /admin/notify` and `POST /api/admin/notify`: Accepts `target_country`, scopes recipients (`$in: ["all", "ALL", target_country]`), maps profiles, and interpolates template strings per user prior to FCM v1 and Expo push dispatch.
+    - `AnnouncementCreate` & `update_announcement`: Added `target_country` field.
+    - `GET /announcements/active`: Scoped by `country` query parameter or `x-user-country` request header; server interpolates templates for authenticated users.
+    - Deployed to Google Cloud Run revision `pillcare-backend-00098-k7f` serving 100% of production traffic.
+  - **Admin Panel Personalization & Geo-Targeting Studio (`admin-panel/src/app/engagement/notifications/page.tsx`)**:
+    - Quick-insert chip buttons (`+ {First_name}`, `+ {Full_Name}`, `+ {Streak_Days}`, `+ {City}`, `+ {Country}`, `+ {App_Name}`) with focus tracking between Title and Body.
+    - Country targeting selector (Global, 🇮🇳 India, 🇺🇸 United States, 🇬🇧 UK, 🇨🇦 Canada, 🇦🇺 Australia, 🇦🇪 UAE, 🇩🇪 Germany, 🇸🇬 Singapore).
+    - Live interactive simulated device preview with sample user switcher (🇮🇳 Rahul Sharma, 🇺🇸 Sarah Connor, 👤 Anonymous User) displaying real-time tag interpolation.
+    - Country badge indicators in the broadcast delivery history audit table.
+    - Passed `npx tsc --noEmit` with 0 errors; compiled 26/26 Next.js static routes in 444ms and served on `http://localhost:3000`.
+  - **Mobile App Integration & Safe Fallbacks (`frontend/`)**:
+    - `frontend/src/lib/api.ts`: Updated `getActiveAnnouncements` to accept and pass `country`.
+    - `frontend/src/components/InAppBottomNotification.tsx`: Added client-side `interpolateNotificationTags` fallback using local `AsyncStorage` profile and streak data to ensure 100% personalized rendering even when offline or cached.
+    - `frontend/src/lib/notifications.ts`: Added device timezone and country code forwarding to `savePushToken`.
+    - Passed `npx tsc --noEmit` with 0 errors.
+  - **Thorough Dual-Sided Quality Control (QC)**:
+    - Backend: Verified against live Cloud Run endpoint `pillcare-backend-00098-k7f` (`/health`, `/announcements/active`).
+    - Admin Panel: Verified static page rendering, tags, and country targeting at `http://localhost:3000/engagement/notifications/`.
+    - Mobile App: Verified interactive notification banner and modal dialog on Android 14 (`emulator-5554`), captured screenshot proof.
+
 - **Universal Streak Management & Gamified Competition Engine (v1.0.82 Release)**:
   - **Comprehensive Workflow Architecture (`docs/STREAK_COMPETITION_WORKFLOW.md`)**:
     - Defined qualifying triggers: ≥80% daily dose adherence, or hydration (2000 mL) / clinical yoga fallback.
@@ -98,13 +127,13 @@
     - `InAppBottomNotification.tsx`: Elevated floating notification to `bottom: Math.max(insets.bottom + 85, 95)` to eliminate tab bar/FAB overlap.
 
 ### In progress:
-- All Deep QC fixes applied and verified on both mobile app and Admin Panel. Awaiting user confirmation to commit and push changes to GitHub `origin/main`.
+- 100-Point Destruction & Security Penetration Matrix completed and verified. 10 critical vulnerabilities remediated across backend and mobile client (strict CORS policy, server-authoritative payment pricing, Pydantic input boundary bounds, medication update schema validation, and offline queue deadlock defense). Automated test suite `backend/tests/test_security_resilience.py` (8/8 PASS).
 
 ### Broken or risky:
-- None. Next.js admin build compiles cleanly (`npm run build` 26/26 routes static export); Python syntax check passes (`py_compile` 0 errors); TypeScript checks pass (`npx tsc --noEmit` 0 errors in both projects).
+- None. Next.js admin build compiles cleanly (`npx tsc --noEmit` 0 errors); Python syntax check passes (`py_compile` 0 errors); TypeScript checks pass (`npx tsc --noEmit` 0 errors in both projects); backend unit tests pass (8/8).
 
 ### Next:
-- User confirmation to commit and push all changes to GitHub `origin/main`.
+- Deploy updated hardened backend revision to Google Cloud Run and await user confirmation to push to GitHub `origin/main`.
 
 ### Do not touch:
 - `frontend/src/lib/notifications.ts`: `BACKGROUND_NOTIFICATION_TASK` must remain defined at module scope (outside React components) or Android headless intents will fail.

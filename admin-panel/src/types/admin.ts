@@ -259,6 +259,8 @@ export interface NotificationCampaign {
   body: string;
   channels: ('push' | 'email' | 'sms' | 'in_app')[];
   targetAudience: 'all' | 'free_users' | 'premium_users' | 'inactive_7d' | 'custom';
+  targetCountry?: string;
+  imageUrl?: string;
   scheduledAt?: string;
   sentAt?: string;
   status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';

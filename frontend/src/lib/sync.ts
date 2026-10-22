@@ -128,17 +128,29 @@ export async function recordSkipped(
 export async function getLocalDoseStatuses(date: string): Promise<Record<string, LocalDoseRecord>> {
   try {
     const raw = await AsyncStorage.getItem(STATUS_KEY_PREFIX + date);
-    const statusMap: Record<string, LocalDoseRecord> = raw ? JSON.parse(raw) : {};
+    let statusMap: Record<string, LocalDoseRecord> = {};
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          statusMap = parsed;
+        }
+      } catch {}
+    }
 
     // Merge with legacy taken keys if present
     const rawTaken = await AsyncStorage.getItem(TAKEN_KEY_PREFIX + date);
     if (rawTaken) {
-      const takenMap: Record<string, string> = JSON.parse(rawTaken);
-      for (const [k, v] of Object.entries(takenMap)) {
-        if (!statusMap[k]) {
-          statusMap[k] = { status: "taken", timestamp: v };
+      try {
+        const takenMap = JSON.parse(rawTaken);
+        if (takenMap && typeof takenMap === "object" && !Array.isArray(takenMap)) {
+          for (const [k, v] of Object.entries(takenMap)) {
+            if (!statusMap[k] && typeof v === "string") {
+              statusMap[k] = { status: "taken", timestamp: v };
+            }
+          }
         }
-      }
+      } catch {}
     }
     return statusMap;
   } catch {
@@ -151,6 +163,7 @@ export async function getLocalDoseStatuses(date: string): Promise<Record<string,
  * Local actions ALWAYS win — server "pending" is overridden if we have a local record.
  */
 export async function mergeDoses(serverDoses: any[], date: string): Promise<any[]> {
+  if (!Array.isArray(serverDoses)) return [];
   const localStatuses = await getLocalDoseStatuses(date);
   if (Object.keys(localStatuses).length === 0) return serverDoses;
 
@@ -195,10 +208,20 @@ async function getQueue(): Promise<WriteItem[]> {
   try {
     const raw = await AsyncStorage.getItem(QUEUE_KEY);
     if (!raw) return [];
-    const items: WriteItem[] = JSON.parse(raw);
+    let items: any = null;
+    try {
+      items = JSON.parse(raw);
+    } catch {
+      await AsyncStorage.removeItem(QUEUE_KEY);
+      return [];
+    }
+    if (!Array.isArray(items)) {
+      await AsyncStorage.removeItem(QUEUE_KEY);
+      return [];
+    }
     // 48-hour expiration filter
     const now = Date.now();
-    const filtered = items.filter(i => (now - i.ts) < 48 * 60 * 60 * 1000);
+    const filtered = items.filter(i => i && typeof i === "object" && typeof i.ts === "number" && (now - i.ts) < 48 * 60 * 60 * 1000);
     if (filtered.length !== items.length) {
       await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(filtered));
     }
@@ -311,12 +334,23 @@ export async function flushQueue(): Promise<void> {
         await removeFromQueue(item.id);
       } catch (err: any) {
         const errMsg = err?.message || "";
-        // Drop permanent 4xx failures to avoid blocking later queue entries
-        if (errMsg.includes("400") || errMsg.includes("404") || errMsg.includes("422")) {
+        const statusMatch = errMsg.match(/\b(4\d\d)\b/);
+        const statusCode = err?.status || (statusMatch ? parseInt(statusMatch[1], 10) : 0);
+        // Drop permanent 4xx failures (400, 401, 402, 403, 404, 422) to avoid blocking later queue entries.
+        // 429 (Rate Limit) pauses queue flush to allow cooldown.
+        if (
+          (statusCode >= 400 && statusCode < 500 && statusCode !== 429) ||
+          errMsg.includes("400") ||
+          errMsg.includes("401") ||
+          errMsg.includes("402") ||
+          errMsg.includes("403") ||
+          errMsg.includes("404") ||
+          errMsg.includes("422")
+        ) {
           console.warn(`Dropping unprocessable queued write (${item.id}):`, errMsg);
           await removeFromQueue(item.id);
         } else {
-          // Network offline / 5xx error — pause queue flush until next connectivity cycle
+          // Network offline / 5xx error / 429 rate limit — pause queue flush until next connectivity cycle
           break;
         }
       }

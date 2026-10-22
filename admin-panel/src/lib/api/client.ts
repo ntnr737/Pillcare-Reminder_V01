@@ -173,6 +173,7 @@ export interface BroadcastResult {
   failed?: number;
   total_tokens?: number;
   cohort?: string;
+  target_country?: string;
   in_app?: boolean;
   message?: string;
   error?: string;
@@ -182,7 +183,7 @@ export async function sendBroadcastPushNotification(
   title: string,
   body: string,
   targetPlan?: string,
-  extra?: { routeKey?: string; channels?: string[]; imageUrl?: string; type?: string }
+  extra?: { routeKey?: string; channels?: string[]; imageUrl?: string; type?: string; targetCountry?: string }
 ): Promise<BroadcastResult> {
   try {
     const res = await adminFetch('admin/notify', {
@@ -195,6 +196,8 @@ export async function sendBroadcastPushNotification(
         target: targetPlan || 'all',
         plan: targetPlan || 'all',
         targetAudience: targetPlan || 'all',
+        target_country: extra?.targetCountry || 'all',
+        country: extra?.targetCountry || 'all',
         route_key: extra?.routeKey,
         channels: extra?.channels || ['push', 'in_app'],
         image_url: extra?.imageUrl,
@@ -213,6 +216,7 @@ export async function sendBroadcastPushNotification(
       failed: json.failed ?? 0,
       total_tokens: json.total_tokens ?? 0,
       cohort: json.cohort,
+      target_country: json.target_country,
       in_app: json.in_app,
       message: json.message,
     };

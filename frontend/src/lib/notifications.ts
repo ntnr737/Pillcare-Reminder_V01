@@ -896,12 +896,25 @@ export async function registerForPushNotifications(): Promise<string | null> {
     const effectiveToken = deviceToken || expoToken;
     if (effectiveToken) {
       console.log("PillCare Registered Tokens:", { expoToken, deviceToken });
+      let userCountry = "";
+      try {
+        const storedProfile = await get<any>(K.profile);
+        userCountry = storedProfile?.country_code || storedProfile?.country || storedProfile?.location_country || "";
+      } catch {}
+
+      let userTimezone = "";
+      try {
+        userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      } catch {}
+
       await api.savePushToken({
         token: effectiveToken,
         push_token: effectiveToken,
         fcm_token: deviceToken,
         expo_push_token: expoToken,
         device_token: deviceToken,
+        country_code: userCountry,
+        timezone: userTimezone,
       }).catch((err) => {
         console.warn("api.savePushToken error:", err);
       });

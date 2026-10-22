@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Body, Query
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Response
 import io
 import hmac
@@ -19,6 +19,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 import os
+import re
 import logging
 import csv
 import uuid
@@ -214,6 +215,8 @@ class Profile(BaseModel):
     year_of_birth: int
     location_city: Optional[str] = None
     location_state: Optional[str] = None
+    location_country: Optional[str] = None
+    country_code: Optional[str] = None
     phone: Optional[str] = None
     routine_wake: str = "07:00"
     routine_breakfast: str = "08:00"
@@ -233,6 +236,8 @@ class ProfileUpsert(BaseModel):
     year_of_birth: Optional[int] = Field(None, ge=1900, le=2025)
     location_city: Optional[str] = Field(None, max_length=100)
     location_state: Optional[str] = Field(None, max_length=100)
+    location_country: Optional[str] = Field(None, max_length=100)
+    country_code: Optional[str] = Field(None, max_length=10)
     phone: Optional[str] = Field(None, max_length=20)
     caregiver_phone: Optional[str] = Field(None, max_length=20)
     caregivers: Optional[List[str]] = Field(default_factory=list)
@@ -291,6 +296,24 @@ class MedicationCreate(BaseModel):
     color: str = Field("#92C5A9", max_length=30)
 
 
+class MedicationUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=150)
+    generic_name: Optional[str] = Field(None, max_length=150)
+    dosage: Optional[float] = Field(None, ge=0, le=100000)
+    unit: Optional[str] = Field(None, min_length=1, max_length=50)
+    food_relation: Optional[str] = Field(None, max_length=50)
+    frequency_per_day: Optional[int] = Field(None, ge=1, le=24)
+    times: Optional[List[str]] = None
+    start_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    end_date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    duration_days: Optional[int] = Field(None, ge=1, le=3650)
+    refill_threshold: Optional[int] = Field(None, ge=0, le=100000)
+    stock: Optional[int] = Field(None, ge=0, le=100000)
+    notes: Optional[str] = Field(None, max_length=2000)
+    color: Optional[str] = Field(None, max_length=30)
+    active: Optional[bool] = None
+
+
 class DoseLog(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_id: str
@@ -325,11 +348,11 @@ class Measurement(BaseModel):
 
 
 class MeasurementCreate(BaseModel):
-    type: str
-    value: float
-    value_secondary: Optional[float] = None
-    unit: str
-    note: Optional[str] = None
+    type: str = Field(..., min_length=1, max_length=50)
+    value: float = Field(..., ge=0, le=100000)
+    value_secondary: Optional[float] = Field(None, ge=0, le=100000)
+    unit: str = Field(..., min_length=1, max_length=50)
+    note: Optional[str] = Field(None, max_length=1000)
 
 
 class Activity(BaseModel):
@@ -344,11 +367,11 @@ class Activity(BaseModel):
 
 
 class ActivityCreate(BaseModel):
-    type: str
-    value: float
-    unit: str
-    note: Optional[str] = None
-    date: Optional[str] = None
+    type: str = Field(..., min_length=1, max_length=50)
+    value: float = Field(..., ge=0, le=100000)
+    unit: str = Field(..., min_length=1, max_length=50)
+    note: Optional[str] = Field(None, max_length=1000)
+    date: Optional[str] = Field(None, pattern=r"^\d{4}-\d{2}-\d{2}$")
     timestamp: Optional[Union[datetime, str]] = None
 
 
@@ -361,8 +384,8 @@ class MoodEntry(BaseModel):
 
 
 class MoodCreate(BaseModel):
-    score: int
-    note: Optional[str] = None
+    score: int = Field(..., ge=1, le=5)
+    note: Optional[str] = Field(None, max_length=1000)
 
 
 class BrandRequest(BaseModel):
@@ -374,8 +397,8 @@ class ScanRequest(BaseModel):
 
 
 class CaregiverAlert(BaseModel):
-    message: str
-    medication_name: Optional[str] = None
+    message: str = Field(..., min_length=1, max_length=1000)
+    medication_name: Optional[str] = Field(None, max_length=150)
 
 
 # ---------- Auth helpers ----------
@@ -454,8 +477,12 @@ def _clean(doc):
 
 
 def _dates_in_range(start: str, days: int) -> List[str]:
-    start_dt = datetime.strptime(start, "%Y-%m-%d").date()
-    return [(start_dt + timedelta(days=i)).isoformat() for i in range(days)]
+    try:
+        start_dt = datetime.strptime(start, "%Y-%m-%d").date()
+    except (ValueError, TypeError):
+        start_dt = datetime.now(timezone.utc).date()
+    safe_days = max(1, min(days, 365))
+    return [(start_dt + timedelta(days=i)).isoformat() for i in range(safe_days)]
 
 
 async def _ensure_doses_for_range(user_id: str, start_date: str, end_date: str):
@@ -980,6 +1007,16 @@ async def save_push_token_flexible(payload: dict = Body(...), user_id: Optional[
         "is_guest": is_guest
     }
 
+    country_code = str(payload.get("country_code") or payload.get("country") or "").strip().upper()
+    if country_code and len(country_code) <= 10:
+        update_doc["country_code"] = country_code
+    if payload.get("location_country"):
+        update_doc["location_country"] = str(payload.get("location_country")).strip()
+    if payload.get("location_city"):
+        update_doc["location_city"] = str(payload.get("location_city")).strip()
+    if payload.get("timezone"):
+        update_doc["timezone"] = str(payload.get("timezone")).strip()
+
     await db.users.update_one(
         {"id": user_id},
         {"$set": update_doc},
@@ -1112,21 +1149,43 @@ async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str 
         existing_num = existing.get("user_number") if existing else None
         data["user_number"] = existing_num or await _get_unique_7digit_user_number(user_id)
 
-    if not data.get("location_city"):
+    if not data.get("location_city") or not data.get("country_code"):
         try:
             fwd = request.headers.get("x-forwarded-for", "")
             client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
             if client_ip and client_ip not in ("127.0.0.1", "::1", ""):
                 async with httpx.AsyncClient(timeout=5.0) as hc:
-                    geo = await hc.get(f"http://ip-api.com/json/{client_ip}?fields=status,city,regionName")
+                    geo = await hc.get(f"http://ip-api.com/json/{client_ip}?fields=status,city,regionName,country,countryCode")
                     if geo.status_code == 200:
                         gd = geo.json()
                         if gd.get("status") == "success":
-                            data["location_city"] = gd.get("city", "") or ""
-                            data["location_state"] = gd.get("regionName", "") or ""
-                            logger.info(f"IP location for user {user_id}: {data['location_city']}, {data['location_state']}")
+                            if not data.get("location_city"):
+                                data["location_city"] = gd.get("city", "") or ""
+                            if not data.get("location_state"):
+                                data["location_state"] = gd.get("regionName", "") or ""
+                            if not data.get("location_country"):
+                                data["location_country"] = gd.get("country", "") or ""
+                            if not data.get("country_code"):
+                                data["country_code"] = (gd.get("countryCode", "") or "").upper()
+                            logger.info(f"IP location for user {user_id}: {data.get('location_city')}, {data.get('location_state')}, {data.get('location_country')} ({data.get('country_code')})")
         except Exception as e:
             logger.warning(f"IP geolocation failed: {e}")
+
+    if not data.get("country_code"):
+        data["country_code"] = (existing.get("country_code") if existing else None) or "IN"
+    if not data.get("location_country"):
+        data["location_country"] = (existing.get("location_country") if existing else None) or "India"
+
+    # Synchronize country tag to users collection for fast targeting
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "country_code": data["country_code"],
+            "location_country": data["location_country"],
+            "location_city": data.get("location_city", "")
+        }}
+    )
+
     if existing:
         await db.profile.update_one({"id": user_id}, {"$set": data})
         return {**existing, **data}
@@ -1231,11 +1290,15 @@ async def get_medication(med_id: str, user_id: str = Depends(get_current_user_id
 
 
 @api.patch("/medications/{med_id}")
-async def update_medication(med_id: str, payload: dict, user_id: str = Depends(get_current_user_id)):
-    payload.pop("id", None)
-    payload.pop("_id", None)
-    payload.pop("user_id", None)
-    res = await db.medications.update_one({"id": med_id, "user_id": user_id}, {"$set": payload})
+async def update_medication(med_id: str, payload: MedicationUpdate, user_id: str = Depends(get_current_user_id)):
+    update_data = payload.model_dump(exclude_unset=True)
+    if not update_data:
+        raise HTTPException(400, "No valid fields provided for update")
+    if "times" in update_data and update_data["times"] is not None:
+        for t in update_data["times"]:
+            if not isinstance(t, str) or not re.match(r"^\d{2}:\d{2}$", t):
+                raise HTTPException(422, f"Invalid time format in times: {t}")
+    res = await db.medications.update_one({"id": med_id, "user_id": user_id}, {"$set": update_data})
     if res.matched_count == 0:
         raise HTTPException(404, "Medication not found")
     doc = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
@@ -1270,11 +1333,17 @@ async def apply_reminder_nudge(med_id: str, payload: dict = Body(...), user_id: 
 @api.post("/medications/{med_id}/refill")
 async def refill_medication(med_id: str, payload: dict = Body(...), user_id: str = Depends(get_current_user_id)):
     """Refill stock for a medication and log the refill event."""
-    add_stock = int(payload.get("add_stock", 30))
+    try:
+        raw_stock = payload.get("add_stock", 30)
+        add_stock = int(raw_stock)
+    except (ValueError, TypeError):
+        raise HTTPException(422, "add_stock must be a valid integer")
+    if add_stock < 1 or add_stock > 10000:
+        raise HTTPException(422, "add_stock must be between 1 and 10,000")
     med = await db.medications.find_one({"id": med_id, "user_id": user_id}, PROJECTION)
     if not med:
         raise HTTPException(404, "Medication not found")
-    new_stock = max(0, med.get("stock", 0)) + add_stock
+    new_stock = min(100000, max(0, med.get("stock", 0)) + add_stock)
     await db.medications.update_one(
         {"id": med_id, "user_id": user_id},
         {"$set": {"stock": new_stock, "active": True}}
@@ -1575,7 +1644,9 @@ async def create_mood(payload: MoodCreate, user_id: str = Depends(get_current_us
 # Progress / Adherence
 @api.get("/progress/adherence")
 @limiter.limit("30/hour")
-async def adherence(request: Request, days: int = 7, local_date: str = None, user_id: str = Depends(get_current_user_id)):
+async def adherence(request: Request, days: int = Query(7, ge=1, le=365), local_date: Optional[str] = None, user_id: str = Depends(get_current_user_id)):
+    if local_date and not re.match(r"^\d{4}-\d{2}-\d{2}$", local_date):
+        local_date = None
     return await _adherence_for_user(user_id, days, local_date)
 
 
@@ -2251,14 +2322,14 @@ async def dose_history(days: int = 30, user_id: str = Depends(get_current_user_i
 
 # Doctor Appointments
 class AppointmentCreate(BaseModel):
-    doctor_name: str
-    specialty: Optional[str] = None
-    phone: Optional[str] = None
-    date: str  # ISO date
-    time: str  # HH:MM
-    location: Optional[str] = None
-    notes: Optional[str] = None
-    reminder: Optional[str] = "1_day"  # "1_day", "2_hours", "none"
+    doctor_name: str = Field(..., min_length=1, max_length=150)
+    specialty: Optional[str] = Field(None, max_length=100)
+    phone: Optional[str] = Field(None, max_length=30)
+    date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$")  # ISO date
+    time: str = Field(..., pattern=r"^\d{2}:\d{2}$")  # HH:MM
+    location: Optional[str] = Field(None, max_length=200)
+    notes: Optional[str] = Field(None, max_length=1000)
+    reminder: Optional[str] = Field("1_day", max_length=50)  # "1_day", "2_hours", "none"
 
 class Appointment(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
@@ -2777,7 +2848,8 @@ async def caregiver_daily_report(request: Request, secret: str = ""):
     # Always require secret - if env var not set, block ALL calls (fail secure)
     if not SCHEDULER_SECRET:
         raise HTTPException(503, "Scheduler not configured")
-    if secret != SCHEDULER_SECRET:
+    incoming_secret = request.headers.get("X-Scheduler-Secret") or secret
+    if not incoming_secret or not hmac.compare_digest(incoming_secret.encode("utf-8"), SCHEDULER_SECRET.encode("utf-8")):
         raise HTTPException(403, "Invalid scheduler secret")
 
     all_profiles = await db.profile.find({"$or": [{"caregiver_phone": {"$exists": True, "$ne": None}}, {"caregivers": {"$exists": True, "$ne": []}}]}, PROJECTION).to_list(1000)
@@ -3834,31 +3906,46 @@ async def user_upgrade_plan(body: UserUpgradeRequest, user_id: str = Depends(get
         "features": features
     }
 
+OFFICIAL_PLAN_PRICES = {
+    "premium": 99,
+    "family": 199,
+    "lifetime": 999,
+}
+
 class PaymentOrderRequest(BaseModel):
-    plan: str = "premium"
-    amount_inr: int = 99
+    plan: str = Field("premium", max_length=50)
+    amount_inr: Optional[int] = Field(None, ge=1, le=100000)
 
 @api.post("/payments/create-order")
 async def create_payment_order(body: PaymentOrderRequest, user_id: str = Depends(get_current_user_id)):
-    """Generates a checkout order ID for Razorpay / Stripe integration."""
+    """Generates a checkout order ID with server-authoritative plan pricing."""
+    plan_key = body.plan.lower().strip()
+    if plan_key not in OFFICIAL_PLAN_PRICES:
+        raise HTTPException(400, f"Invalid plan '{body.plan}'. Available plans: {list(OFFICIAL_PLAN_PRICES.keys())}")
+    
+    # Server-authoritative amount: prevent client-side payment amount manipulation
+    authoritative_amount = OFFICIAL_PLAN_PRICES[plan_key]
     order_id = f"order_{uuid.uuid4().hex[:14]}"
     return {
         "order_id": order_id,
-        "amount": body.amount_inr * 100,
+        "amount": authoritative_amount * 100,
         "currency": "INR",
-        "plan": body.plan,
+        "plan": plan_key,
         "key_id": os.getenv("RAZORPAY_KEY_ID", "rzp_test_pillcare_2026")
     }
 
 class PaymentVerifyRequest(BaseModel):
-    order_id: str
-    payment_id: str
-    signature: Optional[str] = None
-    plan: str = "premium"
+    order_id: str = Field(..., min_length=1, max_length=100)
+    payment_id: str = Field(..., min_length=1, max_length=100)
+    signature: Optional[str] = Field(None, max_length=200)
+    plan: str = Field("premium", max_length=50)
 
 @api.post("/payments/verify")
 async def verify_payment(body: PaymentVerifyRequest, user_id: str = Depends(get_current_user_id)):
     """Verifies payment transaction and instantly upgrades account to target plan using HMAC signature."""
+    plan_key = body.plan.lower().strip()
+    if plan_key not in OFFICIAL_PLAN_PRICES:
+        raise HTTPException(400, f"Invalid plan '{body.plan}'")
     secret = os.getenv("WEBHOOK_SECRET") or os.getenv("GATEWAY_SIGNATURE_SECRET") or os.getenv("RAZORPAY_KEY_SECRET")
     if not secret:
         raise HTTPException(403, "Payment gateway secret is not configured on the server. Activation rejected.")
@@ -3876,7 +3963,7 @@ async def verify_payment(body: PaymentVerifyRequest, user_id: str = Depends(get_
     await db.subscriptions.update_one(
         {"user_id": user_id},
         {"$set": {
-            "plan": body.plan,
+            "plan": plan_key,
             "status": "active",
             "expires_at": expires,
             "updated_at": datetime.now(timezone.utc),
@@ -3886,12 +3973,12 @@ async def verify_payment(body: PaymentVerifyRequest, user_id: str = Depends(get_
         }},
         upsert=True
     )
-    await track_event("payment_success", user_id, {"order_id": body.order_id, "plan": body.plan})
+    await track_event("payment_success", user_id, {"order_id": body.order_id, "plan": plan_key})
     features = await get_user_features(user_id)
     return {
         "success": True,
         "message": "Payment verified! Premium features unlocked.",
-        "plan": body.plan,
+        "plan": plan_key,
         "expires_at": expires.isoformat(),
         "features": features
     }
@@ -4111,22 +4198,30 @@ async def admin_google_login(request: Request, payload: AdminGoogleAuth):
     return {"token": admin_token, "name": idinfo.get("name") or email, "email": email, "picture": idinfo.get("picture")}
 
 class AnnouncementCreate(BaseModel):
-    title: str
-    body: str
-    action_text: Optional[str] = "Explore Now"
-    action_link: Optional[str] = None
-    type: str = "banner"
-    target_plan: str = "all"
-    expires_hours: int = 72
+    title: str = Field(..., min_length=1, max_length=150)
+    body: str = Field(..., min_length=1, max_length=2000)
+    action_text: Optional[str] = Field("Explore Now", max_length=50)
+    action_link: Optional[str] = Field(None, max_length=500)
+    type: str = Field("banner", max_length=50)
+    target_plan: str = Field("all", max_length=50)
+    target_country: Optional[str] = Field("all", max_length=10)
+    expires_hours: int = Field(72, ge=1, le=8760)
 
 @app.post("/admin/announcements")
 async def create_announcement(payload: dict = Body(...), _: None = Depends(require_admin)):
-    title = (payload.get("title") or "").strip()
-    body = (payload.get("body") or "").strip()
-    type_val = payload.get("type") or "offer"
-    target_plan = payload.get("target_plan") or payload.get("target") or "all"
+    title = (payload.get("title") or "").strip()[:150]
+    body = (payload.get("body") or "").strip()[:2000]
+    type_val = (payload.get("type") or "offer")[:50]
+    target_plan = (payload.get("target_plan") or payload.get("target") or "all")[:50]
+    target_country = str(payload.get("target_country") or payload.get("country") or "all").strip().upper()[:10]
     action_link = payload.get("action_link") or payload.get("link_url") or payload.get("link")
-    expires_hours = int(payload.get("expires_hours") or 72)
+    if action_link and len(action_link) > 500:
+        action_link = action_link[:500]
+    try:
+        raw_hours = int(payload.get("expires_hours") or 72)
+        expires_hours = max(1, min(raw_hours, 8760))
+    except (ValueError, TypeError):
+        expires_hours = 72
     
     if not title or not body:
         raise HTTPException(400, "Title and body are required")
@@ -4144,6 +4239,7 @@ async def create_announcement(payload: dict = Body(...), _: None = Depends(requi
         "type": type_val,
         "target_plan": target_plan,
         "target": target_plan,
+        "target_country": target_country,
         "active": True,
         "is_active": True,
         "created_at": datetime.now(timezone.utc),
@@ -4187,6 +4283,9 @@ async def update_announcement(ann_id: str, payload: dict = Body(...), _: None = 
     if "target" in payload:
         update_data["target"] = payload["target"]
         update_data["target_plan"] = payload["target"]
+    if "target_country" in payload or "country" in payload:
+        country_val = str(payload.get("target_country") or payload.get("country") or "all").strip().upper()[:10]
+        update_data["target_country"] = country_val
     if "action_link" in payload or "link_url" in payload:
         link = payload.get("action_link") or payload.get("link_url")
         update_data["action_link"] = link
@@ -4229,8 +4328,35 @@ async def delete_announcement(ann_id: str, _: None = Depends(require_admin)):
 @app.get("/api/announcements/active")
 @app.get("/api/v1/announcements/active")
 @api.get("/announcements/active")
-async def get_active_announcements(plan: str = "free"):
+async def get_active_announcements(
+    plan: str = "free",
+    country: Optional[str] = None,
+    request: Request = None,
+    user_id: Optional[str] = Depends(get_optional_user_id)
+):
     now = datetime.now(timezone.utc)
+    user_profile = None
+    if user_id:
+        try:
+            user_profile = await db.profile.find_one({"id": user_id}) or await db.profile.find_one({"user_id": user_id}) or await db.users.find_one({"id": user_id})
+        except Exception:
+            pass
+
+    resolved_country = (
+        country or
+        (request.headers.get("x-user-country") if request else None) or
+        (user_profile.get("country_code") if user_profile else None) or
+        (user_profile.get("location_country") if user_profile else None) or
+        "all"
+    )
+    user_country = str(resolved_country).strip().upper()
+
+    country_cond = [
+        {"target_country": {"$in": ["all", "ALL", user_country]}},
+        {"target_country": None},
+        {"target_country": {"$exists": False}}
+    ]
+
     query = {
         "$and": [
             {"$or": [{"active": True}, {"is_active": True}, {"active": {"$exists": False}}]},
@@ -4244,7 +4370,8 @@ async def get_active_announcements(plan: str = "free"):
                 {"target": {"$in": ["all", plan.lower()]}},
                 {"target_plan": None},
                 {"target_plan": {"$exists": False}}
-            ]}
+            ]},
+            {"$or": country_cond}
         ]
     }
     items = await db.announcements.find(query, PROJECTION).sort("created_at", -1).to_list(20)
@@ -4253,6 +4380,16 @@ async def get_active_announcements(plan: str = "free"):
             item["link_url"] = item["action_link"]
         if "target" in item and "target_plan" not in item:
             item["target_plan"] = item["target"]
+        if user_profile:
+            if item.get("title"):
+                item["title"] = render_notification_template(item["title"], user_profile)
+            if item.get("body"):
+                rendered_body = render_notification_template(item["body"], user_profile)
+                item["body"] = rendered_body
+                if "message" in item:
+                    item["message"] = rendered_body
+            elif item.get("message"):
+                item["message"] = render_notification_template(item["message"], user_profile)
     return items
 
 @app.get("/admin/analytics/financials")
@@ -4421,13 +4558,55 @@ async def admin_register_manual_push_token(payload: dict = Body(...), _: None = 
     await db.users.update_many({"$or": [{"id": user_id}, {"email": user_id}, {"push_token": token}]}, {"$set": update_doc}, upsert=True)
     await db.profile.update_many({"$or": [{"user_id": user_id}, {"email": user_id}, {"push_token": token}]}, {"$set": update_doc}, upsert=True)
     return {"ok": True, "token": token, "user_id": user_id, "message": f"Successfully registered push token for {user_id}"}
+def render_notification_template(text: str, user: dict) -> str:
+    """
+    Renders dynamic personalization tags in notification title or body.
+    Supports:
+      {First_name}, {{First_name}}, {first_name}, {{first_name}}
+      {Full_Name}, {{Full_Name}}, {name}, {{name}}
+      {Streak_Days}, {{Streak_Days}}, {streak}, {{streak}}
+      {City}, {{City}}, {city}, {{city}}
+      {Country}, {{Country}}, {country}, {{country}}
+      {App_Name}, {{App_Name}}, {app_name}, {{app_name}}
+    """
+    if not text:
+        return ""
+
+    raw_name = (user.get("nickname") or user.get("name") or "").strip()
+    if raw_name:
+        first_name = raw_name.split()[0].capitalize()
+        full_name = raw_name
+    else:
+        first_name = "Friend"
+        full_name = "PillCare User"
+
+    streak_val = str(user.get("streak") or user.get("streak_days") or 0)
+    city_val = (user.get("location_city") or user.get("city") or "your city").strip()
+    country_val = (user.get("location_country") or user.get("country") or "your region").strip()
+
+    replacements = [
+        (re.compile(r"\{\{?\s*(?:first_name|first\s*name)\s*\}?\}", re.IGNORECASE), first_name),
+        (re.compile(r"\{\{?\s*(?:full_name|full\s*name|name)\s*\}?\}", re.IGNORECASE), full_name),
+        (re.compile(r"\{\{?\s*(?:streak_days|streak\s*days|streak)\s*\}?\}", re.IGNORECASE), streak_val),
+        (re.compile(r"\{\{?\s*(?:city|location_city)\s*\}?\}", re.IGNORECASE), city_val),
+        (re.compile(r"\{\{?\s*(?:country|location_country)\s*\}?\}", re.IGNORECASE), country_val),
+        (re.compile(r"\{\{?\s*(?:app_name|app)\s*\}?\}", re.IGNORECASE), "PillCare"),
+    ]
+
+    rendered = text
+    for pattern, val in replacements:
+        rendered = pattern.sub(val, rendered)
+    return rendered
+
+
 @app.post("/admin/notify")
 @app.post("/api/admin/notify")
 async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depends(require_admin)):
-    """Send push notification to all users, tier cohorts, or specific users from admin dashboard."""
+    """Send push notification to all users, tier cohorts, or specific users from admin dashboard with personalization & geo-targeting."""
     title = payload.get("title", "").strip()
     body = payload.get("body", "").strip()
     target_plan = str(payload.get("target_plan") or payload.get("target") or payload.get("targetAudience") or "all").lower()
+    target_country = str(payload.get("target_country") or payload.get("country") or "all").strip().upper()
     channels = payload.get("channels") or (["push", "in_app"] if payload.get("in_app", True) else ["push"])
     if isinstance(channels, str):
         channels = [channels]
@@ -4449,6 +4628,13 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     projection = {field: 1 for field in token_fields}
     projection["id"] = 1
     projection["user_id"] = 1
+    projection["name"] = 1
+    projection["nickname"] = 1
+    projection["streak"] = 1
+    projection["streak_days"] = 1
+    projection["location_city"] = 1
+    projection["location_country"] = 1
+    projection["country_code"] = 1
     projection["plan"] = 1
     projection["last_active"] = 1
 
@@ -4463,17 +4649,44 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
         seven_days_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
         user_filter = {"$or": [{"last_active": {"$lt": seven_days_ago}}, {"last_active": None}]}
 
+    # Apply country geo-targeting filter
+    if target_country and target_country not in ["ALL", "GLOBAL"]:
+        country_filter = {
+            "$or": [
+                {"country_code": target_country},
+                {"country": target_country},
+                {"location_country": {"$regex": f"^{re.escape(target_country)}$", "$options": "i"}}
+            ]
+        }
+        if user_filter:
+            user_filter = {"$and": [user_filter, country_filter]}
+        else:
+            user_filter = country_filter
+
     users = await db.users.find(user_filter, projection).to_list(10000)
     profiles = await db.profile.find(user_filter, projection).to_list(10000)
     
-    raw_tokens = []
+    token_user_map = {}
     for doc in (users or []) + (profiles or []):
+        u_id = doc.get("id") or doc.get("user_id")
+        name = doc.get("nickname") or doc.get("name") or ""
+        user_meta = {
+            "user_id": u_id,
+            "nickname": doc.get("nickname") or name,
+            "name": doc.get("name") or name,
+            "streak": doc.get("streak") or doc.get("streak_days") or 0,
+            "location_city": doc.get("location_city") or "",
+            "location_country": doc.get("location_country") or doc.get("country") or "",
+            "country_code": doc.get("country_code") or ""
+        }
         for f in token_fields:
             t = doc.get(f)
             if t and isinstance(t, str) and len(t) > 5 and not t.startswith("sim_"):
-                raw_tokens.append(t.strip())
+                t_clean = t.strip()
+                if t_clean not in token_user_map or (name and not token_user_map[t_clean].get("nickname")):
+                    token_user_map[t_clean] = user_meta
                 
-    tokens = list(set(raw_tokens))
+    tokens = list(token_user_map.keys())
     
     # If in_app is enabled, auto-publish as an in-app system announcement
     in_app_published = False
@@ -4488,6 +4701,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
             "type": notif_type,
             "target_plan": target_plan,
             "target": target_plan,
+            "target_country": target_country,
             "action_link": payload.get("route_key") or payload.get("link_url") or payload.get("action_link"),
             "link_url": payload.get("route_key") or payload.get("link_url") or payload.get("action_link"),
             "active": True,
@@ -4507,7 +4721,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
         expo_tokens = [t for t in tokens if t.startswith("ExponentPushToken")]
         fcm_tokens = [t for t in tokens if not t.startswith("ExponentPushToken") and not t.startswith("sim_")]
 
-        # 1. Send native FCM v1 tokens directly via Google Cloud FCM v1 API
+        # 1. Send native FCM v1 tokens directly via Google Cloud FCM v1 API with per-user personalization
         if fcm_tokens:
             try:
                 import google.auth
@@ -4518,12 +4732,16 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
 
                 async with httpx.AsyncClient(timeout=15) as client:
                     for fcm_tok in fcm_tokens:
+                        u_meta = token_user_map.get(fcm_tok, {})
+                        user_title = render_notification_template(title, u_meta)
+                        user_body = render_notification_template(body, u_meta)
+
                         fcm_payload = {
                             "message": {
                                 "token": fcm_tok,
                                 "notification": {
-                                    "title": title,
-                                    "body": body,
+                                    "title": user_title,
+                                    "body": user_body,
                                 },
                                 "android": {
                                     "priority": "HIGH",
@@ -4536,10 +4754,11 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                                 },
                                 "data": {
                                     "type": str(notif_type),
-                                    "title": str(title),
-                                    "body": str(body),
+                                    "title": str(user_title),
+                                    "body": str(user_body),
                                     "image_url": str(image_url or ""),
                                     "path": str(payload.get("route_key") or payload.get("link_url") or payload.get("path") or ""),
+                                    "country": str(target_country),
                                 }
                             }
                         }
@@ -4563,30 +4782,36 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                 logger.error(f"FCM direct dispatch exception: {fcm_err}")
                 failed += len(fcm_tokens)
 
-        # 2. Send Expo push tokens via Expo's push service
+        # 2. Send Expo push tokens via Expo's push service with per-user personalization
         if expo_tokens:
             batch_size = 100
             for i in range(0, len(expo_tokens), batch_size):
                 batch = expo_tokens[i:i + batch_size]
-                messages = [{
-                    "to": token,
-                    "title": title,
-                    "body": body,
-                    "sound": "default",
-                    "priority": "high",
-                    "channelId": "broadcasts",
-                    "badge": 1,
-                    "ttl": 86400,
-                    "_displayInForeground": True,
-                    "data": {
-                        "type": notif_type,
-                        "title": title,
-                        "body": body,
-                        "image_url": image_url,
-                        "path": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
-                        "routeKey": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
-                    },
-                } for token in batch]
+                messages = []
+                for token in batch:
+                    u_meta = token_user_map.get(token, {})
+                    user_title = render_notification_template(title, u_meta)
+                    user_body = render_notification_template(body, u_meta)
+                    messages.append({
+                        "to": token,
+                        "title": user_title,
+                        "body": user_body,
+                        "sound": "default",
+                        "priority": "high",
+                        "channelId": "broadcasts",
+                        "badge": 1,
+                        "ttl": 86400,
+                        "_displayInForeground": True,
+                        "data": {
+                            "type": notif_type,
+                            "title": user_title,
+                            "body": user_body,
+                            "image_url": image_url,
+                            "path": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
+                            "routeKey": payload.get("route_key") or payload.get("link_url") or payload.get("path"),
+                            "country": str(target_country),
+                        },
+                    })
 
                 try:
                     async with httpx.AsyncClient(timeout=30) as client:
@@ -4612,6 +4837,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
         "body": body,
         "target_plan": target_plan,
         "targetAudience": target_plan,
+        "target_country": target_country,
         "channels": channels,
         "sent": sent,
         "failed": failed,
@@ -4624,12 +4850,13 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     }
     await db.push_broadcast_logs.insert_one(log_doc)
     
+    country_label = f" (Country: {target_country})" if target_country != "ALL" else " (Global)"
     if sent > 0:
-        msg = f"✅ Push Notification Dispatched! Delivered to {sent} active device(s) ({len(tokens)} targeted in cohort '{target_plan}')."
+        msg = f"✅ Push Notification Dispatched! Delivered to {sent} active device(s){country_label} ({len(tokens)} targeted in cohort '{target_plan}')."
     elif in_app_published:
-        msg = f"📢 In-App Flash Announcement Published! (Targeted {len(tokens)} token(s) in cohort '{target_plan}')."
+        msg = f"📢 In-App Flash Announcement Published!{country_label} (Targeted {len(tokens)} token(s) in cohort '{target_plan}')."
     else:
-        msg = f"⚠️ Push completed with 0 devices reached in target cohort '{target_plan}'."
+        msg = f"⚠️ Push completed with 0 devices reached in target cohort '{target_plan}'{country_label}."
         
     return {
         "ok": True,
@@ -4637,8 +4864,10 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
         "sent": sent,
         "failed": failed,
         "total": len(tokens),
+        "target_country": target_country,
         "channels": channels,
         "target_audience": target_plan,
+        "in_app_published": in_app_published,
         "message": msg
     }
 
@@ -4925,8 +5154,8 @@ async def admin_adjust_streak(user_id: str, payload: dict = Body(...), _: None =
 async def admin_remind_at_risk_streaks(_: None = Depends(require_admin)):
     """Dispatch high-priority push notifications to users whose streaks will break tonight."""
     return await admin_broadcast_notification({
-        "title": "🔥 Don't Break Your Health Streak!",
-        "body": "Your PillCare Competition Streak is at risk! Log your daily doses & hydration before midnight to protect your ranking.",
+        "title": "🔥 Don't Break Your Streak, {First_name}!",
+        "body": "Your {Streak_Days}-day PillCare streak is at risk! Log your daily doses & hydration before midnight to protect your ranking in {City}.",
         "target": "all",
         "channels": ["push", "in_app"],
         "type": "flash",
@@ -5695,18 +5924,41 @@ async def security_headers(request, call_next):
         pass
     return response
 
+ALLOWED_ORIGIN_SET = {
+    "https://admin.pillcare.in",
+    "https://pillcare.in",
+    "https://pillcare.nitinrai264.workers.dev",
+    "http://localhost:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:8000",
+    "http://127.0.0.1:3000",
+}
+ALLOWED_ORIGIN_REGEX = re.compile(r"^https://([a-zA-Z0-9-]+\.)*(pillcare\.in|workers\.dev)$")
+
+def _is_allowed_origin(origin: str) -> bool:
+    if not origin:
+        return False
+    if origin in ALLOWED_ORIGIN_SET:
+        return True
+    return bool(ALLOWED_ORIGIN_REGEX.match(origin))
+
 @app.middleware("http")
 async def handle_cors_preflight(request: Request, call_next):
     origin = request.headers.get("origin", "")
     if request.method == "OPTIONS":
         res = Response(status_code=200)
-        res.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+        if _is_allowed_origin(origin):
+            res.headers["Access-Control-Allow-Origin"] = origin
+            res.headers["Access-Control-Allow-Credentials"] = "true"
+        elif not origin:
+            res.headers["Access-Control-Allow-Origin"] = "*"
+        else:
+            return Response("CORS origin forbidden", status_code=403)
         res.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
         res.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Admin-Secret, x-admin-secret, Accept"
-        res.headers["Access-Control-Allow-Credentials"] = "true"
         return res
     response = await call_next(request)
-    if origin:
+    if origin and _is_allowed_origin(origin):
         response.headers["Access-Control-Allow-Origin"] = origin
         response.headers["Access-Control-Allow-Credentials"] = "true"
     return response
@@ -5723,7 +5975,7 @@ app.add_middleware(
         "http://127.0.0.1:8000",
         "http://127.0.0.1:3000",
     ],
-    allow_origin_regex=r"https://.*(\.pillcare\.in|\.workers\.dev)",
+    allow_origin_regex=r"^https://([a-zA-Z0-9-]+\.)*(pillcare\.in|workers\.dev)$",
     allow_methods=["*"],
     allow_headers=["*"],
 )

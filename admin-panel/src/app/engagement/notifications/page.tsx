@@ -16,10 +16,63 @@ import {
   Smartphone,
   ExternalLink,
   Flame,
+  Globe,
+  Tag,
 } from 'lucide-react';
 import { fetchNotifications, sendBroadcastPushNotification } from '@/lib/api/client';
 import { NotificationCampaign } from '@/types/admin';
 import { useAuth } from '@/context/AuthContext';
+
+const SAMPLE_USERS = {
+  rahul: {
+    first_name: 'Rahul',
+    full_name: 'Rahul Sharma',
+    streak: 14,
+    city: 'Mumbai',
+    country: 'India',
+    flag: '🇮🇳',
+    desc: 'Rahul (India, 14-day streak)',
+  },
+  sarah: {
+    first_name: 'Sarah',
+    full_name: 'Sarah Connor',
+    streak: 21,
+    city: 'Los Angeles',
+    country: 'United States',
+    flag: '🇺🇸',
+    desc: 'Sarah (USA, 21-day streak)',
+  },
+  anon: {
+    first_name: 'Friend',
+    full_name: 'PillCare User',
+    streak: 0,
+    city: 'your city',
+    country: 'your region',
+    flag: '👤',
+    desc: 'New / Anonymous User',
+  },
+};
+
+const AVAILABLE_TAGS = [
+  { tag: '{First_name}', label: 'First Name', hint: 'e.g. Rahul' },
+  { tag: '{Full_Name}', label: 'Full Name', hint: 'e.g. Rahul Sharma' },
+  { tag: '{Streak_Days}', label: 'Streak Days', hint: 'e.g. 14' },
+  { tag: '{City}', label: 'City', hint: 'e.g. Mumbai' },
+  { tag: '{Country}', label: 'Country', hint: 'e.g. India' },
+  { tag: '{App_Name}', label: 'App Name', hint: 'PillCare' },
+];
+
+const TARGET_COUNTRIES = [
+  { code: 'all', label: '🌐 All Countries (Global Audience)', flag: '🌐' },
+  { code: 'IN', label: '🇮🇳 India (IN) — Diwali, Holi, Republic Day', flag: '🇮🇳' },
+  { code: 'US', label: '🇺🇸 United States (US) — Thanksgiving, 4th of July', flag: '🇺🇸' },
+  { code: 'GB', label: '🇬🇧 United Kingdom (GB) — Bank Holidays, NHS', flag: '🇬🇧' },
+  { code: 'CA', label: '🇨🇦 Canada (CA) — Victoria Day, Canada Day', flag: '🇨🇦' },
+  { code: 'AU', label: '🇦🇺 Australia (AU) — Australia Day', flag: '🇦🇺' },
+  { code: 'AE', label: '🇦🇪 United Arab Emirates (AE) — UAE National Day, Ramadan', flag: '🇦🇪' },
+  { code: 'DE', label: '🇩🇪 Germany (DE) — European Health Days', flag: '🇩🇪' },
+  { code: 'SG', label: '🇸🇬 Singapore (SG) — National Day, Wellness', flag: '🇸🇬' },
+];
 
 export default function NotificationsPage() {
   const { hasPermission } = useAuth();
@@ -30,11 +83,14 @@ export default function NotificationsPage() {
   const [notifType, setNotifType] = useState<'flash' | 'medication' | 'offer' | 'warning' | 'info'>('flash');
   const [routeKey, setRouteKey] = useState('/today');
   const [targetAudience, setTargetAudience] = useState<'all' | 'free_users' | 'premium_users' | 'inactive_7d'>('all');
+  const [targetCountry, setTargetCountry] = useState<string>('all');
   const [inAppChannel, setInAppChannel] = useState(true);
   const [pushChannel, setPushChannel] = useState(true);
   const [confirmSendModal, setConfirmSendModal] = useState(false);
   const [sending, setSending] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
+  const [activeInput, setActiveInput] = useState<'title' | 'body'>('body');
+  const [previewUserKey, setPreviewUserKey] = useState<'rahul' | 'sarah' | 'anon'>('rahul');
 
   const canCreate = hasPermission('notifications.create');
   const canSend = hasPermission('notifications.send');
@@ -42,6 +98,27 @@ export default function NotificationsPage() {
   useEffect(() => {
     fetchNotifications().then(setCampaigns);
   }, []);
+
+  const insertTag = (tag: string) => {
+    if (!canCreate) return;
+    if (activeInput === 'title') {
+      setTitle((prev) => (prev ? `${prev} ${tag}` : tag));
+    } else {
+      setBody((prev) => (prev ? `${prev} ${tag}` : tag));
+    }
+  };
+
+  const interpolatePreview = (text: string): string => {
+    if (!text) return '';
+    const u = SAMPLE_USERS[previewUserKey];
+    return text
+      .replace(/\{\{?\s*(?:first_name|first\s*name)\s*\}?\}/gi, u.first_name)
+      .replace(/\{\{?\s*(?:full_name|full\s*name|name)\s*\}?\}/gi, u.full_name)
+      .replace(/\{\{?\s*(?:streak_days|streak\s*days|streak)\s*\}?\}/gi, String(u.streak))
+      .replace(/\{\{?\s*(?:city|location_city)\s*\}?\}/gi, u.city)
+      .replace(/\{\{?\s*(?:country|location_country)\s*\}?\}/gi, u.country)
+      .replace(/\{\{?\s*(?:app_name|app)\s*\}?\}/gi, 'PillCare');
+  };
 
   const handleTriggerSend = async () => {
     if (!canSend) {
@@ -59,6 +136,7 @@ export default function NotificationsPage() {
         channels: channels.length ? channels : ['push', 'in_app'],
         imageUrl: imageUrl.trim() || undefined,
         type: notifType,
+        targetCountry: targetCountry,
       });
       setSending(false);
       setConfirmSendModal(false);
@@ -70,6 +148,7 @@ export default function NotificationsPage() {
           body,
           channels: channels.length ? channels : ['push', 'in_app'],
           targetAudience,
+          targetCountry: targetCountry,
           sentAt: new Date().toISOString(),
           status: 'sent',
           sentCount: actualSent,
@@ -83,7 +162,7 @@ export default function NotificationsPage() {
         setImageUrl('');
         setToastMsg(
           res.message ||
-            `✅ Broadcast dispatched: Reached cohort '${targetAudience}' across ${channels.join(' & ')}.`
+            `✅ Broadcast dispatched: Reached cohort '${targetAudience}' [${targetCountry}] across ${channels.join(' & ')}.`
         );
       } else {
         setToastMsg(`Broadcast Error: ${res.error || 'Failed to dispatch push notifications'}. Form preserved.`);
@@ -126,10 +205,13 @@ export default function NotificationsPage() {
             <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[10px] font-mono font-bold flex items-center gap-1">
               <Zap className="w-3 h-3" /> FLASH NOTIFICATIONS ENABLED
             </span>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] font-mono font-bold flex items-center gap-1">
+              <Globe className="w-3 h-3" /> GEO-TARGETING & PERSONALIZATION
+            </span>
           </div>
           <h1 className="text-2xl font-black text-white">Engagement & Notification Command</h1>
           <p className="text-xs text-slate-400">
-            Broadcast rich notifications with text and images, trigger flash in-app popups, and segment cohorts.
+            Broadcast personalized notifications with dynamic tags like <code className="text-amber-400 font-mono">{'{First_name}'}</code>, target users by country/event, and trigger flash HUD alerts.
           </p>
         </div>
       </div>
@@ -145,20 +227,62 @@ export default function NotificationsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left 2 Cols: Composer Form */}
         <div className="lg:col-span-2 p-6 rounded-3xl glass-card border border-slate-800 space-y-4">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Bell className="w-4 h-4 text-sky-400" /> Create Rich Broadcast Campaign
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Bell className="w-4 h-4 text-sky-400" /> Create Rich Broadcast Campaign
+            </h2>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Editing: <strong className="text-sky-400">{activeInput.toUpperCase()}</strong>
+            </span>
+          </div>
+
+          {/* Interactive Personalization Tag Toolbar */}
+          <div className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Dynamic Personalization Tags (Click to Insert)
+              </span>
+              <span className="text-[10px] text-slate-400">Inserts into {activeInput === 'title' ? 'Title' : 'Message Body'}</span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {AVAILABLE_TAGS.map((t) => (
+                <button
+                  key={t.tag}
+                  type="button"
+                  onClick={() => insertTag(t.tag)}
+                  title={t.hint}
+                  className="px-2.5 py-1 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 font-mono text-[11px] flex items-center gap-1 transition-all hover:scale-105 active:scale-95"
+                >
+                  <Tag className="w-3 h-3 text-indigo-400" />
+                  <span className="font-bold">{t.tag}</span>
+                  <span className="text-[9px] text-indigo-400/80">({t.label})</span>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div className="space-y-1">
-              <label className="font-semibold text-slate-300">Notification Title</label>
+              <label className="font-semibold text-slate-300 flex items-center justify-between">
+                <span>Notification Title</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveInput('title')}
+                  className={`text-[10px] font-mono ${activeInput === 'title' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-300'}`}
+                >
+                  {activeInput === 'title' ? '● Focused' : 'Focus for Tags'}
+                </button>
+              </label>
               <input
                 type="text"
                 value={title}
+                onFocus={() => setActiveInput('title')}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. ⚡ Flash Reminder: Evening Dose & Hydration"
+                placeholder="e.g. ⚡ {First_name}, time for your evening pills!"
                 disabled={!canCreate}
-                className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-sky-500 text-slate-100 focus:outline-none font-medium"
+                className={`w-full p-2.5 rounded-xl bg-slate-900/90 border text-slate-100 focus:outline-none font-medium transition-all ${
+                  activeInput === 'title' ? 'border-sky-500 ring-1 ring-sky-500/30' : 'border-slate-800'
+                }`}
               />
             </div>
 
@@ -181,7 +305,7 @@ export default function NotificationsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div className="space-y-1">
-              <label className="font-semibold text-slate-300">Target Audience Segment</label>
+              <label className="font-semibold text-slate-300">Target Audience Cohort</label>
               <select
                 value={targetAudience}
                 onChange={(e) => setTargetAudience(e.target.value as any)}
@@ -195,6 +319,26 @@ export default function NotificationsPage() {
               </select>
             </div>
 
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-300 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-sky-400" /> Target Country / Event Region
+              </label>
+              <select
+                value={targetCountry}
+                onChange={(e) => setTargetCountry(e.target.value)}
+                disabled={!canCreate}
+                className="w-full p-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-100 font-medium focus:outline-none font-medium"
+              >
+                {TARGET_COUNTRIES.map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div className="space-y-1">
               <label className="font-semibold text-slate-300">Action Route Destination</label>
               <select
@@ -210,18 +354,32 @@ export default function NotificationsPage() {
                 <option value="/support">Support & Settings (/support)</option>
               </select>
             </div>
-          </div>
 
-          <div className="space-y-1 text-xs">
-            <label className="font-semibold text-slate-300">Notification Message Body</label>
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Enter message text with clinical guidance or user instructions..."
-              rows={3}
-              disabled={!canCreate}
-              className="w-full p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 focus:border-sky-500 text-slate-100 focus:outline-none"
-            />
+            <div className="space-y-1">
+              <label className="font-semibold text-slate-300 flex items-center justify-between">
+                <span>Message Body Text</span>
+                <button
+                  type="button"
+                  onClick={() => setActiveInput('body')}
+                  className={`text-[10px] font-mono ${activeInput === 'body' ? 'text-sky-400 font-bold' : 'text-slate-400 hover:text-slate-300'}`}
+                >
+                  {activeInput === 'body' ? '● Focused' : 'Focus for Tags'}
+                </button>
+              </label>
+              <div className="relative">
+                <textarea
+                  value={body}
+                  onFocus={() => setActiveInput('body')}
+                  onChange={(e) => setBody(e.target.value)}
+                  placeholder="e.g. Keep your {Streak_Days}-day streak strong in {City}! Remember your 8:00 PM dose with water."
+                  rows={3}
+                  disabled={!canCreate}
+                  className={`w-full p-2.5 rounded-xl bg-slate-900/90 border text-slate-100 focus:outline-none transition-all ${
+                    activeInput === 'body' ? 'border-sky-500 ring-1 ring-sky-500/30' : 'border-slate-800'
+                  }`}
+                />
+              </div>
+            </div>
           </div>
 
           {/* Image URL input with preset chips */}
@@ -303,18 +461,52 @@ export default function NotificationsPage() {
           </div>
         </div>
 
-        {/* Right 1 Col: Live Device Preview */}
+        {/* Right 1 Col: Live Device Preview with User Switcher */}
         <div className="p-6 rounded-3xl glass-card border border-slate-800 space-y-4">
-          <h2 className="text-base font-bold text-white flex items-center gap-2">
-            <Smartphone className="w-4 h-4 text-emerald-400" /> Live In-App / Flash Preview
-          </h2>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            Real-time visual rendering of how the notification card will display inside the PillCare mobile app on Android & iOS.
-          </p>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <Smartphone className="w-4 h-4 text-emerald-400" /> Live In-App & Push Preview
+            </h2>
+          </div>
+
+          {/* Simulated User Selector */}
+          <div className="p-2.5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-mono font-bold text-slate-400">
+                Simulated User Preview
+              </span>
+              <span className="text-[10px] text-emerald-400 font-mono">Live Tag Engine</span>
+            </div>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['rahul', 'sarah', 'anon'] as const).map((key) => {
+                const u = SAMPLE_USERS[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setPreviewUserKey(key)}
+                    className={`px-2 py-1.5 rounded-xl text-[10px] font-medium border text-center transition-all ${
+                      previewUserKey === key
+                        ? 'bg-sky-500/20 border-sky-500/60 text-sky-300 font-bold shadow-sm'
+                        : 'bg-slate-800/60 border-slate-700/60 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div>{u.flag} {u.first_name}</div>
+                    <div className="text-[8px] text-slate-500 truncate">{u.country}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           {/* Phone Frame Mockup */}
           <div className="w-full rounded-2xl bg-slate-950 border-2 border-slate-800 p-4 relative min-h-[340px] flex flex-col justify-end overflow-hidden shadow-2xl">
             <div className="absolute top-2 left-1/2 -translate-x-1/2 w-16 h-3.5 bg-slate-800 rounded-full"></div>
+
+            {/* Target Country Tag Watermark */}
+            <div className="absolute top-8 right-3 px-2 py-0.5 rounded-full bg-slate-900/80 border border-slate-700 text-[9px] font-mono text-slate-300">
+              Target: {targetCountry === 'all' ? '🌐 Global' : targetCountry}
+            </div>
 
             {/* Simulated In-App Notification Card */}
             <div
@@ -356,7 +548,7 @@ export default function NotificationsPage() {
                 <span className="text-[10px] text-slate-400">Just now</span>
               </div>
 
-              {/* Title & Body */}
+              {/* Title & Body with dynamic tag interpolation */}
               <div className="flex items-start gap-3">
                 {imageUrl && (
                   <img
@@ -367,10 +559,10 @@ export default function NotificationsPage() {
                 )}
                 <div className="space-y-1 flex-1 min-w-0">
                   <h4 className="text-xs font-bold text-white truncate">
-                    {title || 'PillCare Notification Title'}
+                    {interpolatePreview(title) || 'PillCare Notification Title'}
                   </h4>
-                  <p className="text-[11px] text-slate-300 line-clamp-2 leading-tight">
-                    {body || 'Your notification body and health guidance will appear here.'}
+                  <p className="text-[11px] text-slate-300 line-clamp-3 leading-tight">
+                    {interpolatePreview(body) || 'Your notification body and health guidance will appear here.'}
                   </p>
                 </div>
               </div>
@@ -405,7 +597,7 @@ export default function NotificationsPage() {
           </span>
         </div>
         <p className="text-slate-300">
-          Build v1.50 sends push tokens to <code className="text-sky-400 font-mono">/push-token</code> when opened. You can also paste your phone's push token below to send a live push payload directly to your device.
+          Build v1.50 sends push tokens to <code className="text-sky-400 font-mono">/push-token</code> when opened. You can also paste your phone&apos;s push token below to send a live push payload directly to your device.
         </p>
         <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
           <input
@@ -446,14 +638,19 @@ export default function NotificationsPage() {
             campaigns.map((c) => (
               <div key={c.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2 text-xs">
                 <div className="flex justify-between items-center">
-                  <span className="font-bold text-white text-sm">{c.title}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-white text-sm">{c.title}</span>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono border bg-slate-800/80 text-slate-300 border-slate-700">
+                      {c.targetCountry === 'IN' ? '🇮🇳 India' : c.targetCountry === 'US' ? '🇺🇸 USA' : c.targetCountry === 'GB' ? '🇬🇧 UK' : c.targetCountry === 'CA' ? '🇨🇦 Canada' : c.targetCountry === 'AU' ? '🇦🇺 Australia' : c.targetCountry === 'AE' ? '🇦🇪 UAE' : c.targetCountry === 'DE' ? '🇩🇪 Germany' : c.targetCountry === 'SG' ? '🇸🇬 Singapore' : '🌐 Global'}
+                    </span>
+                  </div>
                   <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono text-[10px]">
                     {c.status.toUpperCase()}
                   </span>
                 </div>
                 <p className="text-slate-300">{c.body}</p>
                 <div className="flex justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-800/80">
-                  <span>Dispatched to {c.sentCount.toLocaleString()} devices</span>
+                  <span>Dispatched to {c.sentCount.toLocaleString()} devices ({c.targetAudience})</span>
                   <span>Open Rate: {c.openRatePercent}% | Click Rate: {c.clickRatePercent}%</span>
                 </div>
               </div>
@@ -471,8 +668,12 @@ export default function NotificationsPage() {
               <h3 className="text-lg font-bold text-white">Confirm Mass Push Broadcast</h3>
             </div>
             <p className="text-xs text-slate-300 leading-relaxed">
-              You are about to broadcast push notifications to registered devices in target cohort <strong className="text-sky-400">&apos;{targetAudience}&apos;</strong>.
+              You are about to broadcast push notifications to registered devices in cohort <strong className="text-sky-400">&apos;{targetAudience}&apos;</strong> and country <strong className="text-amber-400">&apos;{targetCountry === 'all' ? 'Global' : targetCountry}&apos;</strong>.
             </p>
+            <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] space-y-1">
+              <div className="text-slate-400 font-mono">Title: {title}</div>
+              <div className="text-slate-300 line-clamp-2">Body: {body}</div>
+            </div>
             <div className="flex justify-end gap-3 pt-2">
               <button onClick={() => setConfirmSendModal(false)} className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold">
                 Cancel

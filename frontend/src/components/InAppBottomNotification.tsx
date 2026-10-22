@@ -15,7 +15,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { api } from "../lib/api";
-import { getSeenNotifIds, markNotifSeen, getAppInstallTimestamp } from "../lib/store";
+import { get, K, getSeenNotifIds, markNotifSeen, getAppInstallTimestamp } from "../lib/store";
 
 export interface InAppNotificationPayload {
   id?: string;
@@ -28,6 +28,24 @@ export interface InAppNotificationPayload {
   link_url?: string;
   image_url?: string;
   data?: any;
+}
+
+export function interpolateNotificationTags(text: string, profile?: any, streakVal?: any): string {
+  if (!text) return "";
+  const nickname = (profile?.nickname && profile.nickname.toUpperCase() !== "YOU" ? profile.nickname : "") || profile?.name || "Friend";
+  const firstName = nickname.split(" ")[0].trim() || "Friend";
+  const fullName = profile?.name || profile?.nickname || firstName;
+  const streak = typeof streakVal === "number" ? streakVal : (streakVal?.current ?? streakVal?.streak ?? 0);
+  const city = profile?.city || profile?.location_city || "";
+  const country = profile?.country || profile?.location_country || "";
+
+  return text
+    .replace(/\{\{?\s*(?:first_name|first\s*name)\s*\}?\}/gi, firstName)
+    .replace(/\{\{?\s*(?:full_name|full\s*name|name)\s*\}?\}/gi, fullName)
+    .replace(/\{\{?\s*(?:streak_days|streak)\s*\}?\}/gi, String(streak))
+    .replace(/\{\{?\s*city\s*\}?\}/gi, city)
+    .replace(/\{\{?\s*country\s*\}?\}/gi, country)
+    .replace(/\{\{?\s*(?:app_name|app)\s*\}?\}/gi, "PillCare");
 }
 
 export function getInAppBody(n: any): string {
@@ -78,9 +96,22 @@ export function InAppBottomNotification({
   const opacity = useRef(new Animated.Value(0)).current;
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [serverNotif, setServerNotif] = useState<InAppNotificationPayload | null>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userStreak, setUserStreak] = useState<any>(0);
   const notifiedIdsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
+    async function loadUserData() {
+      try {
+        const [prof, strk] = await Promise.all([
+          get<any>(K.profile),
+          get<any>(K.streak),
+        ]);
+        if (prof) setUserProfile(prof);
+        if (strk !== undefined && strk !== null) setUserStreak(strk);
+      } catch {}
+    }
+    loadUserData();
     fetchActiveAnnouncements();
     // Poll every 5 minutes instead of 10s to conserve server requests and battery
     const interval = setInterval(fetchActiveAnnouncements, 300000);
@@ -89,7 +120,9 @@ export function InAppBottomNotification({
 
   const fetchActiveAnnouncements = async () => {
     try {
-      const data = await api.getActiveAnnouncements();
+      const storedProfile = await get<any>(K.profile);
+      const userCountry = storedProfile?.country_code || storedProfile?.country || storedProfile?.location_country || undefined;
+      const data = await api.getActiveAnnouncements("free", userCountry);
       if (Array.isArray(data) && data.length > 0) {
         const seenIds = await getSeenNotifIds();
         const installTs = await getAppInstallTimestamp();
@@ -206,7 +239,9 @@ export function InAppBottomNotification({
   if (!activeNotif) return null;
 
   const notifType = activeNotif.type || "info";
-  const bodyText = getInAppBody(activeNotif);
+  const rawBodyText = getInAppBody(activeNotif);
+  const renderedTitle = interpolateNotificationTags(activeNotif.title, userProfile, userStreak);
+  const renderedBody = interpolateNotificationTags(rawBodyText, userProfile, userStreak);
 
   const getTheme = () => {
     switch (notifType) {
@@ -276,10 +311,10 @@ export function InAppBottomNotification({
                 </View>
               </View>
               <Text style={s.title} numberOfLines={2}>
-                {activeNotif.title}
+                {renderedTitle}
               </Text>
               <Text style={s.body} numberOfLines={4}>
-                {bodyText || "Tap to view full notification details"}
+                {renderedBody || "Tap to view full notification details"}
               </Text>
             </View>
 
@@ -334,9 +369,9 @@ export function InAppBottomNotification({
                     />
                   </View>
                 ) : null}
-                <Text style={s.modalFullTitle}>{activeNotif.title}</Text>
+                <Text style={s.modalFullTitle}>{renderedTitle}</Text>
                 <Text style={s.modalFullBody}>
-                  {bodyText || "No additional description provided for this notification."}
+                  {renderedBody || "No additional description provided for this notification."}
                 </Text>
               </ScrollView>
 

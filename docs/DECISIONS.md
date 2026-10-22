@@ -398,3 +398,52 @@
 
 
 
+
+---
+
+## 2026-10-21: 100-Point Security Hardening, Input Boundary Bounds & CORS Protection
+
+- **Context**: Comprehensive security penetration and destruction testing revealed potential attack and edge-case vectors in CORS reflection, payment pricing tampering, health log boundary values, unvalidated medication patching, and offline sync queue deadlocks.
+- **Decisions**:
+  1. **Strict CORS Policy**: Disallowed echoing arbitrary `Origin` headers with credentials. Restricted origins to `ALLOWED_ORIGIN_SET` and anchored regex `^https://([a-zA-Z0-9-]+\.)*(pillcare\.in|workers\.dev)$`.
+  2. **Server-Authoritative Pricing**: Replaced client-provided payment amounts with `OFFICIAL_PLAN_PRICES` dictionary mapping plans to exact INR prices in paise.
+  3. **Pydantic Model Boundary Constraints**:
+     - `MeasurementCreate`: Clamped values (`ge=0, le=100000`) and field lengths (`max_length=50`).
+     - `ActivityCreate`: Clamped values (`ge=0, le=100000`), bounded notes (`max_length=1000`), and enforced regex date format.
+     - `MoodCreate`: Bounded scores (`ge=1, le=5`).
+     - `MedicationUpdate`: Created dedicated update model replacing raw dictionary payload on `PATCH /medications/{med_id}`.
+     - `AppointmentCreate`: Enforced ISO regex on `date` and `time`.
+  4. **Client Queue Unretryable 4xx Error Dropping**: Updated `frontend/src/lib/sync.ts` `flushQueue()` to safely evict unretryable 4xx client errors (such as 402 Free tier medication limit) so the offline queue never deadlocks and continues flushing subsequent dose/water logs.
+  5. **Defensive AsyncStorage Deserialization**: Added array typeguards and self-healing reset logic for corrupted AsyncStorage queue JSON.
+- **Verification**: 8/8 unit tests passing in `backend/tests/test_security_resilience.py`. Zero TypeScript compilation errors in frontend and admin panel.
+
+---
+
+## 2026-10-22: Dynamic Personalization Tags & Country Geo-Targeting for Push Notifications & Flash Announcements
+
+- **Context**: Admins required the capability to compose push notifications and flash announcements containing dynamic personalization tags (e.g. `{First_name}`, `{Streak_Days}`, `{City}`, etc.) that interpolate dynamically per recipient. Additionally, campaigns needed country-level geo-targeting (e.g. India, United States, UK, UAE, etc. vs Global) to support regional festivals, observances, and timezones without disturbing irrelevant user cohorts.
+- **Decisions**:
+  1. **Robust Template Replacement Engine (`render_notification_template`)**:
+     - Employs case-insensitive regex supporting both single-bracket and double-bracket syntaxes (`{First_name}`, `{{First_name}}`, `{{first_name}}`, `{Streak_Days}`, etc.).
+     - Graceful fallbacks: If nickname is empty or absent, falls back to `"Friend"`; first name correctly extracted by taking the first token of multi-word names.
+     - Full support for `{First_name}`, `{Full_Name}`, `{Streak_Days}`, `{City}`, `{Country}`, and `{App_Name}`.
+  2. **Geo-Targeting Data Architecture**:
+     - Stored `country_code` and `location_country` in `Profile` and `ProfileUpsert` schemas.
+     - Automatically enriched during profile upsert via IP geolocation fallback and device push token registration with timezone and country metadata.
+     - Added `target_country` field to `AnnouncementCreate` and broadcast payloads.
+  3. **Per-Recipient Broadcast Interpolation**:
+     - In `admin_broadcast_notification` (`backend/server.py`), target queries filter by country (`$in: ["all", "ALL", target_country]`).
+     - Constructed recipient token-to-user mappings to interpolate each recipient's notification payload with their personalized profile data prior to FCM v1 and Expo push dispatch.
+  4. **Server & Client Dual-Layer Resolution for Active Announcements**:
+     - `GET /announcements/active` resolves user tags on the server for authenticated sessions and filters by `country` / `x-user-country`.
+     - `InAppBottomNotification.tsx` implements client-side fallback interpolation using local `AsyncStorage` profile and streak data to ensure 100% personalized rendering even when offline or cached.
+  5. **Admin Panel Interactive Studio**:
+     - Built clickable tag chips (`+ {First_name}`, `+ {Full_Name}`, etc.) with intelligent input focus tracking (Title vs Body).
+     - Added Country Target Selector with regional flags and icons.
+     - Built live interactive smartphone simulator preview with sample user switcher (🇮🇳 Rahul, 🇺🇸 Sarah, 👤 Anonymous) demonstrating instant template resolution.
+     - Country badges displayed in the broadcast delivery audit history table.
+- **Verification**:
+  - 14/14 automated unit tests pass in `backend/tests/`.
+  - TypeScript compilation: 0 errors in both `frontend` and `admin-panel`.
+  - Production deployment: Cloud Run revision `pillcare-backend-00098-k7f` active and healthy.
+  - Android emulator live UI inspection and screenshot verification.

@@ -123,8 +123,13 @@ export const api = {
   getLeaderboard: () => req<any>("/leaderboard"),
   syncState: (localDate?: string) =>
     req<any>(`/me/sync-state${localDate ? `?local_date=${encodeURIComponent(localDate)}` : ""}`),
-  getActiveAnnouncements: (plan: string = "free") =>
-    req<any[]>(`/announcements/active?plan=${encodeURIComponent(plan)}`).catch(() => []),
+  getActiveAnnouncements: (plan: string = "free", country?: string) => {
+    let url = `/announcements/active?plan=${encodeURIComponent(plan)}`;
+    if (country) {
+      url += `&country=${encodeURIComponent(country)}`;
+    }
+    return req<any[]>(url).catch(() => []);
+  },
   reportCrash: (data: any) =>
     req<any>("/analytics/crash", { method: "POST", body: JSON.stringify(data) }).catch(() => null),
 };
