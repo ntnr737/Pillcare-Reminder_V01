@@ -1022,8 +1022,24 @@ async def auth_google(request: Request, payload: GoogleAuthRequest):
             if g_id.startswith("guest_") and g_id != user_id:
                 for coll in ["medications", "doses", "measurements", "activities", "mood", "appointments", "caregiver_log", "water_logs"]:
                     await db[coll].update_many({"user_id": g_id}, {"$set": {"user_id": user_id}})
+                
+                # Transfer push tokens from guest profile/user to the Google account
+                guest_prof = await db.profile.find_one({"$or": [{"id": g_id}, {"user_id": g_id}]}) or await db.users.find_one({"id": g_id}) or {}
+                guest_tokens = {}
+                for tf in ["push_token", "expo_push_token", "fcm_token", "device_token"]:
+                    if guest_prof.get(tf):
+                        guest_tokens[tf] = guest_prof.get(tf)
+                if guest_tokens:
+                    guest_tokens["name"] = idinfo.get("name", "")
+                    guest_tokens["nickname"] = idinfo.get("name", "")
+                    guest_tokens["email"] = idinfo.get("email", "")
+                    guest_tokens["is_guest"] = False
+                    guest_tokens["push_token_updated"] = datetime.now(timezone.utc)
+                    await db.users.update_one({"id": user_id}, {"$set": guest_tokens}, upsert=True)
+                    await db.profile.update_one({"id": user_id}, {"$set": guest_tokens}, upsert=True)
+                
                 await db.profile.update_one({"id": g_id}, {"$set": {"merged": True, "merged_into": user_id}})
-                logger.info(f"Merged guest {g_id} data into Google user {user_id}")
+                logger.info(f"Merged guest {g_id} data & push tokens into Google user {user_id}")
         except Exception as e:
             logger.warning(f"Guest account linking bypassed: {e}")
 
@@ -1131,13 +1147,41 @@ async def save_push_token_flexible(payload: dict = Body(...), user_id: Optional[
     if payload.get("timezone"):
         update_doc["timezone"] = str(payload.get("timezone")).strip()
 
+    # Extract user identity attributes (name, nickname, email) from registration payload
+    raw_name = str(payload.get("name") or payload.get("full_name") or payload.get("nickname") or "").strip()
+    raw_nick = str(payload.get("nickname") or payload.get("first_name") or raw_name or "").strip()
+    raw_email = str(payload.get("email") or "").strip()
+
+    if raw_name:
+        update_doc["name"] = raw_name
+    if raw_nick:
+        update_doc["nickname"] = raw_nick
+    if raw_email:
+        update_doc["email"] = raw_email
+
+    # If name/email not provided in payload, look up existing database records to propagate real identity
+    if not update_doc.get("name") or not update_doc.get("email"):
+        existing_u = await db.users.find_one({"$or": [{"id": user_id}, {"_id": user_id}, {"email": raw_email} if raw_email else {"id": user_id}]})
+        existing_p = await db.profile.find_one({"$or": [{"id": user_id}, {"user_id": user_id}]})
+        
+        found_name = (existing_u.get("name") if existing_u else None) or (existing_p.get("nickname") if existing_p else None) or (existing_p.get("name") if existing_p else None)
+        found_nick = (existing_p.get("nickname") if existing_p else None) or (existing_u.get("name") if existing_u else None) or found_name
+        found_email = (existing_u.get("email") if existing_u else None) or (existing_p.get("email") if existing_p else None)
+
+        if found_name and not update_doc.get("name"):
+            update_doc["name"] = found_name
+        if found_nick and not update_doc.get("nickname"):
+            update_doc["nickname"] = found_nick
+        if found_email and not update_doc.get("email"):
+            update_doc["email"] = found_email
+
     await db.users.update_one(
-        {"id": user_id},
+        {"$or": [{"id": user_id}, {"_id": user_id}]},
         {"$set": update_doc},
         upsert=True
     )
     await db.profile.update_one(
-        {"id": user_id},
+        {"$or": [{"id": user_id}, {"user_id": user_id}]},
         {"$set": update_doc},
         upsert=True
     )
@@ -5550,7 +5594,16 @@ async def get_active_announcements(
     user_profile = None
     if user_id:
         try:
-            user_profile = await db.profile.find_one({"id": user_id}) or await db.profile.find_one({"user_id": user_id}) or await db.users.find_one({"id": user_id})
+            p_doc = await db.profile.find_one({"$or": [{"id": user_id}, {"user_id": user_id}]}) or {}
+            u_doc = await db.users.find_one({"$or": [{"id": user_id}, {"_id": user_id}]}) or {}
+            user_profile = {**u_doc, **p_doc}
+            if u_doc.get("name"):
+                if not user_profile.get("name"):
+                    user_profile["name"] = u_doc["name"]
+                if not user_profile.get("nickname"):
+                    user_profile["nickname"] = u_doc["name"]
+            if u_doc.get("email") and not user_profile.get("email"):
+                user_profile["email"] = u_doc["email"]
         except Exception:
             pass
 
@@ -5780,8 +5833,8 @@ def render_notification_template(text: str, user: dict) -> str:
     """
     Renders dynamic personalization tags in notification title or body.
     Supports:
-      {First_name}, {{First_name}}, {first_name}, {{first_name}}, {FirstName}, {{FirstName}}
-      {Full_Name}, {{Full_Name}}, {full_name}, {{name}}, {{name}}
+      {First_name}, {{First_name}}, {first_name}, {{first_name}}, {FirstName}, {{FirstName}}, {name}, {{name}}
+      {Full_Name}, {{Full_Name}}, {full_name}, {{full_name}}, {FullName}
       {Streak_Days}, {{Streak_Days}}, {streak}, {{streak}}
       {City}, {{City}}, {city}, {{city}}
       {Country}, {{Country}}, {country}, {{country}}
@@ -5793,6 +5846,17 @@ def render_notification_template(text: str, user: dict) -> str:
     raw_name = (user.get("nickname") or user.get("name") or "").strip()
     if raw_name.lower() in GENERIC_NAMES:
         raw_name = ""
+
+    # If raw_name is empty, attempt to infer a friendly first name from email if available
+    email_val = str(user.get("email") or "").strip()
+    if not raw_name and email_val and "@" in email_val:
+        local_part = email_val.split("@")[0].strip()
+        cleaned_prefix = re.sub(r"[0-9_\-\+]+", " ", local_part).strip()
+        if "." in cleaned_prefix:
+            cleaned_prefix = cleaned_prefix.split(".")[0].strip()
+        parts = cleaned_prefix.split()
+        if parts and len(parts[0]) >= 2 and parts[0].lower() not in GENERIC_NAMES:
+            raw_name = parts[0].capitalize()
 
     if raw_name:
         first_name = raw_name.split()[0].capitalize()
@@ -5866,8 +5930,10 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     projection = {field: 1 for field in token_fields}
     projection["id"] = 1
     projection["user_id"] = 1
+    projection["_id"] = 1
     projection["name"] = 1
     projection["nickname"] = 1
+    projection["email"] = 1
     projection["streak"] = 1
     projection["streak_days"] = 1
     projection["location_city"] = 1
@@ -5875,6 +5941,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     projection["country_code"] = 1
     projection["plan"] = 1
     projection["last_active"] = 1
+    projection["merged_into"] = 1
 
     user_filter = {}
     if target_ids:
@@ -5904,20 +5971,61 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     users = await db.users.find(user_filter, projection).to_list(10000)
     profiles = await db.profile.find(user_filter, projection).to_list(10000)
     
-    token_user_map = {}
-    for doc in (users or []) + (profiles or []):
-        u_id = doc.get("id") or doc.get("user_id")
-        name = doc.get("nickname") or doc.get("name") or ""
-        email = doc.get("email") or ""
-        user_meta = {
-            "user_id": u_id,
+    # 1. Build consolidated user directory indexed by user_id and email
+    user_directory = {}
+    all_docs = (users or []) + (profiles or [])
+    for doc in all_docs:
+        uid = str(doc.get("id") or doc.get("user_id") or doc.get("_id") or "").strip()
+        email = str(doc.get("email") or "").strip()
+        meta = {
+            "user_id": uid,
             "email": email,
-            "nickname": doc.get("nickname") or name,
-            "name": doc.get("name") or name,
+            "nickname": doc.get("nickname") or "",
+            "name": doc.get("name") or "",
             "streak": doc.get("streak") or doc.get("streak_days") or 0,
             "location_city": doc.get("location_city") or "",
             "location_country": doc.get("location_country") or doc.get("country") or "",
-            "country_code": doc.get("country_code") or ""
+            "country_code": doc.get("country_code") or "",
+            "merged_into": doc.get("merged_into") or ""
+        }
+        for key in filter(None, [uid, email]):
+            if key not in user_directory:
+                user_directory[key] = meta
+            else:
+                for fld in ["name", "nickname", "email", "location_city", "location_country", "country_code", "merged_into"]:
+                    if not user_directory[key].get(fld) and meta.get(fld):
+                        user_directory[key][fld] = meta[fld]
+                if meta.get("streak") and not user_directory[key].get("streak"):
+                    user_directory[key]["streak"] = meta["streak"]
+
+    # 2. Resolve merged accounts (guest merged_into authenticated Google account)
+    for key, meta in list(user_directory.items()):
+        merged_target = meta.get("merged_into")
+        if merged_target and merged_target in user_directory:
+            parent = user_directory[merged_target]
+            for fld in ["name", "nickname", "email"]:
+                if parent.get(fld):
+                    meta[fld] = parent[fld]
+
+    token_user_map = {}
+    for doc in all_docs:
+        uid = str(doc.get("id") or doc.get("user_id") or doc.get("_id") or "").strip()
+        email = str(doc.get("email") or "").strip()
+        base_meta = user_directory.get(uid) or user_directory.get(email) or {}
+
+        resolved_name = doc.get("name") or base_meta.get("name") or doc.get("nickname") or base_meta.get("nickname") or ""
+        resolved_nick = doc.get("nickname") or base_meta.get("nickname") or resolved_name
+        resolved_email = doc.get("email") or base_meta.get("email") or ""
+
+        user_meta = {
+            "user_id": uid or base_meta.get("user_id", ""),
+            "email": resolved_email,
+            "nickname": resolved_nick,
+            "name": resolved_name,
+            "streak": doc.get("streak") or doc.get("streak_days") or base_meta.get("streak") or 0,
+            "location_city": doc.get("location_city") or base_meta.get("location_city") or "",
+            "location_country": doc.get("location_country") or doc.get("country") or base_meta.get("location_country") or "",
+            "country_code": doc.get("country_code") or base_meta.get("country_code") or ""
         }
         for f in token_fields:
             t = doc.get(f)
@@ -5930,7 +6038,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
                     new_score = _user_doc_score(user_meta)
                     if new_score > curr_score:
                         merged = dict(user_meta)
-                        for k in ["location_city", "location_country", "country_code", "streak"]:
+                        for k in ["location_city", "location_country", "country_code", "streak", "name", "nickname", "email"]:
                             if not merged.get(k) and token_user_map[t_clean].get(k):
                                 merged[k] = token_user_map[t_clean][k]
                         token_user_map[t_clean] = merged

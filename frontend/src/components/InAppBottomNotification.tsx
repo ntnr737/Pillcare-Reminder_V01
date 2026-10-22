@@ -42,11 +42,23 @@ export function interpolateNotificationTags(text: string, profile?: any, streakV
   if (GENERIC_NAMES.has(rawName.toLowerCase())) {
     rawName = "";
   }
-  const firstName = rawName ? rawName.split(" ")[0].trim() : "Friend";
+  
+  // If rawName is empty, attempt to infer a friendly first name from email if available
+  const emailVal = strEmail(profile?.email);
+  if (!rawName && emailVal && emailVal.includes("@")) {
+    const localPart = emailVal.split("@")[0].trim();
+    const cleaned = localPart.replace(/[0-9_\-\+.]+/g, " ").trim();
+    const parts = cleaned.split(" ");
+    if (parts.length > 0 && parts[0].length >= 2 && !GENERIC_NAMES.has(parts[0].toLowerCase())) {
+      rawName = parts[0];
+    }
+  }
+
+  const firstName = rawName ? rawName.split(" ")[0].trim().replace(/^./, (c: string) => c.toUpperCase()) : "Friend";
   const fullName = rawName || "Friend";
   const streak = typeof streakVal === "number" ? streakVal : (streakVal?.current ?? streakVal?.streak ?? 0);
-  const city = profile?.city || profile?.location_city || "";
-  const country = profile?.country || profile?.location_country || "";
+  const city = profile?.city || profile?.location_city || "your city";
+  const country = profile?.country || profile?.location_country || "your region";
 
   return text
     .replace(/\{\{?\s*(?:first_name|first\s*name|firstname)\s*\}?\}/gi, firstName)
@@ -55,6 +67,10 @@ export function interpolateNotificationTags(text: string, profile?: any, streakV
     .replace(/\{\{?\s*(?:city|location_city)\s*\}?\}/gi, city)
     .replace(/\{\{?\s*(?:country|location_country)\s*\}?\}/gi, country)
     .replace(/\{\{?\s*(?:app_name|app\s*name|appname|app)\s*\}?\}/gi, "PillCare");
+}
+
+function strEmail(val: any): string {
+  return typeof val === "string" ? val.trim() : "";
 }
 
 export function getInAppBody(n: any): string {
@@ -112,11 +128,19 @@ export function InAppBottomNotification({
   useEffect(() => {
     async function loadUserData() {
       try {
-        const [prof, strk] = await Promise.all([
-          get<any>(K.profile),
-          get<any>(K.streak),
+        const { getStoredUser } = require("../lib/auth");
+        const [prof, strk, user] = await Promise.all([
+          get<any>(K.profile).catch(() => null),
+          get<any>(K.streak).catch(() => 0),
+          getStoredUser().catch(() => null),
         ]);
-        if (prof) setUserProfile(prof);
+        const mergedProf = {
+          ...prof,
+          name: prof?.name || prof?.nickname || user?.name || "",
+          nickname: prof?.nickname || prof?.name || user?.name || "",
+          email: prof?.email || user?.email || "",
+        };
+        setUserProfile(mergedProf);
         if (strk !== undefined && strk !== null) setUserStreak(strk);
       } catch {}
     }

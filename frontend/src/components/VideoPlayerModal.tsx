@@ -10,6 +10,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Dimensions,
+  useWindowDimensions,
+  StatusBar,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -232,6 +234,7 @@ export function VideoPlayerModal({
       setIsTimerActive(false);
       if (isFullscreen) {
         setIsFullscreen(false);
+        StatusBar.setHidden(false, "fade");
         try {
           if (ScreenOrientation?.OrientationLock?.PORTRAIT_UP) {
             ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
@@ -247,7 +250,13 @@ export function VideoPlayerModal({
       const data = typeof event.nativeEvent.data === "string" ? JSON.parse(event.nativeEvent.data) : event.nativeEvent.data;
       if (!data) return;
 
-      if (data.type === "YT_TIME_UPDATE") {
+      if (data.type === "YT_FULLSCREEN_CHANGE") {
+        if (data.isFullscreen && !isFullscreen) {
+          toggleFullscreen(true);
+        } else if (!data.isFullscreen && isFullscreen) {
+          toggleFullscreen(false);
+        }
+      } else if (data.type === "YT_TIME_UPDATE") {
         if (data.currentTime !== undefined) setCurrentTime(data.currentTime);
         if (data.duration !== undefined && data.duration > 0) setDuration(data.duration);
       } else if (data.type === "YT_STATE_CHANGE") {
@@ -368,6 +377,8 @@ export function VideoPlayerModal({
 
   const handleCloseModal = () => {
     if (isFullscreen) {
+      setIsFullscreen(false);
+      StatusBar.setHidden(false, "fade");
       try {
         if (ScreenOrientation?.OrientationLock?.PORTRAIT_UP) {
           ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
@@ -410,18 +421,28 @@ export function VideoPlayerModal({
     }
   };
 
-  const toggleFullscreen = async () => {
-    if (!isFullscreen) {
+  const toggleFullscreen = async (targetState?: boolean) => {
+    const nextState = typeof targetState === "boolean" ? targetState : !isFullscreen;
+    if (nextState) {
       setIsFullscreen(true);
+      StatusBar.setHidden(true, "fade");
       try {
         if (ScreenOrientation?.OrientationLock?.LANDSCAPE) {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
         }
       } catch (e) {
-        console.warn("Screen orientation landscape lock failed:", e);
+        try {
+          if (ScreenOrientation?.OrientationLock?.LANDSCAPE_LEFT) {
+            await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE_LEFT);
+          }
+        } catch (e2) {
+          console.warn("Screen orientation landscape lock fallback failed:", e2);
+        }
       }
     } else {
       setIsFullscreen(false);
+      StatusBar.setHidden(false, "fade");
+      StatusBar.setBarStyle("light-content");
       try {
         if (ScreenOrientation?.OrientationLock?.PORTRAIT_UP) {
           await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
@@ -451,7 +472,7 @@ export function VideoPlayerModal({
         * { margin: 0; padding: 0; box-sizing: border-box; background-color: #0B0D14; }
         html, body { width: 100%; height: 100%; overflow: hidden; background: #0B0D14; display: flex; align-items: center; justify-content: center; }
         .player-wrapper { position: relative; width: 100%; height: 100%; }
-        #player { width: 100%; height: 100%; border: none; border-radius: 12px; }
+        #player { width: 100%; height: 100%; border: none; }
       </style>
     </head>
     <body>
@@ -494,6 +515,20 @@ export function VideoPlayerModal({
             event.target.setVolume(100);
             event.target.playVideo();
           } catch(e){}
+
+          function notifyFullscreenChange() {
+            var isFs = !!(document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement);
+            if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'YT_FULLSCREEN_CHANGE',
+                isFullscreen: isFs
+              }));
+            }
+          }
+          document.addEventListener('fullscreenchange', notifyFullscreenChange);
+          document.addEventListener('webkitfullscreenchange', notifyFullscreenChange);
+          document.addEventListener('mozfullscreenchange', notifyFullscreenChange);
+          document.addEventListener('MSFullscreenChange', notifyFullscreenChange);
 
           // Poll current time & duration every 500ms
           setInterval(function() {
@@ -657,162 +692,147 @@ export function VideoPlayerModal({
     }
   };
 
-  if (visible && isFullscreen) {
-    return (
-      <Modal visible={visible} transparent={false} animationType="none" onRequestClose={toggleFullscreen}>
-        <View style={{ flex: 1, backgroundColor: "#000", width: "100%", height: "100%", position: "relative" }}>
-          {/* Top Bar with Title & Exit Fullscreen button */}
-          <View
-            style={{
-              position: "absolute",
-              top: Platform.OS === "ios" ? 44 : 20,
-              left: 16,
-              right: 16,
-              zIndex: 999999,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "rgba(0,0,0,0.75)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 }}>
-              <Ionicons name="sparkles" size={14} color="#A78BFA" />
-              <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>{title || "Yoga Practice"}</Text>
-            </View>
-
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-              <TouchableOpacity
-                onPress={toggleMute}
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.85)",
-                  borderWidth: 1,
-                  borderColor: isMuted ? "rgba(245, 158, 11, 0.4)" : "rgba(74, 222, 128, 0.4)",
-                  paddingHorizontal: 12,
-                  paddingVertical: 7,
-                  borderRadius: 20,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name={isMuted ? "volume-mute" : "volume-high"} size={16} color={isMuted ? "#F59E0B" : "#4ade80"} />
-                <Text style={{ color: isMuted ? "#F59E0B" : "#4ade80", fontSize: 12, fontWeight: "700" }}>
-                  {isMuted ? "Unmute" : "Sound On"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                onPress={toggleFullscreen}
-                style={{
-                  backgroundColor: "rgba(0,0,0,0.85)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.3)",
-                  paddingHorizontal: 14,
-                  paddingVertical: 7,
-                  borderRadius: 20,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-                activeOpacity={0.8}
-              >
-                <Ionicons name="contract-outline" size={16} color="#FFF" />
-                <Text style={{ color: "#FFF", fontSize: 12, fontWeight: "700" }}>Exit Fullscreen</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* Fullscreen Edge-to-Edge WebView */}
-          {WebView ? (
-            <WebView
-              ref={webViewRef}
-              source={
-                playerMode === "focus"
-                  ? { html: getYouTubeEmbedHtml(videoId), baseUrl: "https://www.youtube-nocookie.com" }
-                  : { uri: `https://m.youtube.com/watch?v=${videoId}` }
-              }
-              userAgent={
-                playerMode === "youtube_web"
-                  ? "Mozilla/5.0 (Linux; Android 12; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-                  : undefined
-              }
-              injectedJavaScript={playerMode === "youtube_web" ? CLEAN_YOUTUBE_WEB_JS : undefined}
-              injectedJavaScriptBeforeContentLoaded={playerMode === "youtube_web" ? CLEAN_YOUTUBE_WEB_JS : undefined}
-              style={{ flex: 1, backgroundColor: "#000" }}
-              allowsInlineMediaPlayback={true}
-              allowsFullscreenVideo={true}
-              mediaPlaybackRequiresUserAction={false}
-              javaScriptEnabled={true}
-              domStorageEnabled={true}
-              androidLayerType="hardware"
-              originWhitelist={["*"]}
-              mixedContentMode="always"
-              onMessage={handleWebViewMessage}
-            />
-          ) : null}
-        </View>
-      </Modal>
-    );
-  }
-
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={handleCloseModal}>
-      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={handleCloseModal}>
-        <SafeAreaView style={s.safeContainer} edges={["top", "bottom"]}>
-          <TouchableOpacity activeOpacity={1} style={[s.cardContainer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+    <Modal
+      visible={visible}
+      transparent={!isFullscreen}
+      statusBarTranslucent={true}
+      hardwareAccelerated={true}
+      animationType={isFullscreen ? "none" : "slide"}
+      onRequestClose={isFullscreen ? () => toggleFullscreen(false) : handleCloseModal}
+    >
+      <TouchableOpacity
+        style={isFullscreen ? s.fullscreenOverlay : s.overlay}
+        activeOpacity={1}
+        onPress={isFullscreen ? undefined : handleCloseModal}
+      >
+        <SafeAreaView
+          style={isFullscreen ? s.fullscreenSafeContainer : s.safeContainer}
+          edges={isFullscreen ? [] : ["top", "bottom"]}
+        >
+          <TouchableOpacity
+            activeOpacity={1}
+            style={
+              isFullscreen
+                ? s.fullscreenCardContainer
+                : [s.cardContainer, { paddingBottom: Math.max(insets.bottom, 16) }]
+            }
+          >
             {/* Modal Top Header */}
-            <View style={s.headerRow}>
-              <View style={s.headerLeft}>
-                <View style={s.iconBadge}>
-                  <Ionicons name={modalStep === "player" ? "sparkles" : "checkmark-done-circle"} size={18} color={A3} />
+            {!isFullscreen && (
+              <View style={s.headerRow}>
+                <View style={s.headerLeft}>
+                  <View style={s.iconBadge}>
+                    <Ionicons name={modalStep === "player" ? "sparkles" : "checkmark-done-circle"} size={18} color={A3} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={s.titleText} numberOfLines={1}>
+                      {modalStep === "player" ? title || "Guided Studio Session" : "Post-Pose Reflection"}
+                    </Text>
+                    <Text style={s.channelText} numberOfLines={1}>
+                      {modalStep === "player" ? (channel ? `${channel} • Verified` : "AI Guided Pose") : "Clinical Insights & Habit Log"}
+                    </Text>
+                  </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.titleText} numberOfLines={1}>
-                    {modalStep === "player" ? title || "Guided Studio Session" : "Post-Pose Reflection"}
+
+                {/* Fullscreen Landscape Toggle */}
+                {modalStep === "player" && (
+                  <TouchableOpacity
+                    onPress={() => toggleFullscreen(true)}
+                    style={s.headerFullscreenBtn}
+                    activeOpacity={0.75}
+                  >
+                    <Ionicons name="scan-outline" size={14} color="#A78BFA" />
+                    <Text style={s.headerFullscreenBtnText}>Full Screen</Text>
+                  </TouchableOpacity>
+                )}
+
+                {/* Live Session Timer Badge (Clickable to Pause/Resume) */}
+                <TouchableOpacity
+                  onPress={toggleTimerPlayPause}
+                  style={[
+                    s.timerBadge,
+                    !isPlaying && secondsWatched > 0 && {
+                      borderColor: "rgba(245, 158, 11, 0.4)",
+                      backgroundColor: "rgba(245, 158, 11, 0.12)",
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={isPlaying ? "stopwatch-outline" : "play-circle-outline"}
+                    size={14}
+                    color={isPlaying ? A3 : secondsWatched > 0 ? "#F59E0B" : A3}
+                  />
+                  <Text style={[s.timerText, !isPlaying && secondsWatched > 0 && { color: "#F59E0B" }]}>
+                    {isPlaying
+                      ? formatTimer(secondsWatched)
+                      : secondsWatched > 0
+                      ? `Paused (${formatTimer(secondsWatched)})`
+                      : formatTimer(secondsWatched)}
                   </Text>
-                  <Text style={s.channelText} numberOfLines={1}>
-                    {modalStep === "player" ? (channel ? `${channel} • Verified` : "AI Guided Pose") : "Clinical Insights & Habit Log"}
-                  </Text>
-                </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={handleCloseModal} style={s.closeBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Ionicons name="close" size={20} color={TM} />
+                </TouchableOpacity>
               </View>
-
-              {/* Live Session Timer Badge (Clickable to Pause/Resume) */}
-              <TouchableOpacity
-                onPress={toggleTimerPlayPause}
-                style={[
-                  s.timerBadge,
-                  !isPlaying && secondsWatched > 0 && {
-                    borderColor: "rgba(245, 158, 11, 0.4)",
-                    backgroundColor: "rgba(245, 158, 11, 0.12)",
-                  },
-                ]}
-              >
-                <Ionicons
-                  name={isPlaying ? "stopwatch-outline" : "play-circle-outline"}
-                  size={14}
-                  color={isPlaying ? A3 : secondsWatched > 0 ? "#F59E0B" : A3}
-                />
-                <Text style={[s.timerText, !isPlaying && secondsWatched > 0 && { color: "#F59E0B" }]}>
-                  {isPlaying
-                    ? formatTimer(secondsWatched)
-                    : secondsWatched > 0
-                    ? `Paused (${formatTimer(secondsWatched)})`
-                    : formatTimer(secondsWatched)}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity onPress={handleCloseModal} style={s.closeBtn} activeOpacity={0.7} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                <Ionicons name="close" size={20} color={TM} />
-              </TouchableOpacity>
-            </View>
+            )}
 
             {modalStep === "player" ? (
               <>
+                {/* Floating Top HUD for Fullscreen Mode */}
+                {isFullscreen && (
+                  <View style={s.fullscreenFloatingHeader}>
+                    <View style={s.fullscreenFloatingTitleBox}>
+                      <Ionicons name="sparkles" size={14} color="#A78BFA" />
+                      <Text style={s.fullscreenFloatingTitle} numberOfLines={1}>
+                        {title || "Guided Studio Practice"}
+                      </Text>
+                    </View>
+
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                      <TouchableOpacity
+                        onPress={toggleMute}
+                        style={[
+                          s.fullscreenHudBtn,
+                          { borderColor: isMuted ? "rgba(245, 158, 11, 0.5)" : "rgba(74, 222, 128, 0.5)" },
+                        ]}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons
+                          name={isMuted ? "volume-mute" : "volume-high"}
+                          size={16}
+                          color={isMuted ? "#F59E0B" : "#4ade80"}
+                        />
+                        <Text
+                          style={[
+                            s.fullscreenHudBtnText,
+                            { color: isMuted ? "#F59E0B" : "#4ade80" },
+                          ]}
+                        >
+                          {isMuted ? "Unmute" : "Sound On"}
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => toggleFullscreen(false)}
+                        style={[s.fullscreenHudBtn, { borderColor: "rgba(255,255,255,0.4)" }]}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="contract-outline" size={16} color="#FFF" />
+                        <Text style={[s.fullscreenHudBtnText, { color: "#FFF" }]}>
+                          Exit Fullscreen
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+
                 {/* Embedded Video Player Container */}
                 <View style={[s.playerWrapper, isFullscreen && s.fullscreenPlayerWrapper]}>
                   {isFullscreen && (
                     <TouchableOpacity
-                      onPress={toggleFullscreen}
+                      onPress={() => toggleFullscreen(false)}
                       style={s.fullscreenExitOverlayBtn}
                       activeOpacity={0.8}
                     >
@@ -945,98 +965,103 @@ export function VideoPlayerModal({
                   )}
                 </View>
 
-                {/* PillCare Yoga Focus Status Bar */}
-                <View style={s.pillcareFocusBar}>
-                  <View style={s.focusBadgeLeft}>
-                    <View style={s.liveFocusIndicator} />
-                    <Ionicons name="sparkles" size={13} color={A3} />
-                    <Text style={s.focusBadgeTitle}>PillCare Yoga Focus</Text>
-                  </View>
-                  <View style={s.mindfulTimerPill}>
-                    <Ionicons name="stopwatch-outline" size={13} color="#10B981" />
-                    <Text style={s.mindfulTimerPillText}>
-                      {formatTimer(secondsWatched)} Mindful Practice
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Verified Practice Suggestions Shelf (Featuring Sadhguru, Swami Ramdev, Ministry of AYUSH) */}
-                {allSuggestions && allSuggestions.length > 0 && (
-                  <View style={s.suggestedShelfWrapper}>
-                    <View style={s.suggestedShelfHeader}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
-                        <Ionicons name="film-outline" size={13} color={A3} />
-                        <Text style={s.suggestedShelfTitle}>VERIFIED PRACTICE SUGGESTIONS</Text>
+                {/* Normal Portrait Auxiliary Content */}
+                {!isFullscreen && (
+                  <>
+                    {/* PillCare Yoga Focus Status Bar */}
+                    <View style={s.pillcareFocusBar}>
+                      <View style={s.focusBadgeLeft}>
+                        <View style={s.liveFocusIndicator} />
+                        <Ionicons name="sparkles" size={13} color={A3} />
+                        <Text style={s.focusBadgeTitle}>PillCare Yoga Focus</Text>
                       </View>
-                      <Text style={s.suggestedShelfSub}>Tap to switch instructor</Text>
+                      <View style={s.mindfulTimerPill}>
+                        <Ionicons name="stopwatch-outline" size={13} color="#10B981" />
+                        <Text style={s.mindfulTimerPillText}>
+                          {formatTimer(secondsWatched)} Mindful Practice
+                        </Text>
+                      </View>
                     </View>
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={false}
-                      contentContainerStyle={s.suggestedShelfScroll}
-                    >
-                      {allSuggestions.map((sug, idx) => {
-                        const isThisActive = extractYouTubeId(sug.url) === videoId;
-                        const isSadhguru = sug.channel?.toLowerCase().includes("sadhguru");
-                        return (
-                          <TouchableOpacity
-                            key={`${sug.url}_${idx}`}
-                            style={[s.sugCard, isThisActive && s.sugCardActive]}
-                            onPress={() => switchVideo(sug)}
-                            activeOpacity={0.75}
-                          >
-                            <View style={s.sugCardTop}>
-                              <Ionicons
-                                name="logo-youtube"
-                                size={14}
-                                color={isSadhguru ? "#F59E0B" : "#FF0000"}
-                              />
-                              <Text style={s.sugChannelName} numberOfLines={1}>
-                                {sug.channel}
-                              </Text>
-                              {isSadhguru && (
-                                <View style={s.ishaTag}>
-                                  <Text style={s.ishaTagText}>ISHA</Text>
+
+                    {/* Verified Practice Suggestions Shelf (Featuring Sadhguru, Swami Ramdev, Ministry of AYUSH) */}
+                    {allSuggestions && allSuggestions.length > 0 && (
+                      <View style={s.suggestedShelfWrapper}>
+                        <View style={s.suggestedShelfHeader}>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+                            <Ionicons name="film-outline" size={13} color={A3} />
+                            <Text style={s.suggestedShelfTitle}>VERIFIED PRACTICE SUGGESTIONS</Text>
+                          </View>
+                          <Text style={s.suggestedShelfSub}>Tap to switch instructor</Text>
+                        </View>
+                        <ScrollView
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          contentContainerStyle={s.suggestedShelfScroll}
+                        >
+                          {allSuggestions.map((sug, idx) => {
+                            const isThisActive = extractYouTubeId(sug.url) === videoId;
+                            const isSadhguru = sug.channel?.toLowerCase().includes("sadhguru");
+                            return (
+                              <TouchableOpacity
+                                key={`${sug.url}_${idx}`}
+                                style={[s.sugCard, isThisActive && s.sugCardActive]}
+                                onPress={() => switchVideo(sug)}
+                                activeOpacity={0.75}
+                              >
+                                <View style={s.sugCardTop}>
+                                  <Ionicons
+                                    name="logo-youtube"
+                                    size={14}
+                                    color={isSadhguru ? "#F59E0B" : "#FF0000"}
+                                  />
+                                  <Text style={s.sugChannelName} numberOfLines={1}>
+                                    {sug.channel}
+                                  </Text>
+                                  {isSadhguru && (
+                                    <View style={s.ishaTag}>
+                                      <Text style={s.ishaTagText}>ISHA</Text>
+                                    </View>
+                                  )}
                                 </View>
-                              )}
-                            </View>
-                            <Text
-                              style={[
-                                s.sugTitle,
-                                isThisActive && { color: "#FFFFFF", fontWeight: "700" },
-                              ]}
-                              numberOfLines={1}
-                            >
-                              {sug.title}
-                            </Text>
-                            <Text style={s.sugDuration}>{sug.duration || "Guided Studio"}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </ScrollView>
-                  </View>
+                                <Text
+                                  style={[
+                                    s.sugTitle,
+                                    isThisActive && { color: "#FFFFFF", fontWeight: "700" },
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  {sug.title}
+                                </Text>
+                                <Text style={s.sugDuration}>{sug.duration || "Guided Studio"}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      </View>
+                    )}
+
+                    {/* Clinical Benefit Callout */}
+                    {activeBenefit ? (
+                      <View style={s.benefitCard}>
+                        <Ionicons name="bulb-outline" size={16} color={A3} />
+                        <Text style={s.benefitText}>{activeBenefit}</Text>
+                      </View>
+                    ) : null}
+
+                    {/* Footer Controls */}
+                    <View style={s.footerRow}>
+                      <TouchableOpacity onPress={handleExternalOpen} style={s.externalBtn} activeOpacity={0.7}>
+                        <Ionicons name="logo-youtube" size={14} color="#FF0000" />
+                        <Text style={[s.externalBtnText, { color: A3 }]}>YouTube App</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity onPress={handleProceedToFeedback} style={s.completeBtn} activeOpacity={0.8}>
+                        <Ionicons name="checkmark-circle" size={16} color="#FFF" />
+                        <Text style={s.completeBtnText}>Finish & Reflect</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </>
                 )}
-
-                {/* Clinical Benefit Callout */}
-                {activeBenefit ? (
-                  <View style={s.benefitCard}>
-                    <Ionicons name="bulb-outline" size={16} color={A3} />
-                    <Text style={s.benefitText}>{activeBenefit}</Text>
-                  </View>
-                ) : null}
-
-                {/* Footer Controls */}
-                <View style={s.footerRow}>
-                  <TouchableOpacity onPress={handleExternalOpen} style={s.externalBtn} activeOpacity={0.7}>
-                    <Ionicons name="logo-youtube" size={14} color="#FF0000" />
-                    <Text style={[s.externalBtnText, { color: A3 }]}>YouTube App</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity onPress={handleProceedToFeedback} style={s.completeBtn} activeOpacity={0.8}>
-                    <Ionicons name="checkmark-circle" size={16} color="#FFF" />
-                    <Text style={s.completeBtnText}>Finish & Reflect</Text>
-                  </TouchableOpacity>
-                </View>
               </>
             ) : (
               /* Step 2: Post-Pose Feeling Reflection & Insight */
@@ -1100,9 +1125,21 @@ const s = StyleSheet.create({
     backgroundColor: "rgba(0, 0, 0, 0.85)",
     justifyContent: "flex-end",
   },
+  fullscreenOverlay: {
+    flex: 1,
+    backgroundColor: "#000",
+    justifyContent: "center",
+    alignItems: "center",
+  },
   safeContainer: {
     flex: 1,
     justifyContent: "flex-end",
+  },
+  fullscreenSafeContainer: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "#000",
   },
   cardContainer: {
     backgroundColor: SF,
@@ -1113,6 +1150,17 @@ const s = StyleSheet.create({
     padding: 16,
     gap: 12,
     maxHeight: "94%",
+  },
+  fullscreenCardContainer: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    maxHeight: "100%",
+    borderRadius: 0,
+    borderWidth: 0,
+    backgroundColor: "#000",
+    padding: 0,
+    margin: 0,
   },
   headerRow: {
     flexDirection: "row",
@@ -1125,6 +1173,62 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     flex: 1,
+  },
+  headerFullscreenBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "rgba(167, 139, 250, 0.15)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(167, 139, 250, 0.3)",
+  },
+  headerFullscreenBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#A78BFA",
+  },
+  fullscreenFloatingHeader: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 40 : 16,
+    left: 16,
+    right: 16,
+    zIndex: 1000000,
+    elevation: 1000000,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  fullscreenFloatingTitleBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(0,0,0,0.75)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    maxWidth: "60%",
+  },
+  fullscreenFloatingTitle: {
+    color: "#FFF",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  fullscreenHudBtn: {
+    backgroundColor: "rgba(0,0,0,0.85)",
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  fullscreenHudBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
   },
   iconBadge: {
     width: 34,
@@ -1187,8 +1291,10 @@ const s = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: 0,
-    zIndex: 99999,
-    elevation: 99999,
+    borderWidth: 0,
+    zIndex: 999999,
+    elevation: 999999,
+    backgroundColor: "#000",
   },
   fullscreenExitOverlayBtn: {
     position: "absolute",

@@ -39,7 +39,17 @@ class PersonalizationAndTargetingTests(unittest.TestCase):
         result3 = render_notification_template("Welcome, {First_name}!", user3)
         self.assertEqual(result3, "Welcome, Friend!")
 
-        # Generic name hygiene: PillCare User, PillCare Guest, Guest, YOU must cleanly fall back to Friend
+        # Generic name hygiene with email inference fallback
+        email_user = {"name": "PillCare User", "email": "nitin.rai264@gmail.com"}
+        res_email = render_notification_template("Hello, {First_name}!", email_user)
+        self.assertEqual(res_email, "Hello, Nitin!")
+
+        # Pure email user without any name field
+        pure_email = {"email": "priya.sharma@pillcare.app"}
+        res_pure = render_notification_template("Hi {First_name}, see {name} profile", pure_email)
+        self.assertEqual(res_pure, "Hi Priya, see Priya profile")
+
+        # Generic name hygiene: PillCare User, PillCare Guest, Guest, YOU must cleanly fall back to Friend if no email
         for generic in ["PillCare User", "PillCare Guest", "Pillcare", "Guest", "YOU", "User", "anonymous"]:
             res = render_notification_template("Hello, {First_name}!", {"name": generic})
             self.assertEqual(res, "Hello, Friend!", f"Failed for generic name: {generic}")

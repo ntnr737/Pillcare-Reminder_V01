@@ -896,9 +896,28 @@ export async function registerForPushNotifications(): Promise<string | null> {
     if (effectiveToken) {
       console.log("PillCare Registered Tokens:", { expoToken, deviceToken });
       let userCountry = "";
+      let userName = "";
+      let userNickname = "";
+      let userEmail = "";
+      let userId = "";
+
       try {
         const storedProfile = await get<any>(K.profile);
         userCountry = storedProfile?.country_code || storedProfile?.country || storedProfile?.location_country || "";
+        userNickname = storedProfile?.nickname || storedProfile?.first_name || "";
+        userName = storedProfile?.name || storedProfile?.nickname || "";
+        userEmail = storedProfile?.email || "";
+      } catch {}
+
+      try {
+        const { getStoredUser } = require("./auth");
+        const storedUser = await getStoredUser();
+        if (storedUser) {
+          if (!userName) userName = storedUser.name || "";
+          if (!userNickname) userNickname = storedUser.name || "";
+          if (!userEmail) userEmail = storedUser.email || "";
+          if (!userId) userId = storedUser.id || "";
+        }
       } catch {}
 
       let userTimezone = "";
@@ -914,6 +933,10 @@ export async function registerForPushNotifications(): Promise<string | null> {
         device_token: deviceToken,
         country_code: userCountry,
         timezone: userTimezone,
+        name: userName,
+        nickname: userNickname,
+        email: userEmail,
+        user_id: userId,
       }).catch((err) => {
         console.warn("api.savePushToken error:", err);
       });
@@ -922,6 +945,39 @@ export async function registerForPushNotifications(): Promise<string | null> {
   } catch (e) {
     console.warn("Push token registration failed:", e);
     return null;
+  }
+}
+
+export async function refreshPushTokenWithName(overrideName?: string): Promise<void> {
+  try {
+    const { getStoredUser } = require("./auth");
+    const [storedProfile, storedUser] = await Promise.all([
+      get<any>(K.profile).catch(() => null),
+      getStoredUser().catch(() => null),
+    ]);
+    const name = overrideName || storedProfile?.nickname || storedProfile?.name || storedUser?.name || "";
+    const email = storedProfile?.email || storedUser?.email || "";
+    const country = storedProfile?.country_code || storedProfile?.country || "";
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+
+    const expoRes = await Notifications.getExpoPushTokenAsync().catch(() => null);
+    const devRes = await Notifications.getDevicePushTokenAsync().catch(() => null);
+    const token = devRes?.data || expoRes?.data;
+    if (token) {
+      await api.savePushToken({
+        token,
+        push_token: token,
+        fcm_token: devRes?.data,
+        expo_push_token: expoRes?.data,
+        name,
+        nickname: name,
+        email,
+        country_code: country,
+        timezone,
+      }).catch(() => {});
+    }
+  } catch (e) {
+    console.warn("refreshPushTokenWithName notice:", e);
   }
 }
 

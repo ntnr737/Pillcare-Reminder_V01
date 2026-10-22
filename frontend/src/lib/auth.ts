@@ -108,6 +108,10 @@ export async function signInWithGoogle(): Promise<PillcareUser> {
   } catch (e) {
     console.warn("Sign-in bootstrap sync notice:", e);
   }
+  try {
+    const { registerForPushNotificationsAsync } = require("./notifications");
+    registerForPushNotificationsAsync().catch(() => {});
+  } catch (e) {}
   return user;
 }
 
@@ -132,6 +136,10 @@ export async function signInAsGuest(name: string = "PillCare Guest"): Promise<Pi
         try {
           const { bootstrapUserDataset } = require("./sync");
           await bootstrapUserDataset();
+        } catch (e) {}
+        try {
+          const { registerForPushNotificationsAsync } = require("./notifications");
+          registerForPushNotificationsAsync().catch(() => {});
         } catch (e) {}
         return guestUser;
       }
