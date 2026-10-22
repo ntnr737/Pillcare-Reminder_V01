@@ -367,7 +367,20 @@ export default function Treatment() {
       : safeMeds
   );
   const OPTS = [
-    { icon: "medical-outline", title: t("actionSheet.addMedication", "Add Medication"), body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"), fn: () => { setSheet(false); setAddMed(true); } },
+    {
+      icon: "medical-outline",
+      title: t("actionSheet.addMedication", "Add Medication"),
+      body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"),
+      fn: () => {
+        setSheet(false);
+        const activeCount = safeMeds.filter((m: any) => m && m.active !== false).length;
+        if (activeCount >= (getFeatures().max_medications || 3)) {
+          setShowUpgrade(true);
+        } else {
+          setAddMed(true);
+        }
+      },
+    },
     { icon: "calendar-outline", title: t("actionSheet.bookAppointment", "Book Appointment"), body: t("actionSheet.bookAppointmentDesc", "Schedule a doctor appointment"), fn: () => { setSheet(false); router.push("/appointments" as any); } },
     { icon: "pulse-outline", title: t("actionSheet.logMeasurement", "Log Measurement"), body: t("actionSheet.logMeasurementDesc", "Blood pressure, glucose, weight..."), fn: () => { setSheet(false); const mTypes = catalog?.m?.length ? catalog.m : DEFAULT_MEASUREMENTS; openMeasurementModal(mTypes[0]); } },
     { icon: "body-outline", title: t("actionSheet.logActivity", "Log Activity"), body: t("actionSheet.logActivityDesc", "Steps, exercise, walking..."), fn: () => { setSheet(false); const aTypes = catalog?.a?.length ? catalog.a : DEFAULT_ACTIVITIES; openActivityModal(aTypes[0]); } },
@@ -1013,7 +1026,12 @@ export default function Treatment() {
 
       <AddMedicationSheet visible={addMed} onClose={() => setAddMed(false)} onSaved={() => { setAddMed(false); loadCache(); get<any[]>(K.medications).then(m => { if (m) resyncReminders(m); }).catch(() => resyncReminders()); backgroundRefresh(loadServer); }} />
       <RefillModal visible={!!refillMed} medication={refillMed} onClose={() => setRefillMed(null)} onRefilled={async () => { await loadServer(); }} />
-      <UpgradePrompt visible={showUpgrade} onClose={() => setShowUpgrade(false)} feature="Full yoga library" description="Free plan includes a daily yoga tip. Upgrade to Pro Dharma for full guided routines with video demos." />
+      <UpgradePrompt
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+        feature="Unlock Caregiver Shield"
+        description="Your Free Plan allows up to 3 active medications. Upgrade to Caregiver Shield for unlimited medications, family alerts, and doctor health passes."
+      />
       <VideoPlayerModal
         visible={!!activeVideo}
         onClose={() => setActiveVideo(null)}

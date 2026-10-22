@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Switch, ActivityIndicator, Linking } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,7 +13,7 @@ import { ThemeToggleSwitch } from "@/src/components/ThemeToggleSwitch";
 import { CountryCodePicker, formatFullWhatsAppPhone } from "@/src/components/CountryCodePicker";
 import { signInWithGoogle, getStoredUser, isGuestUser, signOut, PillcareUser } from "@/src/lib/auth";
 import { get7DigitUserNumber } from "@/src/lib/userNumber";
-import { getFeatures, isPremium } from "@/src/lib/features";
+import { getFeatures, isPremium, onFeaturesChange, fetchFeatures } from "@/src/lib/features";
 import { UpgradePrompt } from "@/src/components/UpgradePrompt";
 
 const BG = "#161826", SF = "#232532", N8 = "#3f424d", TX = "#e9e9ed",
@@ -34,7 +34,12 @@ export default function Profile() {
   const [signingIn, setSigningIn] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [loadingPass, setLoadingPass] = useState(false);
+  const [currentFeatures, setCurrentFeatures] = useState(getFeatures());
   const premium = isPremium();
+
+  useEffect(() => {
+    return onFeaturesChange(f => setCurrentFeatures(f));
+  }, []);
 
   const handleOpenDoctorPass = async () => {
     if (!premium) {
@@ -78,7 +83,10 @@ export default function Profile() {
     } catch {}
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => {
+    load();
+    fetchFeatures().catch(() => {});
+  }, [load]));
 
   const handleGoogleSignIn = async () => {
     setSigningIn(true);
@@ -533,6 +541,9 @@ export default function Profile() {
       <UpgradePrompt
         visible={showUpgrade}
         onClose={() => setShowUpgrade(false)}
+        onSuccess={() => {
+          fetchFeatures().catch(() => {});
+        }}
         feature="Caregiver Shield & Doctor Pass"
         description="Unlock automated family alerts, clinical drug-food interaction checks, full yoga therapy, and 1-tap Doctor-Ready Health Pass (PDF)."
       />

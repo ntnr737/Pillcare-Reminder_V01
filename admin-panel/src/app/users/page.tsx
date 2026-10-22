@@ -54,7 +54,7 @@ export default function UsersPage() {
     return matchesSearch && matchesPlan;
   });
 
-  const handlePlanOverride = async (userId: string, newPlan: 'Free' | 'Basic' | 'Premium' | 'Enterprise') => {
+  const handlePlanOverride = async (userId: string, newPlan: 'Free' | 'Basic' | 'Caregiver Shield' | 'Family Annual' | 'Enterprise') => {
     if (!canEdit) {
       setToastMsg('Permission Denied: users.edit authorization required.');
       return;
@@ -350,7 +350,7 @@ export default function UsersPage() {
               <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
                 <span className="text-xs font-semibold text-slate-200 block">Instant Plan Override (1-Click)</span>
                 <div className="flex flex-wrap gap-2">
-                  {(['Free', 'Basic', 'Premium', 'Enterprise'] as const).map((p) => (
+                  {(['Free', 'Basic', 'Caregiver Shield', 'Family Annual', 'Enterprise'] as const).map((p) => (
                     <button
                       key={p}
                       onClick={() => handlePlanOverride(selectedUser.id, p)}

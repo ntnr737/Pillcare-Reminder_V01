@@ -223,10 +223,11 @@ export async function fetchPillCareUsers(): Promise<PillCareUserRecord[]> {
 
 export async function updateUserSubscription(userId: string, plan: string, billingCycle: string): Promise<boolean> {
   try {
+    const normalizedPlan = (plan || 'free').toLowerCase().trim().replace(/\s+/g, '_');
     const res = await adminFetch(`admin/users/${encodeURIComponent(userId)}/subscription`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan: (plan || 'free').toLowerCase(), billing_cycle: billingCycle, expires_days: 365 }),
+      body: JSON.stringify({ plan: normalizedPlan, billing_cycle: billingCycle, expires_days: 365 }),
     });
     return res.ok;
   } catch (e) {

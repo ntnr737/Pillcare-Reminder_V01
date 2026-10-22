@@ -249,7 +249,7 @@ export interface PillCareUserRecord {
   id: string;
   name: string;
   email: string;
-  plan: 'Free' | 'Basic' | 'Premium' | 'Enterprise';
+  plan: 'Free' | 'Basic' | 'Caregiver Shield' | 'Family Annual' | 'Premium' | 'Enterprise';
   status: 'active' | 'inactive' | 'suspended';
   registeredAt: string;
   lastActive: string;

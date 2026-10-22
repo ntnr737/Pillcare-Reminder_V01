@@ -116,9 +116,12 @@ export const api = {
   postTelemetryEvent: (event: string, props: Record<string, any> = {}) => req<any>("/analytics/track", { method: "POST", body: JSON.stringify({ event, props }) }),
   heartbeatPing: (network_type: string = "WiFi/5G", app_version: string = "v1.0.16") => req<any>("/users/heartbeat", { method: "POST", body: JSON.stringify({ network_type, app_version }) }).catch(() => null),
   getSubscription: () => req<any>("/me/subscription"),
-  upgradePlan: (plan: string = "premium", days: number = 30) => req<any>("/me/upgrade", { method: "POST", body: JSON.stringify({ plan, days }) }),
-  createPaymentOrder: (plan: string = "premium", amount_inr: number = 99) => req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
-  verifyPayment: (order_id: string, payment_id: string, plan: string = "premium") => req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan }) }),
+  upgradePlan: (plan: string = "caregiver_shield", days: number = 30, promo_code?: string) =>
+    req<any>("/me/upgrade", { method: "POST", body: JSON.stringify({ plan, days, promo_code }) }),
+  createPaymentOrder: (plan: string = "caregiver_shield", amount_inr?: number) =>
+    req<any>("/payments/create-order", { method: "POST", body: JSON.stringify({ plan, amount_inr }) }),
+  verifyPayment: (order_id: string, payment_id: string, plan: string = "caregiver_shield", signature: string = "SANDBOX_VERIFIED", billing_cycle?: string, upi_vpa?: string) =>
+    req<any>("/payments/verify", { method: "POST", body: JSON.stringify({ order_id, payment_id, plan, signature, billing_cycle, upi_vpa }) }),
   exportExcel: () => req<any>("/export/excel"),
   getDoctorPassUrl: async () => {
     const token = await getStoredToken();

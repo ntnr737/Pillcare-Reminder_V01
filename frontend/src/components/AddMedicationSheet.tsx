@@ -8,6 +8,8 @@ import { PrimaryButton } from "./PrimaryButton";
 import { UnitDropdownModal } from "./UnitDropdownModal";
 import { TimePickerModal } from "./TimePickerModal";
 import { DrugFoodGuideModal } from "./DrugFoodGuideModal";
+import { UpgradePrompt } from "./UpgradePrompt";
+import { getFeatures } from "@/src/lib/features";
 import { api } from "@/src/lib/api";
 import { get, set, K } from "@/src/lib/store";
 import { enqueueWrite, flushQueue } from "@/src/lib/sync";
@@ -50,6 +52,7 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
   const [foodGuideOpen, setFoodGuideOpen] = useState(false);
   const [drugFoodGuide, setDrugFoodGuide] = useState<any>(null);
   const [saving, setSaving] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -91,6 +94,15 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
       notes: notes.trim() || undefined,
     };
     try {
+      const existing = (await get<any[]>(K.medications)) || [];
+      const activeCount = existing.filter((m: any) => m && m.active !== false).length;
+      const feats = getFeatures();
+      const maxAllowed = feats.max_medications || 3;
+      if (activeCount >= maxAllowed) {
+        setShowUpgrade(true);
+        return;
+      }
+
       const localMed = {
         id: `local_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
         user_id: "local",
@@ -98,7 +110,6 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
         active: true,
         created_at: new Date().toISOString(),
       };
-      const existing = (await get<any[]>(K.medications)) || [];
       const updated = [localMed, ...existing];
       await set(K.medications, updated);
 
@@ -327,6 +338,16 @@ export function AddMedicationSheet({ visible, onClose, onSaved }: Props) {
             onClose={() => setFoodGuideOpen(false)}
             guide={drugFoodGuide}
             targetMedicationName={name}
+          />
+
+          <UpgradePrompt
+            visible={showUpgrade}
+            onClose={() => setShowUpgrade(false)}
+            feature="Medication Limit Reached"
+            description={`Your Free Plan supports up to ${getFeatures().max_medications || 3} active medications. Upgrade to Caregiver Shield for unlimited medications, family alerts, and doctor reports.`}
+            onSuccess={() => {
+              setShowUpgrade(false);
+            }}
           />
         </KeyboardAvoidingView>
       </View>

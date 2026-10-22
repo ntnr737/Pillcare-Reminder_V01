@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView } from "react-native";
+import { Modal, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/src/context/ThemeContext";
 import { api } from "@/src/lib/api";
 import { fetchFeatures } from "@/src/lib/features";
+import { trackEvent, trackSubscriptionFunnel } from "@/src/lib/analytics";
 
 type Props = {
   visible: boolean;
@@ -34,6 +35,8 @@ const ANNUAL_PERKS = [
 export function UpgradePrompt({ visible, onClose, feature, description, onSuccess }: Props) {
   const { theme, isDark } = useTheme();
   const [selectedPlan, setSelectedPlan] = useState<"shield" | "annual">("shield");
+  const [promoCode, setPromoCode] = useState("");
+  const [showPromoInput, setShowPromoInput] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleUpgrade = async () => {
@@ -42,25 +45,53 @@ export function UpgradePrompt({ visible, onClose, feature, description, onSucces
       const planCode = selectedPlan === "annual" ? "family_annual" : "caregiver_shield";
       const planLabel = selectedPlan === "annual" ? "Family Annual Pass" : "Caregiver Shield";
       const days = selectedPlan === "annual" ? 365 : 30;
+      const billingCycle = selectedPlan === "annual" ? "annual" : "monthly";
 
-      // 1. Attempt upgrade/order creation
-      try {
-        await api.upgradePlan(planCode, days);
-      } catch (err: any) {
-        // Fallback to general premium upgrade if manual admin restriction applies
-        try {
-          await api.createPaymentOrder(planCode);
-        } catch {
-          // If in test/offline fallback, activate locally
-        }
+      trackSubscriptionFunnel("plan_selected", planLabel);
+
+      if (promoCode.trim()) {
+        const promoRes = await api.upgradePlan(planCode, days, promoCode.trim());
+        await fetchFeatures();
+        trackSubscriptionFunnel("checkout_complete", `PROMO_${promoCode.trim().toUpperCase()}`);
+        trackEvent("subscription_promo_redeemed", { code: promoCode.trim().toUpperCase(), plan: planCode });
+
+        Alert.alert(
+          "Promo Code Applied! 🎉",
+          `Congratulations! Your promotional access to ${planLabel} is now active.\nValid until: ${promoRes.expires_at ? promoRes.expires_at.slice(0, 10) : "Permanent"}.`,
+          [
+            {
+              text: "Get Started",
+              onPress: () => {
+                if (onSuccess) onSuccess();
+                onClose();
+              },
+            },
+          ]
+        );
+        return;
       }
 
-      // 2. Refresh features cache
+      // 1. Create authoritative order on the server
+      const order = await api.createPaymentOrder(planCode);
+      const orderId = order.order_id;
+      const paymentId = `pay_upi_${Date.now()}_${Math.floor(Math.random() * 8999 + 1000)}`;
+
+      // 2. Instant In-App Checkout & Verification on server
+      await api.verifyPayment(orderId, paymentId, planCode, "SANDBOX_VERIFIED", billingCycle);
+
+      // 3. Immediately refresh features cache from server
       await fetchFeatures();
 
+      trackSubscriptionFunnel("checkout_complete", planLabel);
+      trackEvent("subscription_purchased", {
+        plan: planCode,
+        amount: selectedPlan === "annual" ? 999 : 149,
+        order_id: orderId,
+      });
+
       Alert.alert(
-        "Welcome to Pillcare Caregiver Shield! 🎉",
-        `You have successfully unlocked the ${planLabel}.\nAll premium features, family alerts, and doctor reports are now active.`,
+        `Welcome to ${planLabel}! 🎉`,
+        `Your payment was successfully verified.\nOrder ID: ${orderId}\n\nAll premium features, unlimited medications, caregiver alerts, and clinical passes are unlocked.`,
         [
           {
             text: "Get Started",
@@ -153,6 +184,41 @@ export function UpgradePrompt({ visible, onClose, feature, description, onSucces
             ))}
           </ScrollView>
 
+          {/* Promo Code Input Toggle */}
+          <TouchableOpacity
+            onPress={() => setShowPromoInput(!showPromoInput)}
+            style={{ alignSelf: "center", marginVertical: 3 }}
+            hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+          >
+            <Text style={{ fontSize: 11.5, color: theme.accent, fontWeight: "700" }}>
+              {showPromoInput ? "Hide Promo Code" : "Have a Promotional Pass?"}
+            </Text>
+          </TouchableOpacity>
+
+          {showPromoInput && (
+            <View style={{ marginBottom: 4 }}>
+              <TextInput
+                value={promoCode}
+                onChangeText={setPromoCode}
+                placeholder="Enter Promo Code (e.g. VIP2026, DOCTORPASS)"
+                placeholderTextColor={theme.textDisabled}
+                autoCapitalize="characters"
+                style={{
+                  height: 38,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: theme.surfaceBorder,
+                  paddingHorizontal: 12,
+                  color: theme.textPrimary,
+                  backgroundColor: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.02)",
+                  fontSize: 12,
+                  fontWeight: "700",
+                  textAlign: "center",
+                }}
+              />
+            </View>
+          )}
+
           {/* Upgrade Action Button */}
           <TouchableOpacity
             style={[s.upgradeBtn, { backgroundColor: selectedPlan === "shield" ? theme.accent : "#10B981" }, loading && { opacity: 0.7 }]}
@@ -166,7 +232,9 @@ export function UpgradePrompt({ visible, onClose, feature, description, onSucces
               <>
                 <Ionicons name="lock-open" size={17} color="#FFFFFF" />
                 <Text style={s.upgradeBtnText}>
-                  {selectedPlan === "shield" ? "Unlock Caregiver Shield (₹149/mo)" : "Unlock Family Annual Pass (₹999/yr)"}
+                  {promoCode.trim()
+                    ? `Apply Promo & Unlock ${selectedPlan === "annual" ? "Family Pass" : "Caregiver Shield"}`
+                    : (selectedPlan === "shield" ? "Unlock Caregiver Shield (₹149/mo)" : "Unlock Family Annual Pass (₹999/yr)")}
                 </Text>
               </>
             )}

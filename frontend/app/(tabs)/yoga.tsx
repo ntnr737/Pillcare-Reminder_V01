@@ -839,18 +839,26 @@ export default function YogaTabScreen() {
               <View style={s.actionRow}>
                 <TouchableOpacity
                   style={s.watchBtn}
-                  onPress={() =>
+                  onPress={() => {
+                    if (!getFeatures().yoga_full && activeRoutineIndex > 0) {
+                      setShowUpgrade(true);
+                      return;
+                    }
                     setActiveVideo({
                       url: step.youtube_video,
                       title: translatedName,
                       channel: step.channel,
                       benefit: translatedBenefit,
                       step: step,
-                    })
-                  }
+                    });
+                  }}
                 >
-                  <Ionicons name="play-circle" size={16} color={theme.accent} />
-                  <Text style={[s.watchBtnText, { color: theme.textPrimary }]}>{t("yoga.startGuidedStudio", "Start Guided Studio ⏱")}</Text>
+                  <Ionicons name={(!getFeatures().yoga_full && activeRoutineIndex > 0) ? "lock-closed" : "play-circle"} size={16} color={theme.accent} />
+                  <Text style={[s.watchBtnText, { color: theme.textPrimary }]}>
+                    {(!getFeatures().yoga_full && activeRoutineIndex > 0)
+                      ? "Unlock Masterclass 🔒"
+                      : t("yoga.startGuidedStudio", "Start Guided Studio ⏱")}
+                  </Text>
                   <Ionicons name="chevron-forward" size={12} color={theme.accent} />
                 </TouchableOpacity>
 

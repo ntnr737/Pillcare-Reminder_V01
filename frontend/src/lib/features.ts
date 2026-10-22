@@ -1,9 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { getStoredToken } from "./auth";
+import { API_BASE_URL } from "./config";
 
 export type Features = {
-  plan: "free" | "premium" | "enterprise";
+  plan: "free" | "basic" | "premium" | "caregiver_shield" | "family" | "family_annual" | "lifetime" | "enterprise";
   plan_expires: string | null;
   max_medications: number;
   history_days: number;
@@ -60,7 +62,6 @@ export async function loadCachedFeatures(): Promise<void> {
   } catch {}
 }
 
-import { API_BASE_URL } from "./config";
 
 export async function fetchFeatures(token?: string): Promise<void> {
   try {
@@ -74,7 +75,8 @@ export async function fetchFeatures(token?: string): Promise<void> {
     const locale = typeof Intl !== "undefined" ? Intl.DateTimeFormat().resolvedOptions().locale : "";
     const countryMatch = locale.match(/[-_]([A-Za-z]{2})$/);
     if (countryMatch?.[1]) headers["X-App-Country"] = countryMatch[1].toUpperCase();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const effectiveToken = token || (await getStoredToken());
+    if (effectiveToken) headers["Authorization"] = `Bearer ${effectiveToken}`;
     const res = await fetch(`${BASE}/api/me/features`, { headers });
     if (!res.ok) return;
     const data: Features = await res.json();
@@ -85,5 +87,6 @@ export async function fetchFeatures(token?: string): Promise<void> {
 }
 
 export function isPremium(): boolean {
-  return _cache.plan === "premium" || _cache.plan === "enterprise";
+  const p = (_cache.plan || "").toLowerCase();
+  return p !== "" && p !== "free" && p !== "guest";
 }

@@ -327,7 +327,15 @@ export default function Today() {
       icon: "medical-outline",
       title: t("actionSheet.addMedication", "Add Medication"),
       body: t("actionSheet.addMedicationDesc", "Add a new medication to your routine"),
-      fn: () => { setActionSheetOpen(false); setAddMed(true); },
+      fn: () => {
+        setActionSheetOpen(false);
+        const activeCount = medications.filter((m) => m && m.active !== false).length;
+        if (activeCount >= (getFeatures().max_medications || 3)) {
+          setShowUpgrade(true);
+        } else {
+          setAddMed(true);
+        }
+      },
     },
     {
       icon: "restaurant-outline",
@@ -1109,7 +1117,14 @@ export default function Today() {
         {total === 0 ? (
           <TouchableOpacity
             activeOpacity={0.8}
-            onPress={() => setAddMed(true)}
+            onPress={() => {
+              const activeCount = medications.filter((m) => m && m.active !== false).length;
+              if (activeCount >= (getFeatures().max_medications || 3)) {
+                setShowUpgrade(true);
+              } else {
+                setAddMed(true);
+              }
+            }}
             style={[s.empty, { backgroundColor: theme.surface, borderColor: theme.surfaceBorder }]}
           >
             <View style={[s.emI, { backgroundColor: theme.accentBg }]}><Ionicons name="medical-outline" size={26} color={theme.accent} /></View>
