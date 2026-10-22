@@ -38,10 +38,11 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { name: 'Executive Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Control Room & QC', href: '/app-control/control-room', icon: ShieldAlert, badge: 'HQ', badgeColor: 'bg-rose-500/20 text-rose-400' },
   { name: 'Google Analytics 4', href: '/analytics/ga4', icon: BarChart3 },
   { name: 'Google Tag Manager', href: '/analytics/gtm', icon: Tag, badge: 'v14', badgeColor: 'bg-cyan-500/20 text-cyan-400' },
   { name: 'User Management', href: '/users', icon: Users, badge: '184k', badgeColor: 'bg-indigo-500/20 text-indigo-400' },
-  { name: 'Financial Command', href: '/finance', icon: DollarSign, badge: '₹2.4L', badgeColor: 'bg-emerald-500/20 text-emerald-400' },
+  { name: 'Financial Command', href: '/finance', icon: DollarSign, badge: 'JP Morgan', badgeColor: 'bg-emerald-500/20 text-emerald-400' },
   { name: 'Feature Flags', href: '/app-control/feature-flags', icon: SlidersHorizontal, badge: '6 Active', badgeColor: 'bg-purple-500/20 text-purple-400' },
   { name: 'Medication Catalog', href: '/app-control/medication', icon: Pill },
   { name: 'AI / Groq Telemetry', href: '/ai/groq', icon: Sparkles, badge: 'Llama 3.3', badgeColor: 'bg-amber-500/20 text-amber-400' },

@@ -137,11 +137,79 @@ export interface GTMContainerConfig {
   eventMappings: GTMEventMap[];
 }
 
+export interface FinancialTransaction {
+  id: string;
+  timestamp: string;
+  patientName: string;
+  email: string;
+  city: string;
+  country: string;
+  plan: string;
+  gateway: 'Razorpay UPI' | 'Razorpay Card' | 'Stripe Global' | 'Apple StoreKit' | 'Google Play';
+  grossINR: number;
+  feeINR: number;
+  taxGSTINR: number;
+  netINR: number;
+  currency: 'INR' | 'USD' | 'AED' | 'GBP' | 'EUR';
+  originalAmount: number;
+  status: 'Settled' | 'Authorized' | 'Processing' | 'Refunded' | 'Disputed';
+  riskScore: number;
+  cardLast4?: string;
+  upiVpa?: string;
+}
+
+export interface GatewayMetric {
+  name: string;
+  code: string;
+  status: 'operational' | 'degraded' | 'maintenance';
+  successRate: number;
+  latencyMs: number;
+  volume24hINR: number;
+  sharePercent: number;
+  feeRatePercent: number;
+}
+
+export interface TreasuryLedger {
+  totalTreasuryFloatINR: number;
+  settledNodalAccountHDFC: number;
+  inFlightSettlementsT1: number;
+  gstTaxReserveVault: number;
+  chargebackDisputeEscrow: number;
+  nextSettlementBatchTime: string;
+}
+
+export interface VelocityMetrics {
+  revenuePerMinuteINR: number;
+  revenuePerHourINR: number;
+  revenuePerDayINR: number;
+  activeRidesOrDosesPerMinute: number;
+  dailyCompletedInterventions: number;
+  realtimeSurgeMultiplier: number;
+  netTakeRatePercent: number;
+  gmvINR: number;
+}
+
+export interface FXCurrencyRate {
+  code: 'INR' | 'USD' | 'AED' | 'GBP' | 'EUR';
+  symbol: string;
+  rateToINR: number;
+  volume24h: number;
+  sharePercent: number;
+}
+
 export interface FinancialSummary {
   grossRevenue: number;
   netRevenue: number;
   mrr: number;
   arr: number;
+  gmv?: number;
+  takeRatePercent?: number;
+  nrrPercent?: number;
+  velocity?: VelocityMetrics;
+  treasury?: TreasuryLedger;
+  gateways?: GatewayMetric[];
+  fxRates?: FXCurrencyRate[];
+  transactions?: FinancialTransaction[];
   dailyRevenue: { date: string; gross: number; net: number }[];
   revenueByPlan: { plan: string; revenue: number; count: number }[];
   revenueByCountry: { country: string; revenue: number }[];
@@ -373,4 +441,40 @@ export interface StreakDashboardAnalytics {
   streakBrackets: Record<string, number>;
   competitions: StreakCompetitionRecord[];
   leaderboard: StreakLeaderboardEntry[];
+}
+
+export interface ControlRoomSwitch {
+  id: string;
+  name: string;
+  description: string;
+  category: 'safety' | 'performance' | 'compliance' | 'multimedia' | 'experimental';
+  enabled: boolean;
+  requiresConfirmation: boolean;
+  iconName?: string;
+  lastToggledBy?: string;
+  lastToggledAt?: string;
+}
+
+export interface QCDiagnosticItem {
+  id: string;
+  title: string;
+  category: 'database' | 'messaging' | 'multimedia' | 'payments' | 'safety' | 'cdn' | 'compliance';
+  status: 'pass' | 'fail' | 'warn' | 'running' | 'idle';
+  latencyMs: number;
+  details: string;
+  checkedAt: string;
+  testedEndpoint: string;
+}
+
+export interface ControlRoomState {
+  maintenanceMode: boolean;
+  circuitBreakerActive: boolean;
+  yogaFocusEnforced: boolean;
+  zeroTrustLockdown: boolean;
+  emergencyBroadcastActive: boolean;
+  sandboxMode: boolean;
+  activeSwitches: ControlRoomSwitch[];
+  systemUptimeSeconds: number;
+  activeServerWorkers: number;
+  diagnostics: QCDiagnosticItem[];
 }

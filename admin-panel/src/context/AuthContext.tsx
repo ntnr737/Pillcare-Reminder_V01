@@ -22,14 +22,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AdminUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<AdminUser | null>(DEFAULT_ADMIN);
+  const [token, setToken] = useState<string | null>('pillcare_sys_jwt_token_2026');
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const { user: storedUser, token: storedToken } = getStoredAdminSession();
-    setUser(storedUser || DEFAULT_ADMIN);
-    setToken(storedToken || 'pillcare_sys_jwt_token_2026');
+    if (storedUser) setUser(storedUser);
+    if (storedToken) setToken(storedToken);
     setIsLoading(false);
   }, []);
 
