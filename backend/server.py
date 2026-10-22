@@ -1,9 +1,13 @@
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, Body, Query
 from fastapi.responses import StreamingResponse, HTMLResponse, JSONResponse, Response
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import io
 import hmac
 import time
 import hashlib
+import ipaddress
+import html
 try:
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment
@@ -140,9 +144,11 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=500)
 api = APIRouter(prefix="/api")
 
-# Rate limiter
-def get_real_ip(request: Request) -> str:
+# Rate limiter & Immunity Helpers
+def get_real_ip(request: Optional[Request] = None) -> str:
     """Get actual client IP - supports Cloud Run & reverse proxies."""
+    if request is None:
+        return "127.0.0.1"
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -151,11 +157,83 @@ def get_real_ip(request: Request) -> str:
         return real_ip
     if request.client:
         return request.client.host
-    return "unknown"
+    return "127.0.0.1"
+
+def is_safe_public_ip(ip_str: str) -> bool:
+    """Validate client IP to prevent SSRF and internal network scanning."""
+    if not ip_str or not isinstance(ip_str, str):
+        return False
+    clean_ip = ip_str.strip().split("%")[0]
+    try:
+        ip = ipaddress.ip_address(clean_ip)
+        return ip.is_global and not (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        )
+    except (ValueError, AttributeError):
+        return False
+
+def clamp_pagination(limit: int, default: int = 50, max_limit: int = 200, skip: int = 0) -> tuple[int, int]:
+    """Immunity helper to prevent negative pagination, integer underflow, and RAM exhaustion DoS."""
+    try:
+        lim = int(limit)
+    except (ValueError, TypeError):
+        lim = default
+    try:
+        sk = int(skip)
+    except (ValueError, TypeError):
+        sk = 0
+    return max(1, min(lim, max_limit)), max(0, sk)
+
+def sanitize_action_url(url: Optional[str]) -> Optional[str]:
+    """Neutralize dangerous javascript: or data: schemes in notification / announcement URLs."""
+    if not url or not isinstance(url, str):
+        return None
+    url = url.strip()
+    lower = url.lower()
+    if lower.startswith(("https://", "http://", "pillcare://", "/")):
+        return url[:500]
+    return None
+
+def sanitize_text_content(text: str) -> str:
+    """Sanitize user/admin text input by stripping raw HTML/script tags to prevent XSS."""
+    if not text:
+        return ""
+    cleaned = re.sub(r"<\s*(script|iframe|object|embed|svg|img|style|link|meta)[^>]*>.*?<\s*/\s*\1\s*>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    cleaned = re.sub(r"<\s*(script|iframe|object|embed|svg|img|style|link|meta)[^>]*/>", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"javascript\s*:", "", cleaned, flags=re.IGNORECASE)
+    return cleaned.strip()
 
 limiter = Limiter(key_func=get_real_ip, default_limits=["200/minute"])
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=getattr(exc, "headers", None) or {}
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()}
+    )
+
+@app.exception_handler(Exception)
+async def global_shield_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Global resilience shield caught unhandled fault on {request.method} {request.url.path}: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error. Safe resilience mode active.", "error_code": "ERR_INTERNAL_FAULT"}
+    )
 
 # ---------- Catalogs (static) ----------
 MED_UNITS = [
@@ -761,19 +839,55 @@ class AdminCredentialsRequest(BaseModel):
     challenge: Optional[str] = None
     code: Optional[str] = None
 
-def require_admin(x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
-    """Accept backend-only emergency secret or a signed short-lived admin JWT."""
+_ADMIN_AUTH_FAILURES: dict = {}
+_ADMIN_IP_LOCKOUTS: dict = {}
+
+def is_admin_ip_locked(ip: str) -> bool:
+    now = time.time()
+    locked_until = _ADMIN_IP_LOCKOUTS.get(ip, 0)
+    if now < locked_until:
+        return True
+    elif ip in _ADMIN_IP_LOCKOUTS:
+        del _ADMIN_IP_LOCKOUTS[ip]
+    recent = [t for t in _ADMIN_AUTH_FAILURES.get(ip, []) if now - t < 60]
+    _ADMIN_AUTH_FAILURES[ip] = recent
+    return len(recent) >= 10
+
+def record_admin_failure(ip: str):
+    now = time.time()
+    failures = _ADMIN_AUTH_FAILURES.setdefault(ip, [])
+    failures.append(now)
+    if len(failures) >= 10:
+        _ADMIN_IP_LOCKOUTS[ip] = now + 300
+        logger.warning(f"Admin brute-force threshold reached for IP {ip}. Locked for 5 minutes.")
+
+def record_admin_success(ip: str):
+    _ADMIN_AUTH_FAILURES.pop(ip, None)
+    _ADMIN_IP_LOCKOUTS.pop(ip, None)
+
+def require_admin(request: Request, x_admin_secret: str = Header(default=""), authorization: str = Header(default="")):
+    """Accept backend-only emergency secret or a signed short-lived admin JWT with brute-force immunity."""
+    ip = get_real_ip(request)
+
     if authorization.startswith("Bearer "):
         try:
             token = authorization.removeprefix("Bearer ").strip()
             payload = pyjwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
             if payload.get("role") == "admin" and (payload.get("purpose") == "admin_session" or payload.get("is_admin") is True):
+                record_admin_success(ip)
                 return payload
         except Exception:
             pass
     if ADMIN_SECRET and x_admin_secret and len(ADMIN_SECRET) >= 16:
         if hmac.compare_digest(x_admin_secret.encode(), ADMIN_SECRET.encode()):
+            record_admin_success(ip)
             return {"role": "admin", "sub": "secret_key"}
+
+    if is_admin_ip_locked(ip):
+        record_admin_failure(ip)
+        raise HTTPException(429, "Too many failed admin authentication attempts. IP temporarily locked.")
+
+    record_admin_failure(ip)
     raise HTTPException(401, "Admin access required")
 
 # Auth
@@ -1161,8 +1275,8 @@ async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str 
         try:
             fwd = request.headers.get("x-forwarded-for", "")
             client_ip = (fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else ""))
-            if client_ip and client_ip not in ("127.0.0.1", "::1", ""):
-                async with httpx.AsyncClient(timeout=5.0) as hc:
+            if is_safe_public_ip(client_ip):
+                async with httpx.AsyncClient(timeout=3.0) as hc:
                     geo = await hc.get(f"http://ip-api.com/json/{client_ip}?fields=status,city,regionName,country,countryCode")
                     if geo.status_code == 200:
                         gd = geo.json()
@@ -1177,7 +1291,7 @@ async def upsert_profile(payload: ProfileUpsert, request: Request, user_id: str 
                                 data["country_code"] = (gd.get("countryCode", "") or "").upper()
                             logger.info(f"IP location for user {user_id}: {data.get('location_city')}, {data.get('location_state')}, {data.get('location_country')} ({data.get('country_code')})")
         except Exception as e:
-            logger.warning(f"IP geolocation failed: {e}")
+            logger.warning(f"IP geolocation shielded: {e}")
 
     if not data.get("country_code"):
         data["country_code"] = (existing.get("country_code") if existing else None) or "IN"
@@ -1583,6 +1697,7 @@ async def mark_taken_by_medication(payload: MarkTakenByMedPayload, user_id: str 
 # Measurements
 @api.get("/measurements")
 async def list_measurements(type: Optional[str] = None, limit: int = 200, user_id: str = Depends(get_current_user_id)):
+    limit, _ = clamp_pagination(limit, default=50, max_limit=200)
     q = {"user_id": user_id}
     if type:
         q["type"] = type
@@ -1606,6 +1721,7 @@ async def delete_measurement(m_id: str, user_id: str = Depends(get_current_user_
 # Activities
 @api.get("/activities")
 async def list_activities(type: Optional[str] = None, limit: int = 200, user_id: str = Depends(get_current_user_id)):
+    limit, _ = clamp_pagination(limit, default=50, max_limit=200)
     q = {"user_id": user_id}
     if type:
         q["type"] = type
@@ -1638,6 +1754,7 @@ async def delete_activity(a_id: str, user_id: str = Depends(get_current_user_id)
 # Mood
 @api.get("/mood")
 async def list_mood(limit: int = 100, user_id: str = Depends(get_current_user_id)):
+    limit, _ = clamp_pagination(limit, default=50, max_limit=200)
     items = await db.mood.find({"user_id": user_id}, PROJECTION).sort("recorded_at", -1).to_list(limit)
     return items
 
@@ -2639,6 +2756,7 @@ async def caregiver_alert(payload: CaregiverAlert, user_id: str = Depends(get_cu
 
 @api.get("/caregiver/log")
 async def caregiver_log(limit: int = 50, user_id: str = Depends(get_current_user_id)):
+    limit, _ = clamp_pagination(limit, default=50, max_limit=100)
     items = await db.caregiver_log.find({"user_id": user_id}, PROJECTION).sort("sent_at", -1).to_list(limit)
     return items
 
@@ -3433,6 +3551,7 @@ async def admin_stats(_: None = Depends(require_admin)):
 async def admin_users(limit: int = 200, skip: int = 0, _: None = Depends(require_admin)):
     """Paginated user list with key metrics - ultra-fast concurrent batch queries across all user collections."""
     import asyncio
+    limit, skip = clamp_pagination(limit, default=200, max_limit=500, skip=skip)
     
     profiles_task = db.profile.find({}, PROJECTION).sort("created_at", -1).to_list(1000)
     users_task = db.users.find({}, PROJECTION).sort("created_at", -1).to_list(1000)
@@ -4753,6 +4872,7 @@ async def run_system_qc_diagnostics(_: None = Depends(require_admin)):
 @app.get("/admin/subscriptions")
 async def admin_subscriptions(limit: int = 50, skip: int = 0, plan: str = "", _: None = Depends(require_admin)):
     import asyncio
+    limit, skip = clamp_pagination(limit, default=50, max_limit=200, skip=skip)
     q = {"plan": plan} if plan else {}
     subs_task = db.subscriptions.find(q, PROJECTION).sort("updated_at", -1).skip(skip).limit(limit).to_list(limit)
     total_task = db.subscriptions.count_documents(q)
@@ -4879,14 +4999,13 @@ class AnnouncementCreate(BaseModel):
 
 @app.post("/admin/announcements")
 async def create_announcement(payload: dict = Body(...), _: None = Depends(require_admin)):
-    title = (payload.get("title") or "").strip()[:150]
-    body = (payload.get("body") or "").strip()[:2000]
+    title = sanitize_text_content((payload.get("title") or "").strip()[:150])
+    body = sanitize_text_content((payload.get("body") or "").strip()[:2000])
     type_val = (payload.get("type") or "offer")[:50]
     target_plan = (payload.get("target_plan") or payload.get("target") or "all")[:50]
     target_country = str(payload.get("target_country") or payload.get("country") or "all").strip().upper()[:10]
-    action_link = payload.get("action_link") or payload.get("link_url") or payload.get("link")
-    if action_link and len(action_link) > 500:
-        action_link = action_link[:500]
+    raw_action_link = payload.get("action_link") or payload.get("link_url") or payload.get("link")
+    action_link = sanitize_action_url(raw_action_link)
     try:
         raw_hours = int(payload.get("expires_hours") or 72)
         expires_hours = max(1, min(raw_hours, 8760))
@@ -4936,9 +5055,12 @@ async def update_announcement(ann_id: str, payload: dict = Body(...), _: None = 
     """Update announcement content, status, audience, or link."""
     update_data = {}
     if "title" in payload:
-        update_data["title"] = str(payload["title"]).strip()
+        update_data["title"] = sanitize_text_content(str(payload["title"]).strip()[:150])
     if "body" in payload:
-        update_data["body"] = str(payload["body"]).strip()
+        update_data["body"] = sanitize_text_content(str(payload["body"]).strip()[:2000])
+    if "action_link" in payload or "link_url" in payload:
+        update_data["action_link"] = sanitize_action_url(payload.get("action_link") or payload.get("link_url"))
+        update_data["link_url"] = update_data["action_link"]
     if "content" in payload and "body" not in payload:
         update_data["body"] = str(payload["content"]).strip()
     if "type" in payload:
@@ -5299,8 +5421,8 @@ def _user_doc_score(meta: dict) -> int:
 @app.post("/api/admin/notify")
 async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depends(require_admin)):
     """Send push notification to all users, tier cohorts, or specific users from admin dashboard with personalization & geo-targeting."""
-    title = payload.get("title", "").strip()
-    body = payload.get("body", "").strip()
+    title = sanitize_text_content(payload.get("title", "").strip())
+    body = sanitize_text_content(payload.get("body", "").strip())
     target_plan = str(payload.get("target_plan") or payload.get("target") or payload.get("targetAudience") or "all").lower()
     target_country = str(payload.get("target_country") or payload.get("country") or "all").strip().upper()
     channels = payload.get("channels") or (["push", "in_app"] if payload.get("in_app", True) else ["push"])
@@ -5583,6 +5705,7 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
 @api.get("/admin/notifications")
 async def admin_get_notifications(limit: int = 50, _: None = Depends(require_admin)):
     """Fetch history of sent push notification broadcast campaigns."""
+    limit, _ = clamp_pagination(limit, default=50, max_limit=200)
     logs = await db.push_broadcast_logs.find({}).sort("ts", -1).limit(limit).to_list(limit)
     if not logs:
         anns = await db.announcements.find({"sent_by": "admin_push_broadcast"}).sort("created_at", -1).limit(limit).to_list(limit)
@@ -6010,6 +6133,7 @@ async def admin_comprehensive_user_insights(
 ):
     """Comprehensive user engagement, adherence, churn risk, and streak analytics."""
     import asyncio
+    limit, _ = clamp_pagination(limit, default=50, max_limit=200)
     profiles = await db.profile.find({}, PROJECTION).limit(limit).to_list(limit)
     if not profiles:
         profiles = await db.users.find({}, PROJECTION).limit(limit).to_list(limit)
@@ -6697,7 +6821,7 @@ ALLOWED_ORIGIN_SET = {
     "http://127.0.0.1:8000",
     "http://127.0.0.1:3000",
 }
-ALLOWED_ORIGIN_REGEX = re.compile(r"^https://([a-zA-Z0-9-]+\.)*(pillcare\.in|workers\.dev)$")
+ALLOWED_ORIGIN_REGEX = re.compile(r"^https://([a-zA-Z0-9-]+\.)*pillcare\.in$")
 
 def _is_allowed_origin(origin: str) -> bool:
     if not origin:
@@ -6739,7 +6863,7 @@ app.add_middleware(
         "http://127.0.0.1:8000",
         "http://127.0.0.1:3000",
     ],
-    allow_origin_regex=r"^https://([a-zA-Z0-9-]+\.)*(pillcare\.in|workers\.dev)$",
+    allow_origin_regex=r"^https://([a-zA-Z0-9-]+\.)*pillcare\.in$",
     allow_methods=["*"],
     allow_headers=["*"],
 )

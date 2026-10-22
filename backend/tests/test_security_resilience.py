@@ -29,6 +29,14 @@ from server import (
     OFFICIAL_PLAN_PRICES,
     _is_allowed_origin,
     _dates_in_range,
+    is_safe_public_ip,
+    clamp_pagination,
+    sanitize_action_url,
+    sanitize_text_content,
+    require_admin,
+    is_admin_ip_locked,
+    record_admin_failure,
+    record_admin_success,
 )
 
 class SecurityHardeningTests(unittest.TestCase):
@@ -143,6 +151,99 @@ class SecurityHardeningTests(unittest.TestCase):
         # Extreme days clamped to 365
         dates_clamped = _dates_in_range("2026-10-21", 1000)
         self.assertEqual(len(dates_clamped), 365)
+
+    def test_09_ssrf_ip_filtering(self):
+        # Private and loopback IPv4/IPv6 must be blocked
+        self.assertFalse(is_safe_public_ip("127.0.0.1"))
+        self.assertFalse(is_safe_public_ip("10.0.0.1"))
+        self.assertFalse(is_safe_public_ip("192.168.1.1"))
+        self.assertFalse(is_safe_public_ip("172.16.0.1"))
+        self.assertFalse(is_safe_public_ip("169.254.169.254"))  # Cloud metadata IP
+        self.assertFalse(is_safe_public_ip("::1"))
+        self.assertFalse(is_safe_public_ip("fe80::1"))
+        self.assertFalse(is_safe_public_ip("0.0.0.0"))
+        self.assertFalse(is_safe_public_ip("255.255.255.255"))
+
+        # Malformed strings or injection strings must be blocked
+        self.assertFalse(is_safe_public_ip("attacker.com"))
+        self.assertFalse(is_safe_public_ip("127.0.0.1:8080"))
+        self.assertFalse(is_safe_public_ip("http://127.0.0.1"))
+        self.assertFalse(is_safe_public_ip(None))
+        self.assertFalse(is_safe_public_ip(""))
+
+        # Valid public internet IPs must be accepted
+        self.assertTrue(is_safe_public_ip("8.8.8.8"))
+        self.assertTrue(is_safe_public_ip("1.1.1.1"))
+        self.assertTrue(is_safe_public_ip("103.21.244.1"))
+
+    def test_10_cors_strict_regex(self):
+        # Specific allowed worker passes
+        self.assertTrue(_is_allowed_origin("https://pillcare.nitinrai264.workers.dev"))
+        # Official subdomains pass
+        self.assertTrue(_is_allowed_origin("https://admin.pillcare.in"))
+        self.assertTrue(_is_allowed_origin("https://api.pillcare.in"))
+        self.assertTrue(_is_allowed_origin("https://staging.pillcare.in"))
+
+        # Rogue workers.dev origins MUST be blocked
+        self.assertFalse(_is_allowed_origin("https://attacker.workers.dev"))
+        self.assertFalse(_is_allowed_origin("https://evil-hacker.workers.dev"))
+        self.assertFalse(_is_allowed_origin("https://pillcare.workers.dev"))
+
+    def test_11_pagination_limit_clamping(self):
+        # Clamping excessive upper limit
+        lim, sk = clamp_pagination(limit=1000000, default=50, max_limit=200, skip=0)
+        self.assertEqual(lim, 200)
+        self.assertEqual(sk, 0)
+
+        # Clamping negative limit to minimum 1
+        lim, sk = clamp_pagination(limit=-50, default=50, max_limit=200, skip=-10)
+        self.assertEqual(lim, 1)
+        self.assertEqual(sk, 0)
+
+        # Malformed non-numeric values fallback safely
+        lim, sk = clamp_pagination(limit="malformed", default=50, max_limit=200, skip="bad")
+        self.assertEqual(lim, 50)
+        self.assertEqual(sk, 0)
+
+        # Valid in-bounds values preserved
+        lim, sk = clamp_pagination(limit=25, default=50, max_limit=200, skip=10)
+        self.assertEqual(lim, 25)
+        self.assertEqual(sk, 10)
+
+    def test_12_url_and_text_sanitization(self):
+        # Dangerous schemes are stripped
+        self.assertIsNone(sanitize_action_url("javascript:alert(document.cookie)"))
+        self.assertIsNone(sanitize_action_url("data:text/html,<script>alert(1)</script>"))
+        self.assertIsNone(sanitize_action_url("vbscript:msgbox(1)"))
+        self.assertIsNone(sanitize_action_url(None))
+
+        # Safe schemes are preserved
+        self.assertEqual(sanitize_action_url("https://pillcare.in/offers"), "https://pillcare.in/offers")
+        self.assertEqual(sanitize_action_url("pillcare://medications/add"), "pillcare://medications/add")
+        self.assertEqual(sanitize_action_url("/app-control/control-room"), "/app-control/control-room")
+
+        # HTML / Script tags stripped from text content
+        raw_xss = "<script>alert('pwned')</script>Exclusive Offer: Flat 50% Off"
+        cleaned = sanitize_text_content(raw_xss)
+        self.assertNotIn("<script>", cleaned)
+        self.assertEqual(cleaned, "Exclusive Offer: Flat 50% Off")
+
+    def test_13_admin_brute_force_lockout(self):
+        attacker_ip = "198.51.100.99"
+        # Reset any prior state for test isolation
+        record_admin_success(attacker_ip)
+        self.assertFalse(is_admin_ip_locked(attacker_ip))
+
+        # Simulate 10 consecutive failed attempts
+        for _ in range(10):
+            record_admin_failure(attacker_ip)
+
+        # IP must now be locked out
+        self.assertTrue(is_admin_ip_locked(attacker_ip))
+
+        # Successful auth clears lockout
+        record_admin_success(attacker_ip)
+        self.assertFalse(is_admin_ip_locked(attacker_ip))
 
 if __name__ == "__main__":
     unittest.main()
