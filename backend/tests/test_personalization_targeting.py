@@ -13,9 +13,16 @@ os.environ.setdefault("JWT_SECRET", "test_jwt_secret_for_hardening_audit_2026")
 os.environ.setdefault("ADMIN_SECRET", "PILLCARE_ADMIN_test_secret_32_chars_long")
 os.environ.setdefault("SCHEDULER_SECRET", "test_scheduler_secret_2026")
 
-from server import render_notification_template, Profile, ProfileUpsert, AnnouncementCreate
+from server import render_notification_template, Profile, ProfileUpsert, AnnouncementCreate, _user_doc_score
 
 class PersonalizationAndTargetingTests(unittest.TestCase):
+    def test_00_user_scoring_priority(self):
+        real_user = {"user_id": "google_123", "email": "user@example.com", "name": "Subham"}
+        stale_guest = {"user_id": "guest_abc", "name": "PillCare Guest", "nickname": "PillCare Guest"}
+        empty_doc = {"user_id": None}
+        self.assertGreater(_user_doc_score(real_user), _user_doc_score(stale_guest))
+        self.assertGreater(_user_doc_score(stale_guest), _user_doc_score(empty_doc))
+        self.assertEqual(_user_doc_score(real_user), 35)
     def test_01_first_name_extraction(self):
         # Multi-word name
         user = {"name": "rahul sharma", "nickname": "rahul"}
@@ -31,6 +38,13 @@ class PersonalizationAndTargetingTests(unittest.TestCase):
         user3 = {}
         result3 = render_notification_template("Welcome, {First_name}!", user3)
         self.assertEqual(result3, "Welcome, Friend!")
+
+        # Generic name hygiene: PillCare User, PillCare Guest, Guest, YOU must cleanly fall back to Friend
+        for generic in ["PillCare User", "PillCare Guest", "Pillcare", "Guest", "YOU", "User", "anonymous"]:
+            res = render_notification_template("Hello, {First_name}!", {"name": generic})
+            self.assertEqual(res, "Hello, Friend!", f"Failed for generic name: {generic}")
+            res2 = render_notification_template("Hello, {FirstName}!", {"nickname": generic})
+            self.assertEqual(res2, "Hello, Friend!", f"Failed for generic nickname: {generic}")
 
     def test_02_all_personalization_tags(self):
         user = {

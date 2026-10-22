@@ -1117,11 +1117,19 @@ async def _get_unique_7digit_user_number(user_id: str) -> str:
 @api.get("/profile")
 async def get_profile(user_id: str = Depends(get_current_user_id)):
     doc = await db.profile.find_one({"id": user_id}, PROJECTION) or {}
+    user = await db.users.find_one({"id": user_id}, PROJECTION) or {}
     # Always include email from users collection
     if not doc.get("email"):
-        user = await db.users.find_one({"id": user_id}, PROJECTION) or {}
         doc["email"] = user.get("email", "")
         doc["id"] = user_id
+
+    # Enrich profile nickname/name from user account if missing
+    u_name = (user.get("name") or "").strip()
+    if u_name and u_name.lower() not in GENERIC_NAMES:
+        if not doc.get("nickname") or str(doc.get("nickname")).strip().lower() in GENERIC_NAMES:
+            doc["nickname"] = u_name
+        if not doc.get("name") or str(doc.get("name")).strip().lower() in GENERIC_NAMES:
+            doc["name"] = u_name
 
     if not doc.get("user_number"):
         doc["user_number"] = await _get_unique_7digit_user_number(user_id)
@@ -4558,12 +4566,18 @@ async def admin_register_manual_push_token(payload: dict = Body(...), _: None = 
     await db.users.update_many({"$or": [{"id": user_id}, {"email": user_id}, {"push_token": token}]}, {"$set": update_doc}, upsert=True)
     await db.profile.update_many({"$or": [{"user_id": user_id}, {"email": user_id}, {"push_token": token}]}, {"$set": update_doc}, upsert=True)
     return {"ok": True, "token": token, "user_id": user_id, "message": f"Successfully registered push token for {user_id}"}
+GENERIC_NAMES = {
+    "pillcare", "pillcare user", "pillcare guest", "guest", "you",
+    "user", "anonymous", "friend", "none", "null", "test", "tester",
+    "pill care", "pill care user", "pill care guest"
+}
+
 def render_notification_template(text: str, user: dict) -> str:
     """
     Renders dynamic personalization tags in notification title or body.
     Supports:
-      {First_name}, {{First_name}}, {first_name}, {{first_name}}
-      {Full_Name}, {{Full_Name}}, {name}, {{name}}
+      {First_name}, {{First_name}}, {first_name}, {{first_name}}, {FirstName}, {{FirstName}}
+      {Full_Name}, {{Full_Name}}, {full_name}, {{name}}, {{name}}
       {Streak_Days}, {{Streak_Days}}, {streak}, {{streak}}
       {City}, {{City}}, {city}, {{city}}
       {Country}, {{Country}}, {country}, {{country}}
@@ -4573,30 +4587,50 @@ def render_notification_template(text: str, user: dict) -> str:
         return ""
 
     raw_name = (user.get("nickname") or user.get("name") or "").strip()
+    if raw_name.lower() in GENERIC_NAMES:
+        raw_name = ""
+
     if raw_name:
         first_name = raw_name.split()[0].capitalize()
         full_name = raw_name
     else:
         first_name = "Friend"
-        full_name = "PillCare User"
+        full_name = "Friend"
 
     streak_val = str(user.get("streak") or user.get("streak_days") or 0)
     city_val = (user.get("location_city") or user.get("city") or "your city").strip()
     country_val = (user.get("location_country") or user.get("country") or "your region").strip()
 
     replacements = [
-        (re.compile(r"\{\{?\s*(?:first_name|first\s*name)\s*\}?\}", re.IGNORECASE), first_name),
-        (re.compile(r"\{\{?\s*(?:full_name|full\s*name|name)\s*\}?\}", re.IGNORECASE), full_name),
-        (re.compile(r"\{\{?\s*(?:streak_days|streak\s*days|streak)\s*\}?\}", re.IGNORECASE), streak_val),
+        (re.compile(r"\{\{?\s*(?:first_name|first\s*name|firstname)\s*\}?\}", re.IGNORECASE), first_name),
+        (re.compile(r"\{\{?\s*(?:full_name|full\s*name|fullname|name)\s*\}?\}", re.IGNORECASE), full_name),
+        (re.compile(r"\{\{?\s*(?:streak_days|streak\s*days|streakdays|streak)\s*\}?\}", re.IGNORECASE), streak_val),
         (re.compile(r"\{\{?\s*(?:city|location_city)\s*\}?\}", re.IGNORECASE), city_val),
         (re.compile(r"\{\{?\s*(?:country|location_country)\s*\}?\}", re.IGNORECASE), country_val),
-        (re.compile(r"\{\{?\s*(?:app_name|app)\s*\}?\}", re.IGNORECASE), "PillCare"),
+        (re.compile(r"\{\{?\s*(?:app_name|app\s*name|appname|app)\s*\}?\}", re.IGNORECASE), "PillCare"),
     ]
 
     rendered = text
     for pattern, val in replacements:
         rendered = pattern.sub(val, rendered)
     return rendered
+
+
+def _user_doc_score(meta: dict) -> int:
+    """Calculates doc quality score so authenticated accounts with real names beat stale guest records."""
+    u_id = str(meta.get("user_id") or "")
+    raw_n = (meta.get("nickname") or meta.get("name") or "").strip().lower()
+    score = 0
+    if u_id:
+        if not u_id.startswith("guest_"):
+            score += 10
+        else:
+            score += 1
+    if meta.get("email"):
+        score += 5
+    if raw_n and raw_n not in GENERIC_NAMES:
+        score += 20
+    return score
 
 
 @app.post("/admin/notify")
@@ -4670,8 +4704,10 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
     for doc in (users or []) + (profiles or []):
         u_id = doc.get("id") or doc.get("user_id")
         name = doc.get("nickname") or doc.get("name") or ""
+        email = doc.get("email") or ""
         user_meta = {
             "user_id": u_id,
+            "email": email,
             "nickname": doc.get("nickname") or name,
             "name": doc.get("name") or name,
             "streak": doc.get("streak") or doc.get("streak_days") or 0,
@@ -4683,8 +4719,17 @@ async def admin_broadcast_notification(payload: dict = Body(...), _: None = Depe
             t = doc.get(f)
             if t and isinstance(t, str) and len(t) > 5 and not t.startswith("sim_"):
                 t_clean = t.strip()
-                if t_clean not in token_user_map or (name and not token_user_map[t_clean].get("nickname")):
+                if t_clean not in token_user_map:
                     token_user_map[t_clean] = user_meta
+                else:
+                    curr_score = _user_doc_score(token_user_map[t_clean])
+                    new_score = _user_doc_score(user_meta)
+                    if new_score > curr_score:
+                        merged = dict(user_meta)
+                        for k in ["location_city", "location_country", "country_code", "streak"]:
+                            if not merged.get(k) and token_user_map[t_clean].get(k):
+                                merged[k] = token_user_map[t_clean][k]
+                        token_user_map[t_clean] = merged
                 
     tokens = list(token_user_map.keys())
     

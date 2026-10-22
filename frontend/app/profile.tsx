@@ -32,18 +32,27 @@ export default function Profile() {
   const [signingIn, setSigningIn] = useState(false);
 
   const load = useCallback(async () => {
+    let u: PillcareUser | null = null;
     try {
-      const u = await getStoredUser();
+      u = await getStoredUser();
       setAuthUser(u);
       setIsGuest(isGuestUser(u));
     } catch {
       setIsGuest(true);
     }
 
-    const cached = await get<any>(K.profile);
+    let cached = await get<any>(K.profile);
+    const validAuthName = u?.name && !u.name.toLowerCase().includes("pillcare") && !u.name.toLowerCase().includes("guest") ? u.name : "";
+    if (validAuthName && (!cached?.nickname || cached.nickname.toLowerCase().includes("pillcare") || cached.nickname.toLowerCase().includes("guest"))) {
+      cached = { ...(cached || {}), nickname: validAuthName, email: u?.email || cached?.email };
+      await set(K.profile, cached).catch(() => {});
+    }
     if (cached) setProfile(cached);
     try {
       const p = await api.getProfile();
+      if (validAuthName && (!p.nickname || p.nickname.toLowerCase().includes("pillcare") || p.nickname.toLowerCase().includes("guest"))) {
+        p.nickname = validAuthName;
+      }
       setProfile(p); set(K.profile, p);
     } catch {}
   }, []);

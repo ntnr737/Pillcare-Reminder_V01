@@ -30,22 +30,31 @@ export interface InAppNotificationPayload {
   data?: any;
 }
 
+const GENERIC_NAMES = new Set([
+  "pillcare", "pillcare user", "pillcare guest", "guest", "you",
+  "user", "anonymous", "friend", "none", "null", "test", "tester",
+  "pill care", "pill care user", "pill care guest"
+]);
+
 export function interpolateNotificationTags(text: string, profile?: any, streakVal?: any): string {
   if (!text) return "";
-  const nickname = (profile?.nickname && profile.nickname.toUpperCase() !== "YOU" ? profile.nickname : "") || profile?.name || "Friend";
-  const firstName = nickname.split(" ")[0].trim() || "Friend";
-  const fullName = profile?.name || profile?.nickname || firstName;
+  let rawName = (profile?.nickname || profile?.name || "").trim();
+  if (GENERIC_NAMES.has(rawName.toLowerCase())) {
+    rawName = "";
+  }
+  const firstName = rawName ? rawName.split(" ")[0].trim() : "Friend";
+  const fullName = rawName || "Friend";
   const streak = typeof streakVal === "number" ? streakVal : (streakVal?.current ?? streakVal?.streak ?? 0);
   const city = profile?.city || profile?.location_city || "";
   const country = profile?.country || profile?.location_country || "";
 
   return text
-    .replace(/\{\{?\s*(?:first_name|first\s*name)\s*\}?\}/gi, firstName)
-    .replace(/\{\{?\s*(?:full_name|full\s*name|name)\s*\}?\}/gi, fullName)
-    .replace(/\{\{?\s*(?:streak_days|streak)\s*\}?\}/gi, String(streak))
-    .replace(/\{\{?\s*city\s*\}?\}/gi, city)
-    .replace(/\{\{?\s*country\s*\}?\}/gi, country)
-    .replace(/\{\{?\s*(?:app_name|app)\s*\}?\}/gi, "PillCare");
+    .replace(/\{\{?\s*(?:first_name|first\s*name|firstname)\s*\}?\}/gi, firstName)
+    .replace(/\{\{?\s*(?:full_name|full\s*name|fullname|name)\s*\}?\}/gi, fullName)
+    .replace(/\{\{?\s*(?:streak_days|streak\s*days|streakdays|streak)\s*\}?\}/gi, String(streak))
+    .replace(/\{\{?\s*(?:city|location_city)\s*\}?\}/gi, city)
+    .replace(/\{\{?\s*(?:country|location_country)\s*\}?\}/gi, country)
+    .replace(/\{\{?\s*(?:app_name|app\s*name|appname|app)\s*\}?\}/gi, "PillCare");
 }
 
 export function getInAppBody(n: any): string {
